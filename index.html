@@ -1,0 +1,209 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#030306">
+  <meta name="description" content="Void Galaxy — an immersive cosmic music experience where sound meets the universe.">
+  <title>Void Galaxy — Enter the Sound</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #030306;
+      color: #f5f3fa;
+      font-family: Inter, system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+    .universe {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 50% 45%,
+          rgba(92, 70, 155, .16), transparent 36%),
+        radial-gradient(ellipse at 50% 50%,
+          transparent 0 17%, rgba(190, 190, 230, .08) 18%,
+          transparent 19% 28%, rgba(120, 100, 180, .06) 29%,
+          transparent 30%);
+    }
+    .stars {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .65;
+      background-image:
+        radial-gradient(1px 1px at 12% 20%, white 99%, transparent),
+        radial-gradient(1px 1px at 78% 32%, white 99%, transparent),
+        radial-gradient(2px 2px at 35% 72%, #aaa4dc 99%, transparent),
+        radial-gradient(1px 1px at 87% 82%, white 99%, transparent),
+        radial-gradient(1px 1px at 63% 15%, white 99%, transparent),
+        radial-gradient(1px 1px at 22% 87%, white 99%, transparent),
+        radial-gradient(1px 1px at 52% 92%, white 99%, transparent);
+      background-size: 310px 270px;
+    }
+    header, main, footer { position: relative; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 28px 7%;
+      border-bottom: 1px solid #ffffff12;
+    }
+    .brand {
+      font-size: 13px;
+      letter-spacing: .24em;
+      font-weight: 600;
+    }
+    header a, footer a {
+      color: #aaa8bd;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    header a:hover, footer a:hover { color: white; }
+    main {
+      min-height: 78vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 70px 24px 85px;
+    }
+    .orb {
+      width: 190px;
+      height: 190px;
+      border-radius: 50%;
+      margin-bottom: 45px;
+      background:
+        radial-gradient(circle at 35% 30%,
+          #b9b6d8 0, #5b547d 3%, #171522 18%,
+          #030306 48%);
+      box-shadow:
+        0 0 35px #aaa1ff16,
+        0 0 90px #7660d01a,
+        inset -12px -5px 35px #000;
+      position: relative;
+    }
+    .orb::before {
+      content: "";
+      position: absolute;
+      inset: 24% -24%;
+      border: 1px solid #d5d0ff65;
+      border-radius: 50%;
+      transform: rotate(-24deg) scaleY(.38);
+      box-shadow: 0 0 24px #a69bff20;
+    }
+    .eyebrow {
+      color: #a9a1d4;
+      font-size: 10px;
+      letter-spacing: .34em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 18px 0;
+      font-size: clamp(38px, 7vw, 76px);
+      font-weight: 400;
+      letter-spacing: .1em;
+    }
+    .subtitle {
+      color: #aaa8b9;
+      font-size: clamp(14px, 2vw, 17px);
+      line-height: 1.9;
+      max-width: 490px;
+    }
+    .actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 32px;
+    }
+    .button {
+      display: inline-block;
+      padding: 13px 21px;
+      border: 1px solid #ffffff35;
+      border-radius: 3px;
+      text-decoration: none;
+      color: #f5f3fa;
+      font-size: 12px;
+      letter-spacing: .04em;
+      transition: background .2s, border-color .2s;
+    }
+    .button.primary {
+      background: #eeebfa;
+      color: #111018;
+      border-color: #eeebfa;
+    }
+    .button:hover {
+      background: #bcb1e8;
+      color: #08070d;
+      border-color: #bcb1e8;
+    }
+    .note {
+      margin-top: 26px;
+      color: #686779;
+      font-size: 11px;
+    }
+    footer {
+      border-top: 1px solid #ffffff12;
+      padding: 22px 7%;
+      display: flex;
+      justify-content: space-between;
+      gap: 15px;
+      flex-wrap: wrap;
+      color: #777487;
+      font-size: 11px;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .orb { animation: breathe 7s ease-in-out infinite; }
+      @keyframes breathe {
+        0%, 100% { filter: brightness(.88); }
+        50% { filter: brightness(1.2); }
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="universe"></div>
+  <div class="stars"></div>
+
+  <header>
+    <div class="brand">VOID GALAXY</div>
+    <a href="https://github.com/minoodar/Void-Galaxy">
+      EXPLORE THE PROJECT ↗
+    </a>
+  </header>
+
+  <main>
+    <div class="orb" aria-hidden="true"></div>
+    <div class="eyebrow">Sound · Space · Imagination</div>
+    <h1>VOID GALAXY</h1>
+    <p class="subtitle">
+      Enter a universe where sound becomes light,
+      music becomes motion, and every journey
+      unfolds among the stars.
+    </p>
+    <div class="actions">
+      <a class="button primary"
+         href="https://github.com/minoodar/Void-Galaxy">
+        DISCOVER THE EXTENSION ↗
+      </a>
+      <a class="button"
+         href="https://github.com/minoodar/void-galaxy-music">
+        EXPLORE ON GITHUB
+      </a>
+    </div>
+    <p class="note">
+      An evolving cosmic music experience.
+    </p>
+  </main>
+
+  <footer>
+    <span>VOID GALAXY · AN INDEPENDENT CREATIVE PROJECT</span>
+    <a href="https://github.com/minoodar">CREATED BY MINOODAR ↗</a>
+  </footer>
+</body>
+</html>
