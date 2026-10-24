@@ -1,209 +1,96 @@
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#030306">
-  <meta name="description" content="Void Galaxy — an immersive cosmic music experience where sound meets the universe.">
-  <title>Void Galaxy — Enter the Sound</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Void Galaxy Music</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="void-music.css">
   <style>
-    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
     body {
-      margin: 0;
-      min-height: 100vh;
-      background: #030306;
-      color: #f5f3fa;
-      font-family: Inter, system-ui, sans-serif;
-      overflow-x: hidden;
-    }
-    .universe {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
       background:
-        radial-gradient(ellipse at 50% 45%,
-          rgba(92, 70, 155, .16), transparent 36%),
-        radial-gradient(ellipse at 50% 50%,
-          transparent 0 17%, rgba(190, 190, 230, .08) 18%,
-          transparent 19% 28%, rgba(120, 100, 180, .06) 29%,
-          transparent 30%);
+        radial-gradient(circle at 50% 42%, #050714 0%, #02030a 58%, #010208 100%);
     }
-    .stars {
+    #void-gl-note {
       position: fixed;
-      inset: 0;
-      pointer-events: none;
-      opacity: .65;
-      background-image:
-        radial-gradient(1px 1px at 12% 20%, white 99%, transparent),
-        radial-gradient(1px 1px at 78% 32%, white 99%, transparent),
-        radial-gradient(2px 2px at 35% 72%, #aaa4dc 99%, transparent),
-        radial-gradient(1px 1px at 87% 82%, white 99%, transparent),
-        radial-gradient(1px 1px at 63% 15%, white 99%, transparent),
-        radial-gradient(1px 1px at 22% 87%, white 99%, transparent),
-        radial-gradient(1px 1px at 52% 92%, white 99%, transparent);
-      background-size: 310px 270px;
-    }
-    header, main, footer { position: relative; }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 28px 7%;
-      border-bottom: 1px solid #ffffff12;
-    }
-    .brand {
-      font-size: 13px;
-      letter-spacing: .24em;
-      font-weight: 600;
-    }
-    header a, footer a {
-      color: #aaa8bd;
-      text-decoration: none;
-      font-size: 12px;
-    }
-    header a:hover, footer a:hover { color: white; }
-    main {
-      min-height: 78vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      top: max(16px, env(safe-area-inset-top, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      width: max-content;
+      max-width: min(560px, calc(100vw - 32px));
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(251, 191, 36, .30);
+      background: rgba(6, 8, 13, .78);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, .45);
+      color: rgba(235, 240, 245, .86);
+      font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       text-align: center;
-      padding: 70px 24px 85px;
+      pointer-events: none;
+      animation: vmGlNoteIn .7s cubic-bezier(.22, 1, .36, 1) .15s both;
     }
-    .orb {
-      width: 190px;
-      height: 190px;
-      border-radius: 50%;
-      margin-bottom: 45px;
-      background:
-        radial-gradient(circle at 35% 30%,
-          #b9b6d8 0, #5b547d 3%, #171522 18%,
-          #030306 48%);
-      box-shadow:
-        0 0 35px #aaa1ff16,
-        0 0 90px #7660d01a,
-        inset -12px -5px 35px #000;
-      position: relative;
+    @keyframes vmGlNoteIn {
+      from { opacity: 0; transform: translate(-50%, -6px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
     }
-    .orb::before {
-      content: "";
-      position: absolute;
-      inset: 24% -24%;
-      border: 1px solid #d5d0ff65;
-      border-radius: 50%;
-      transform: rotate(-24deg) scaleY(.38);
-      box-shadow: 0 0 24px #a69bff20;
-    }
-    .eyebrow {
-      color: #a9a1d4;
-      font-size: 10px;
-      letter-spacing: .34em;
-      text-transform: uppercase;
-    }
-    h1 {
-      margin: 18px 0;
-      font-size: clamp(38px, 7vw, 76px);
-      font-weight: 400;
-      letter-spacing: .1em;
-    }
-    .subtitle {
-      color: #aaa8b9;
-      font-size: clamp(14px, 2vw, 17px);
-      line-height: 1.9;
-      max-width: 490px;
-    }
-    .actions {
-      display: flex;
-      gap: 14px;
-      flex-wrap: wrap;
-      justify-content: center;
-      margin-top: 32px;
-    }
-    .button {
-      display: inline-block;
-      padding: 13px 21px;
-      border: 1px solid #ffffff35;
-      border-radius: 3px;
-      text-decoration: none;
-      color: #f5f3fa;
-      font-size: 12px;
-      letter-spacing: .04em;
-      transition: background .2s, border-color .2s;
-    }
-    .button.primary {
-      background: #eeebfa;
-      color: #111018;
-      border-color: #eeebfa;
-    }
-    .button:hover {
-      background: #bcb1e8;
-      color: #08070d;
-      border-color: #bcb1e8;
-    }
-    .note {
-      margin-top: 26px;
-      color: #686779;
-      font-size: 11px;
-    }
-    footer {
-      border-top: 1px solid #ffffff12;
-      padding: 22px 7%;
-      display: flex;
-      justify-content: space-between;
-      gap: 15px;
-      flex-wrap: wrap;
-      color: #777487;
-      font-size: 11px;
-    }
-    @media (prefers-reduced-motion: no-preference) {
-      .orb { animation: breathe 7s ease-in-out infinite; }
-      @keyframes breathe {
-        0%, 100% { filter: brightness(.88); }
-        50% { filter: brightness(1.2); }
-      }
+    @media (prefers-reduced-motion: reduce) {
+      #void-gl-note { animation: none; }
     }
   </style>
 </head>
 <body>
-  <div class="universe"></div>
-  <div class="stars"></div>
+  <noscript>Void Galaxy Music needs JavaScript to play audio and render the visualizer.</noscript>
 
-  <header>
-    <div class="brand">VOID GALAXY</div>
-    <a href="https://github.com/minoodar/Void-Galaxy">
-      EXPLORE THE PROJECT ↗
-    </a>
-  </header>
+  <script src="void-music.js"></script>
+  <script src="void-music-viz.js"></script>
+  <script>
+    (function () {
+      'use strict';
 
-  <main>
-    <div class="orb" aria-hidden="true"></div>
-    <div class="eyebrow">Sound · Space · Imagination</div>
-    <h1>VOID GALAXY</h1>
-    <p class="subtitle">
-      Enter a universe where sound becomes light,
-      music becomes motion, and every journey
-      unfolds among the stars.
-    </p>
-    <div class="actions">
-      <a class="button primary"
-         href="https://github.com/minoodar/Void-Galaxy">
-        DISCOVER THE EXTENSION ↗
-      </a>
-      <a class="button"
-         href="https://github.com/minoodar/void-galaxy-music">
-        EXPLORE ON GITHUB
-      </a>
-    </div>
-    <p class="note">
-      An evolving cosmic music experience.
-    </p>
-  </main>
+      function showNote(message, parent) {
+        var host = parent || document.body;
+        var note = document.createElement('div');
+        note.id = 'void-gl-note';
+        note.setAttribute('role', 'status');
+        note.textContent = message;
+        host.appendChild(note);
+        return note;
+      }
 
-  <footer>
-    <span>VOID GALAXY · AN INDEPENDENT CREATIVE PROJECT</span>
-    <a href="https://github.com/minoodar">CREATED BY MINOODAR ↗</a>
-  </footer>
+      function webgl2Available() {
+        try {
+          return !!(window.WebGL2RenderingContext && document.createElement('canvas').getContext('webgl2'));
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function boot() {
+        if (!window.VoidMusic || typeof window.VoidMusic.enter !== 'function') {
+          showNote('The player could not load. Check that void-music.js and void-music.css sit next to this page.');
+          return;
+        }
+
+        window.VoidMusic.enter();
+
+        if (!webgl2Available()) {
+          showNote(
+            'Galaxy view is unavailable because this browser does not support WebGL2. ' +
+            'Playback, queue, seek and volume still work normally.',
+            document.getElementById('void-music-root') || document.body
+          );
+        }
+      }
+
+      // Wait for the first real layout: arc geometry reads window.innerWidth.
+      if (document.readyState === 'complete') requestAnimationFrame(boot);
+      else window.addEventListener('load', function () { requestAnimationFrame(boot); }, { once: true });
+    })();
+  </script>
 </body>
 </html>
