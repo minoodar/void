@@ -15,7 +15,7 @@
     }
     #void-gl-note {
       position: fixed;
-      top: max(16px, env(safe-area-inset-top, 0px));
+      top: max(100px, calc(env(safe-area-inset-top, 0px) + 92px));
       left: 50%;
       transform: translateX(-50%);
       z-index: 20;
@@ -41,10 +41,50 @@
     @media (prefers-reduced-motion: reduce) {
       #void-gl-note { animation: none; }
     }
+    /* The extension-widget toggle has no counterpart in the web build. */
+    #void-music-root .vm-widget-btn { display: none !important; }
+    #void-reopen {
+      position: fixed;
+      left: 50%;
+      bottom: max(28px, env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%);
+      z-index: 2000;
+      padding: 11px 22px;
+      border-radius: 999px;
+      border: 1px solid rgba(235, 240, 245, .28);
+      background: rgba(8, 10, 14, .72);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, .5);
+      color: rgba(250, 252, 255, .94);
+      font: 500 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      letter-spacing: .02em;
+      cursor: pointer;
+      transition: border-color .2s ease, background .2s ease;
+    }
+    #void-reopen:hover { border-color: rgba(251, 191, 36, .55); background: rgba(12, 15, 22, .86); }
+    #void-reopen:focus-visible { outline: 2px solid rgba(220, 230, 240, .9); outline-offset: 4px; }
+    #void-reopen[hidden] { display: none; }
   </style>
 </head>
 <body>
   <noscript>Void Galaxy Music needs JavaScript to play audio and render the visualizer.</noscript>
+
+  <nav id="void-topnav" class="void-topnav" aria-label="Site navigation">
+    <button id="void-topnav-handle" class="void-topnav__handle" type="button"
+            aria-expanded="false" aria-controls="void-topnav-canopy" aria-label="Open navigation">
+      <span class="void-topnav__grip" aria-hidden="true"></span>
+    </button>
+    <div id="void-topnav-canopy" class="void-topnav__canopy" aria-hidden="true">
+      <ul class="void-topnav__list">
+        <li><a class="void-topnav__link" href="https://minoodar.github.io/void-galaxy-music/">Music Player</a></li>
+        <li><a class="void-topnav__link" href="https://github.com/minoodar/Void-Galaxy" target="_blank" rel="noopener noreferrer">Get Extension</a></li>
+        <li><a class="void-topnav__link" href="https://github.com/minoodar" target="_blank" rel="noopener noreferrer">Meet the Creator</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <button id="void-reopen" type="button" hidden>Open music</button>
 
   <script src="void-music.js"></script>
   <script src="void-music-viz.js"></script>
@@ -78,6 +118,15 @@
 
         window.VoidMusic.enter();
 
+        var root = document.getElementById('void-music-root');
+        var reopen = document.getElementById('void-reopen');
+        function syncReopen() { reopen.hidden = !(root && root.hidden); }
+        reopen.addEventListener('click', function () { window.VoidMusic.enter(); });
+        if (root && window.MutationObserver) {
+          new MutationObserver(syncReopen).observe(root, { attributes: true, attributeFilter: ['hidden'] });
+        }
+        syncReopen();
+
         if (!webgl2Available()) {
           showNote(
             'Galaxy view is unavailable because this browser does not support WebGL2. ' +
@@ -90,6 +139,145 @@
       // Wait for the first real layout: arc geometry reads window.innerWidth.
       if (document.readyState === 'complete') requestAnimationFrame(boot);
       else window.addEventListener('load', function () { requestAnimationFrame(boot); }, { once: true });
+    })();
+  </script>
+  <script>
+    (function () {
+      'use strict';
+
+      var nav = document.getElementById('void-topnav');
+      var handle = document.getElementById('void-topnav-handle');
+      var canopy = document.getElementById('void-topnav-canopy');
+      if (!nav || !handle || !canopy) return;
+
+      var HIDE_MS = 1800;
+      var INITIAL_SHOW_MS = 2000;
+      var open = false;
+      var hovering = false;
+      var hideTimer = 0;
+      var lastPointerType = '';
+      var pointerFocus = false;
+      var suppressFocusOpen = false;
+
+      function focusVisible(el) {
+        try { return el.matches(':focus-visible'); } catch (e) { return true; }
+      }
+      function focusHoldsMenu() {
+        var active = document.activeElement;
+        if (!active) return false;
+        if (canopy.contains(active)) return true;
+        return active === handle && focusVisible(handle);
+      }
+      function clearHide() {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
+      }
+      function scheduleHide(delay) {
+        clearHide();
+        hideTimer = setTimeout(function () {
+          hideTimer = 0;
+          if (!open || hovering) return;
+          if (nav.matches(':hover') || focusHoldsMenu()) return;
+          setOpen(false);
+        }, typeof delay === 'number' ? delay : HIDE_MS);
+      }
+      function setOpen(next, delay) {
+        open = !!next;
+        nav.classList.toggle('is-open', open);
+        handle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        handle.setAttribute('aria-label', open ? 'Hide navigation' : 'Open navigation');
+        if (open) {
+          canopy.removeAttribute('aria-hidden');
+        } else {
+          canopy.setAttribute('aria-hidden', 'true');
+        }
+        clearHide();
+        if (open) scheduleHide(delay);
+      }
+      function pointerCanHover(e) {
+        return e.pointerType !== 'touch';
+      }
+
+      document.addEventListener('pointermove', function (e) {
+        if (!pointerCanHover(e) || open || e.clientY > 12) return;
+        var rect = nav.getBoundingClientRect();
+        if (rect.width && Math.abs(e.clientX - (rect.left + rect.width / 2)) > rect.width / 2 + 90) return;
+        setOpen(true);
+      }, { passive: true });
+
+      handle.addEventListener('pointerenter', function (e) {
+        if (e.pointerType === 'touch') return;
+        hovering = true;
+        clearHide();
+        if (!open) setOpen(true);
+      });
+      handle.addEventListener('pointerleave', function (e) {
+        if (e.pointerType === 'touch') return;
+        hovering = false;
+        if (open) scheduleHide();
+      });
+      handle.addEventListener('pointerdown', function (e) {
+        lastPointerType = e.pointerType || '';
+        pointerFocus = true;
+        setTimeout(function () { pointerFocus = false; }, 0);
+      }, { passive: true });
+
+      canopy.addEventListener('pointerenter', function (e) {
+        if (e.pointerType === 'touch') return;
+        hovering = true;
+        clearHide();
+      });
+      canopy.addEventListener('pointerleave', function (e) {
+        if (e.pointerType === 'touch') return;
+        hovering = false;
+        if (open) scheduleHide();
+      });
+
+      handle.addEventListener('focus', function () {
+        if (!pointerFocus && !suppressFocusOpen && focusVisible(handle)) setOpen(true);
+      });
+      nav.addEventListener('focusin', function () { clearHide(); });
+      nav.addEventListener('focusout', function (e) {
+        if (e.relatedTarget && nav.contains(e.relatedTarget)) return;
+        if (open) scheduleHide();
+      });
+
+      handle.addEventListener('click', function (e) {
+        var fromPointer = e.detail !== 0;
+        if (fromPointer && lastPointerType !== 'touch' && lastPointerType !== 'pen') {
+          if (!open) setOpen(true);
+          return;
+        }
+        setOpen(!open);
+        if (fromPointer && !open) handle.focus({ preventScroll: true });
+      });
+
+      canopy.addEventListener('click', function (e) {
+        var link = e.target && e.target.closest ? e.target.closest('.void-topnav__link') : null;
+        if (link) setOpen(false);
+      });
+
+      document.addEventListener('pointerdown', function (e) {
+        if (open && !nav.contains(e.target)) setOpen(false);
+      }, true);
+
+      // Capture on window so a scoped Escape never reaches the player's document-level exit shortcut.
+      window.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape' || !open || !nav.contains(document.activeElement)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        suppressFocusOpen = true;
+        setOpen(false);
+        handle.focus({ preventScroll: true });
+        setTimeout(function () { suppressFocusOpen = false; }, 0);
+      }, true);
+
+      function start() {
+        var hoverable = true;
+        try { hoverable = window.matchMedia('(hover: hover)').matches; } catch (e) {}
+        if (hoverable) setOpen(true, INITIAL_SHOW_MS);
+      }
+      if (document.readyState === 'complete') requestAnimationFrame(start);
+      else window.addEventListener('load', function () { requestAnimationFrame(start); }, { once: true });
     })();
   </script>
 </body>
