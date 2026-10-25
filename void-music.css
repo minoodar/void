@@ -4,13 +4,13 @@
    ====================================================================== */
 
 /* همه‌چیزِ صفحه جز ستاره‌ها و خودِ پلیر محو می‌شود (نه حذف: وضعیتِ برنامه دست‌نخورده می‌ماند) */
-body.void-music-on > *:not(#starfield):not(.space-vignette):not(#void-music-root):not(#void-music-mini):not(#ai-orbit-root):not(#void-topnav):not(script):not(style):not(link) {
+body.void-music-on > *:not(#starfield):not(.space-vignette):not(#void-music-root):not(#void-music-mini):not(#ai-orbit-root):not(#void-topnav):not(#void-counter):not(script):not(style):not(link) {
     visibility: hidden !important;
     opacity: 0 !important;
     pointer-events: none !important;
     transition: opacity .5s ease, visibility 0s linear .5s !important;
 }
-body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music-root):not(#void-music-mini):not(#ai-orbit-root):not(#void-topnav):not(script):not(style):not(link) {
+body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music-root):not(#void-music-mini):not(#ai-orbit-root):not(#void-topnav):not(#void-counter):not(script):not(style):not(link) {
     transition: opacity .5s ease !important;
 }
 
