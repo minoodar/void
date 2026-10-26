@@ -67,6 +67,71 @@
     #void-reopen:hover { border-color: rgba(251, 191, 36, .55); background: rgba(12, 15, 22, .86); }
     #void-reopen:focus-visible { outline: 2px solid rgba(220, 230, 240, .9); outline-offset: 4px; }
     #void-reopen[hidden] { display: none; }
+
+    /* Golden Folder: two quiet link groups around a single gold hairline. */
+    .void-topnav__groups { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; }
+    /* Four grouped links need more room than the original three-item canopy (442px of
+       labels + the canopy's 22px side padding, so the labels keep their edge gap). */
+    @media (min-width: 521px) { #void-topnav { width: min(486px, calc(100vw - 24px)); } }
+    .void-topnav__split { width: 1px; height: 14px; flex: none; background: linear-gradient(180deg, transparent, rgba(251, 191, 36, .34), transparent); }
+    .void-topnav__link--action { background: none; border: 0; font-family: inherit; cursor: pointer; }
+    .void-topnav__link--action[aria-busy="true"] { color: rgba(251, 191, 36, .92); }
+
+    /* Minimal streaming status: one pill under the navigation canopy, never a panel.
+       104px clears the open canopy (≈83px tall) so the menu never covers it. */
+    #void-golden-status {
+      position: fixed; top: calc(104px + env(safe-area-inset-top, 0px)); left: 50%;
+      z-index: 1090; transform: translate(-50%, -3px);
+      display: flex; align-items: center; gap: 8px;
+      max-width: min(340px, calc(100vw - 24px));
+      padding: 7px 12px; border-radius: 999px;
+      border: 1px solid rgba(235, 240, 245, .18);
+      background: rgba(8, 10, 14, .78);
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+      box-shadow: 0 8px 26px rgba(0, 0, 0, .42);
+      color: rgba(235, 240, 245, .86);
+      font: 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      letter-spacing: .01em;
+      pointer-events: none; opacity: 0; visibility: hidden;
+      transition: opacity .2s ease, transform .2s ease, visibility 0s linear .2s;
+    }
+    #void-golden-status.is-on { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity .2s ease, transform .2s ease; }
+    #void-golden-status.is-action { pointer-events: auto; }
+    #void-golden-status.is-error { border-color: rgba(240, 130, 130, .42); }
+    #void-golden-status[hidden] { display: none; }
+    .void-golden-status__dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: rgba(251, 191, 36, .9); box-shadow: 0 0 8px rgba(251, 191, 36, .35); }
+    #void-golden-status.is-loading .void-golden-status__dot,
+    #void-golden-status.is-buffering .void-golden-status__dot { animation: vgPulse 1.4s ease-in-out infinite; }
+    #void-golden-status.is-playing .void-golden-status__dot { background: rgba(190, 225, 195, .95); box-shadow: 0 0 8px rgba(190, 225, 195, .3); animation: none; }
+    #void-golden-status.is-error .void-golden-status__dot { background: rgba(240, 150, 140, .95); box-shadow: 0 0 8px rgba(240, 130, 130, .35); animation: none; }
+    #void-golden-status.is-blocked { border-color: rgba(251, 191, 36, .34); }
+    #void-golden-status.is-blocked .void-golden-status__dot { animation: none; }
+    .void-golden-status__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .void-golden-status__action {
+      flex: none; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+      border: 1px solid rgba(251, 191, 36, .45);
+      background: rgba(251, 191, 36, .12);
+      color: rgba(251, 216, 140, .96); font: inherit;
+    }
+    .void-golden-status__action:hover { background: rgba(251, 191, 36, .22); }
+    .void-golden-status__action:focus-visible { outline: 1px solid rgba(235, 240, 245, .8); outline-offset: 2px; }
+    .void-golden-status__action[hidden] { display: none; }
+    @keyframes vgPulse { 0%, 100% { opacity: .45; transform: scale(.82); } 50% { opacity: 1; transform: scale(1); } }
+    @media (max-width: 520px) {
+      .void-topnav__groups { gap: 11px; }
+      .void-topnav__list { gap: 9px; }
+      .void-topnav__list > li + li::before { display: none; }
+    }
+    @media (max-width: 380px) {
+      .void-topnav__groups { flex-wrap: wrap; gap: 3px 10px; }
+      .void-topnav__split { display: none; }
+      .void-topnav__list { gap: 7px; }
+      #void-golden-status { top: calc(124px + env(safe-area-inset-top, 0px)); max-width: calc(100vw - 20px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #void-golden-status { transition: opacity .12s ease, visibility 0s linear .12s; }
+      .void-golden-status__dot { animation: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -78,13 +143,25 @@
       <span class="void-topnav__grip" aria-hidden="true"></span>
     </button>
     <div id="void-topnav-canopy" class="void-topnav__canopy" aria-hidden="true">
-      <ul class="void-topnav__list">
-        <li><a class="void-topnav__link" href="https://donito.me/u-b8wjr" target="_blank" rel="noopener noreferrer">💖 Support</a></li>
-        <li><a class="void-topnav__link" href="https://github.com/minoodar/Void-Galaxy" target="_blank" rel="noopener noreferrer">Get Extension</a></li>
-        <li><a class="void-topnav__link" href="https://github.com/minoodar" target="_blank" rel="noopener noreferrer">Meet the Creator</a></li>
-      </ul>
+      <div class="void-topnav__groups">
+        <ul class="void-topnav__list" aria-label="Golden Folder and support">
+          <li><button id="void-golden-folder" class="void-topnav__link void-topnav__link--action" type="button" aria-busy="false">Golden Folder</button></li>
+          <li><a class="void-topnav__link" href="https://donito.me/u-b8wjr" target="_blank" rel="noopener noreferrer">💖 Support</a></li>
+        </ul>
+        <span class="void-topnav__split" aria-hidden="true"></span>
+        <ul class="void-topnav__list" aria-label="Project links">
+          <li><a class="void-topnav__link" href="https://github.com/minoodar/Void-Galaxy" target="_blank" rel="noopener noreferrer">Get Extension</a></li>
+          <li><a class="void-topnav__link" href="https://github.com/minoodar" target="_blank" rel="noopener noreferrer">Meet the Creator</a></li>
+        </ul>
+      </div>
     </div>
   </nav>
+
+  <div id="void-golden-status" role="status" aria-live="polite" aria-hidden="true">
+    <span class="void-golden-status__dot" aria-hidden="true"></span>
+    <span class="void-golden-status__text"></span>
+    <button class="void-golden-status__action" type="button" hidden></button>
+  </div>
 
   <button id="void-reopen" type="button" hidden>Open music</button>
 
@@ -280,6 +357,139 @@
       }
       if (document.readyState === 'complete') requestAnimationFrame(start);
       else window.addEventListener('load', function () { requestAnimationFrame(start); }, { once: true });
+    })();
+  </script>
+  <script>
+    /* Golden Folder — one remote track through the existing player, streamed by the
+       browser's native media pipeline. No fetch/Blob, no second player, no custom buffer. */
+    (function () {
+      'use strict';
+
+      var TRACK = {
+        url: 'https://pub-fa04af4cffb74c979c0f18d50fa5f218.r2.dev/Adagio%20-%20Florence%20Robineau.mp3',
+        title: 'Adagio - Florence Robineau',
+        name: 'Adagio - Florence Robineau.mp3'
+      };
+
+      var link = document.getElementById('void-golden-folder');
+      var chip = document.getElementById('void-golden-status');
+      if (!link || !chip) return;
+      var text = chip.querySelector('.void-golden-status__text');
+      var action = chip.querySelector('.void-golden-status__action');
+
+      var busy = false;
+      var hideTimer = 0;
+      var actionKind = '';
+      var lastState = '';
+      var activeToken = 0;
+      var terminalToken = 0;
+
+      function setBusy(on) {
+        busy = !!on;
+        link.setAttribute('aria-busy', busy ? 'true' : 'false');
+      }
+      function clearHide() {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
+      }
+      function hideChip() {
+        clearHide();
+        chip.className = '';
+        chip.setAttribute('aria-hidden', 'true');
+      }
+      function show(state, message, actionLabel, kind, autoHideMs) {
+        lastState = state;
+        clearHide();
+        chip.className = 'is-on is-' + state + (actionLabel ? ' is-action' : '');
+        text.textContent = message;
+        actionKind = kind || '';
+        if (actionLabel) {
+          action.hidden = false;
+          action.textContent = actionLabel;
+          chip.setAttribute('aria-label', message + ' — ' + actionLabel);
+        } else {
+          action.hidden = true;
+          chip.removeAttribute('aria-label');
+        }
+        chip.setAttribute('aria-hidden', 'false');
+        if (autoHideMs) hideTimer = setTimeout(hideChip, autoHideMs);
+      }
+
+      function start(force) {
+        var VM = window.VoidMusic;
+        if (!VM) {
+          show('error', 'The player is not ready. Reload the page.', '', '', 0);
+          return;
+        }
+        if (busy && !force) return;
+        try { if (!VM.isOpen()) VM.enter(); } catch (e) {}
+        var st = null;
+        try { st = VM.getState(); } catch (e) {}
+        /* Already selected: resume or report, never assign the same source twice. */
+        if (!force && st && st.currentUrl === TRACK.url) {
+          if (st.ended || lastState === 'error') force = true;
+          else if (st.playing) { show('playing', 'Playing', '', '', 2600); return; }
+          else {
+            setBusy(true);
+            show('loading', 'Connecting…', '', '', 0);
+            try { VM.toggle(); }
+            catch (e) { setBusy(false); show('error', 'Could not start the track', 'Retry', 'retry', 0); }
+            return;
+          }
+        }
+        setBusy(true);
+        show('loading', 'Connecting…', '', '', 0);
+        try {
+          VM.add([{ url: TRACK.url, name: TRACK.name, title: TRACK.title }], { playFirst: true, force: !!force });
+        } catch (e) {
+          setBusy(false);
+          show('error', 'Could not start the track', 'Retry', 'retry', 0);
+        }
+      }
+
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        start(false);
+      });
+
+      action.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (actionKind === 'retry') start(true);
+        else if (actionKind === 'play') {
+          setBusy(true);
+          show('loading', 'Connecting…', '', '', 0);
+          try { window.VoidMusic.toggle(); }
+          catch (err) { setBusy(false); show('error', 'Could not start the track', 'Retry', 'retry', 0); }
+        }
+      });
+
+      window.addEventListener('voidmusic:remote-state', function (e) {
+        var d = e.detail || {};
+        if (!d || d.url !== TRACK.url) return;
+        /* Another source took over (local file, web player, removed track, stop):
+           a stale "Connecting…" must never stay behind. */
+        if (d.state === 'inactive') { activeToken = 0; terminalToken = 0; setBusy(false); hideChip(); return; }
+        if (d.state === 'loading') {
+          /* play() may reject before the native loadstart task lands; a late loadstart
+             of the same attempt must not turn a visible block/error back into "Connecting…". */
+          if (d.token && d.token === terminalToken) return;
+          activeToken = d.token || 0;
+          setBusy(true);
+          show('loading', 'Connecting…', '', '', 0);
+          return;
+        }
+        /* A late event from an older attempt (same URL, older token) must not
+           overwrite the status of the attempt that is running now. */
+        if (activeToken && d.token && d.token !== activeToken) return;
+        if (d.state === 'buffering' || d.state === 'stalled') { show('buffering', 'Buffering…', '', '', 0); }
+        else if (d.state === 'playing') { terminalToken = 0; setBusy(false); show('playing', 'Playing', '', '', 2600); }
+        else if (d.state === 'paused') {
+          // Ignore the pause caused by swapping a local source out; only a real mid-track pause clears the chip.
+          if ((d.readyState || 0) >= 2) { terminalToken = 0; setBusy(false); hideChip(); }
+        }
+        else if (d.state === 'ended') { terminalToken = 0; setBusy(false); hideChip(); }
+        else if (d.state === 'blocked') { terminalToken = d.token || 0; setBusy(false); show('blocked', 'Playback needs a tap', 'Play', 'play', 0); }
+        else if (d.state === 'error') { terminalToken = d.token || 0; setBusy(false); show('error', 'This track could not be loaded', 'Retry', 'retry', 0); }
+      });
     })();
   </script>
   <script src="void-counter.js" defer></script>
