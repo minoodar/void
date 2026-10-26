@@ -120,6 +120,8 @@
   // آینهٔ SPAN در VS_DOTS: uTravel داخل mod(...,SPAN) می‌رود، پس برای حفظِ دقتِ float
   // روی همان یک بازهٔ متناوب نگه داشته می‌شود.
   const TUNNEL_SPAN = 1.42 - 0.13;
+  // §REVEAL-RAMP Duration (seconds) of the continuous ring entry at the tunnelMode transition. Drives uReveal only; not tied to dive/warp.
+  const REVEAL_RAMP_S = 2.0;
   // سه پلهٔ کیفیت: ۰ کم، ۱ متوسط، ۲ زیاد. مدیرِ کیفیت با توجه به fps/CPU بین این‌ها
   // جابه‌جا می‌شود: تعداد نقاط، بودجهٔ پیکسل (رزولوشنِ داخلی)، نرخِ به‌روزرسانیِ شفق و
   // تعداد ستاره‌های دور را کم/زیاد می‌کند. ظاهر کلی و همان افکت حفظ می‌شود.
@@ -3107,6 +3109,13 @@ void main(){
     // پس‌زمینه فقط تا DIVE.airMin کم‌نور می‌شود؛ صفحه هیچ‌وقت کامل سیاه نمی‌شود.
     const air = 1 - (1 - DIVE.airMin) * smoother5(dive / 0.92);
     const tunnelMode = dive > 0.004;   // فقط کف‌های uReveal/uDim و پاس‌های شفق را تعیین می‌کند (بدونِ تغییرِ رفتار)
+    // §REVEAL-RAMP Previously uReveal jumped from Lg*1.4-0.1 to 1.35 in the very frame tunnelMode turned on, so not-yet-revealed rings
+    // appeared at once. Now revealK moves at a constant rate up/down and smoother5 softens it. With revealK=0 the old out-of-tunnel
+    // value is returned exactly; with revealK=1 the old in-tunnel value is returned exactly.
+    const revDt = V.revealT > 0 ? clamp(nowS - V.revealT, 0, 0.1) : 0;
+    V.revealT = nowS;
+    V.revealK = clamp((V.revealK || 0) + (tunnelMode ? 1 : -1) * revDt / REVEAL_RAMP_S, 0, 1);
+    const revealForce = smoother5(V.revealK);
     // §B ترتیبِ رسمِ افق دیگر با همین یک بولین عوض نمی‌شود؛ آستانهٔ نرمِ splitAt جای آن را گرفته.
     const sw = splitWeights(dive);
     const LaAir = La * air;
@@ -3216,7 +3225,8 @@ void main(){
         gl.uniform1f(u.uDiskBreath, diskBreath);
         gl.uniform1f(u.uHoleR, HOLE_R);
         gl.uniform1f(u.uPhase, V.phase + V.track * 3.1);
-        gl.uniform1f(u.uReveal, Math.max(Lg * 1.4 - 0.1, tunnelMode ? 1.35 : 0));   // در تونل همهٔ حلقه‌ها روشن می‌مانند
+        const revBase = Math.max(Lg * 1.4 - 0.1, 0);
+        gl.uniform1f(u.uReveal, lerp(revBase, Math.max(revBase, 1.35), revealForce));   // all rings stay lit in the tunnel (now with a continuous ramp, not a jump)
         gl.uniform1f(u.uLum, V.L.lum); gl.uniform1f(u.uTime, nowS % 6000);
         gl.uniform1f(u.uPulseR, 0.12 + 0.95 * pp); gl.uniform1f(u.uPulseA, pp < 1 ? V.pulse.amp * Math.pow(1 - pp, 1.5) : 0);
         const baseDim = clamp(0.45 + 0.55 * V.scale / 700, 0.45, 1);
