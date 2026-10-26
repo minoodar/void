@@ -2,7 +2,7 @@
   'use strict';
 
   // Set this to your deployed Worker URL (see README.md); until then the widget stays hidden.
-  const API = 'https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev';
+  const API = 'https://void-galaxy-api.minoodar.workers.dev';
 
   var CK = 'vgm-stats', NK = 'vgm-counted', VK = 'vgm-visitor';
   var root, btn, panel, cl, nU, nR, nS;
