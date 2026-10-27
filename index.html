@@ -132,6 +132,219 @@
       #void-golden-status { transition: opacity .12s ease, visibility 0s linear .12s; }
       .void-golden-status__dot { animation: none !important; }
     }
+
+    /* Golden Folder selector: one glass window over the existing player.
+       Only transform/opacity animate; the sheen is two clipped light layers. */
+    #void-golden-modal {
+      width: min(440px, calc(100vw - 24px));
+      max-height: min(82dvh, 640px);
+      margin: auto;
+      padding: 0;
+      border: 0;
+      border-radius: 20px;
+      /* Deep-space glass: the galaxy stays visible through the window; only the
+         text layer is dense enough to keep every label readable. */
+      background: linear-gradient(180deg, rgba(5, 7, 12, .40) 0%, rgba(2, 3, 8, .54) 100%);
+      -webkit-backdrop-filter: blur(18px) saturate(118%);
+      backdrop-filter: blur(18px) saturate(118%);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(235, 240, 245, .045);
+      color: rgba(250, 252, 255, .95);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+      overflow: hidden;
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    #void-golden-modal[open] { display: block; animation: vgmIn .22s cubic-bezier(.22, 1, .36, 1); }
+    #void-golden-modal::backdrop {
+      background: rgba(2, 3, 8, .34);
+      -webkit-backdrop-filter: blur(2px);
+      backdrop-filter: blur(2px);
+    }
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      #void-golden-modal { background: rgba(5, 7, 12, .90); }
+      #void-golden-modal::backdrop { background: rgba(2, 3, 8, .74); }
+    }
+    @keyframes vgmIn {
+      from { opacity: 0; transform: translateY(6px) scale(.985); }
+      to   { opacity: 1; transform: none; }
+    }
+    .void-golden-modal__sheen {
+      position: absolute;
+      inset: -45% -25%;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(105deg, transparent 36%, rgba(255, 255, 255, .07) 46%, rgba(251, 191, 36, .04) 51%, transparent 63%),
+        radial-gradient(58% 44% at 24% 16%, rgba(251, 191, 36, .06), transparent 72%);
+      opacity: .32;
+      transform: translate3d(-16%, 6%, 0);
+      animation: vgmSheen 12s ease-in-out infinite alternate;
+      will-change: transform, opacity;
+    }
+    .void-golden-modal__sheen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(42% 34% at 74% 84%, rgba(190, 210, 255, .05), transparent 72%);
+      opacity: .42;
+      animation: vgmBreathe 7.5s ease-in-out infinite alternate;
+    }
+    @keyframes vgmSheen {
+      0%   { transform: translate3d(-18%, 8%, 0); opacity: .20; }
+      50%  { opacity: .36; }
+      100% { transform: translate3d(18%, -8%, 0); opacity: .24; }
+    }
+    @keyframes vgmBreathe {
+      from { opacity: .12; transform: translate3d(0, 2%, 0) scale(.96); }
+      to   { opacity: .34; transform: translate3d(-2%, -2%, 0) scale(1.04); }
+    }
+    .void-golden-modal__panel {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: inherit;
+      padding: 22px 22px max(18px, calc(env(safe-area-inset-bottom, 0px) + 14px));
+    }
+    .void-golden-modal__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .void-golden-modal__title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: .015em;
+      color: rgba(250, 252, 255, .96);
+    }
+    .void-golden-modal__count {
+      flex: none;
+      font-size: 11px;
+      letter-spacing: .04em;
+      color: rgba(235, 240, 245, .64);
+    }
+    .void-golden-modal__tools { display: flex; align-items: center; }
+    .void-golden-modal__all {
+      padding: 2px 0;
+      border: 0;
+      background: none;
+      color: rgba(251, 191, 36, .86);
+      font: inherit;
+      font-size: 12px;
+      letter-spacing: .01em;
+      cursor: pointer;
+    }
+    .void-golden-modal__all:hover { color: rgba(255, 214, 120, .98); }
+    .void-golden-modal__all:focus-visible { outline: 1px solid rgba(235, 240, 245, .7); outline-offset: 3px; border-radius: 4px; }
+    .void-golden-modal__all:disabled { opacity: .4; cursor: default; }
+    .void-golden-modal__list {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: min(46vh, 360px);
+      margin: 0;
+      padding: 2px 4px 2px 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      list-style: none;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(235, 240, 245, .22) transparent;
+    }
+    .void-golden-modal__list::-webkit-scrollbar { width: 6px; }
+    .void-golden-modal__list::-webkit-scrollbar-track { background: transparent; }
+    .void-golden-modal__list::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(235, 240, 245, .20); }
+    .void-golden-modal__row { display: flex; }
+    .void-golden-modal__pick {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 8px;
+      border-radius: 10px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background .18s ease;
+    }
+    .void-golden-modal__pick:hover { background: rgba(235, 240, 245, .045); }
+    .void-golden-modal__pick input {
+      appearance: none;
+      -webkit-appearance: none;
+      box-sizing: border-box;
+      display: grid;
+      place-content: center;
+      width: 17px;
+      height: 17px;
+      margin: 0;
+      flex: none;
+      border: 1px solid rgba(235, 240, 245, .34);
+      border-radius: 5px;
+      background: rgba(255, 255, 255, .04);
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease;
+    }
+    .void-golden-modal__pick input::after {
+      content: "";
+      width: 9px;
+      height: 5px;
+      border-left: 2px solid #0b0d12;
+      border-bottom: 2px solid #0b0d12;
+      transform: rotate(-45deg) scale(0);
+      transition: transform .14s ease;
+    }
+    .void-golden-modal__pick input:checked { background: rgba(251, 191, 36, .92); border-color: rgba(251, 191, 36, .92); }
+    .void-golden-modal__pick input:checked::after { transform: rotate(-45deg) scale(1); }
+    .void-golden-modal__pick input:focus-visible { outline: 2px solid rgba(235, 240, 245, .75); outline-offset: 3px; }
+    .void-golden-modal__label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13.5px;
+      color: rgba(250, 252, 255, .96);
+    }
+    .void-golden-modal__empty { padding: 18px 8px; color: rgba(235, 240, 245, .62); }
+    /* One quiet line inside the selector only: why online tracks can fail to connect. */
+    .void-golden-modal__net {
+      margin: 0;
+      padding: 0 2px;
+      font-size: 11.5px;
+      line-height: 1.5;
+      color: rgba(235, 240, 245, .64);
+    }
+    .void-golden-modal__foot { display: flex; justify-content: flex-end; gap: 10px; padding-top: 2px; }
+    .void-golden-modal__btn {
+      padding: 9px 16px;
+      border: 1px solid rgba(235, 240, 245, .22);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .05);
+      color: rgba(250, 252, 255, .9);
+      font: inherit;
+      font-size: 12.5px;
+      cursor: pointer;
+      transition: background .18s ease, border-color .18s ease, opacity .18s ease;
+    }
+    .void-golden-modal__btn:hover { background: rgba(255, 255, 255, .07); }
+    .void-golden-modal__btn:focus-visible { outline: 2px solid rgba(235, 240, 245, .8); outline-offset: 3px; }
+    .void-golden-modal__btn--primary {
+      border-color: rgba(251, 191, 36, .55);
+      background: rgba(251, 191, 36, .16);
+      color: rgba(255, 230, 170, .98);
+    }
+    .void-golden-modal__btn--primary:hover { background: rgba(251, 191, 36, .26); }
+    .void-golden-modal__btn:disabled { opacity: .38; cursor: default; }
+    .void-golden-modal__btn:disabled:hover { background: rgba(255, 255, 255, .03); }
+    .void-golden-modal__btn--primary:disabled:hover { background: rgba(251, 191, 36, .16); }
+    @media (max-width: 420px) {
+      #void-golden-modal { width: calc(100vw - 20px); border-radius: 18px; }
+      .void-golden-modal__panel { padding: 18px 16px max(14px, calc(env(safe-area-inset-bottom, 0px) + 12px)); }
+      .void-golden-modal__pick { padding: 13px 6px; }
+      .void-golden-modal__list { max-height: min(50vh, 380px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #void-golden-modal[open] { animation: none; }
+      .void-golden-modal__sheen,
+      .void-golden-modal__sheen::after { animation: none; opacity: .22; transform: none; }
+      .void-golden-modal__pick,
+      .void-golden-modal__pick input,
+      .void-golden-modal__pick input::after,
+      .void-golden-modal__btn { transition: none; }
+    }
   </style>
 </head>
 <body>
@@ -145,7 +358,7 @@
     <div id="void-topnav-canopy" class="void-topnav__canopy" aria-hidden="true">
       <div class="void-topnav__groups">
         <ul class="void-topnav__list" aria-label="Golden Folder and support">
-          <li><button id="void-golden-folder" class="void-topnav__link void-topnav__link--action" type="button" aria-busy="false">Golden Folder</button></li>
+          <li><button id="void-golden-folder" class="void-topnav__link void-topnav__link--action" type="button" aria-busy="false" aria-haspopup="dialog" aria-expanded="false">Golden Folder</button></li>
           <li><a class="void-topnav__link" href="https://donito.me/u-b8wjr" target="_blank" rel="noopener noreferrer">💖 Support</a></li>
         </ul>
         <span class="void-topnav__split" aria-hidden="true"></span>
@@ -162,6 +375,25 @@
     <span class="void-golden-status__text"></span>
     <button class="void-golden-status__action" type="button" hidden></button>
   </div>
+
+  <dialog id="void-golden-modal" aria-labelledby="void-golden-modal-title">
+    <div class="void-golden-modal__sheen" aria-hidden="true"></div>
+    <div class="void-golden-modal__panel">
+      <div class="void-golden-modal__head">
+        <h2 id="void-golden-modal-title" class="void-golden-modal__title">Golden Folder</h2>
+        <span id="void-golden-count" class="void-golden-modal__count" aria-live="polite">0 selected</span>
+      </div>
+      <div class="void-golden-modal__tools">
+        <button id="void-golden-select-all" class="void-golden-modal__all" type="button">Select all</button>
+      </div>
+      <ul id="void-golden-list" class="void-golden-modal__list" aria-label="Golden Folder tracks"></ul>
+      <p id="void-golden-net" class="void-golden-modal__net">If you’re in Iran, you may need a VPN to reach Cloudflare’s servers and stream these tracks. Local files play without one.</p>
+      <div class="void-golden-modal__foot">
+        <button id="void-golden-cancel" class="void-golden-modal__btn" type="button">Cancel</button>
+        <button id="void-golden-play" class="void-golden-modal__btn void-golden-modal__btn--primary" type="button" disabled>Play selected</button>
+      </div>
+    </div>
+  </dialog>
 
   <button id="void-reopen" type="button" hidden>Open music</button>
 
@@ -359,35 +591,114 @@
       else window.addEventListener('load', function () { requestAnimationFrame(start); }, { once: true });
     })();
   </script>
+  <script src="golden-folder.js"></script>
   <script>
-    /* Golden Folder — one remote track through the existing player, streamed by the
-       browser's native media pipeline. No fetch/Blob, no second player, no custom buffer. */
+    /* Golden Folder — a list-only selector on top of the one shared player. Selected
+       tracks go through VoidMusic.add (same queue, same native streaming); there is
+       no second player, no custom buffer and no parallel queue. */
     (function () {
       'use strict';
 
-      var TRACK = {
-        url: 'https://pub-fa04af4cffb74c979c0f18d50fa5f218.r2.dev/Adagio%20-%20Florence%20Robineau.mp3',
-        title: 'Adagio - Florence Robineau',
-        name: 'Adagio - Florence Robineau.mp3'
-      };
+      var DATA = Array.isArray(window.GOLDEN_FOLDER_TRACKS) ? window.GOLDEN_FOLDER_TRACKS : [];
+      var URLS = new Set();
+      for (var d = 0; d < DATA.length; d++) URLS.add(DATA[d].url);
 
       var link = document.getElementById('void-golden-folder');
       var chip = document.getElementById('void-golden-status');
-      if (!link || !chip) return;
-      var text = chip.querySelector('.void-golden-status__text');
-      var action = chip.querySelector('.void-golden-status__action');
+      var dialog = document.getElementById('void-golden-modal');
+      var listEl = document.getElementById('void-golden-list');
+      var countEl = document.getElementById('void-golden-count');
+      var allBtn = document.getElementById('void-golden-select-all');
+      var playBtn = document.getElementById('void-golden-play');
+      var cancelBtn = document.getElementById('void-golden-cancel');
+      if (!link || !chip || !dialog || !listEl || !countEl || !allBtn || !playBtn || !cancelBtn) return;
+
+      var textEl = chip.querySelector('.void-golden-status__text');
+      var actionEl = chip.querySelector('.void-golden-status__action');
+      var boxes = [];
 
       var busy = false;
       var hideTimer = 0;
       var actionKind = '';
-      var lastState = '';
       var activeToken = 0;
       var terminalToken = 0;
+      var lastEntries = null;
+      var retryEntry = null;
+
+      function playerState() {
+        try { return window.VoidMusic && window.VoidMusic.getState ? window.VoidMusic.getState() : null; } catch (e) { return null; }
+      }
+      function playingUrl() {
+        var st = playerState();
+        if (!st || !st.playing || !st.currentUrl) return '';
+        var a = null;
+        try { a = window.VoidMusic.getAudio ? window.VoidMusic.getAudio() : null; } catch (e) {}
+        /* play() flips `paused` before any sound exists; require buffered playback so a
+           failure is never mistaken for a recovery (or the reverse). */
+        if (a && (a.error || a.readyState < 3)) return '';
+        return st.currentUrl;
+      }
+      function notePlaying(url) {
+        retryEntry = null; terminalToken = 0; setBusy(false);
+        show('playing', 'Playing · ' + titleFor(url), '', '', 6000);
+      }
+
+      function entryFor(url) {
+        for (var i = 0; i < DATA.length; i++) if (DATA[i].url === url) return DATA[i];
+        return null;
+      }
+
+      function buildList() {
+        for (var i = 0; i < DATA.length; i++) {
+          (function (entry) {
+            var li = document.createElement('li');
+            li.className = 'void-golden-modal__row';
+            var label = document.createElement('label');
+            label.className = 'void-golden-modal__pick';
+            var box = document.createElement('input');
+            box.type = 'checkbox';
+            box.value = entry.id;
+            box.addEventListener('change', syncSelection);
+            var name = document.createElement('span');
+            name.className = 'void-golden-modal__label';
+            name.textContent = entry.title;
+            label.appendChild(box);
+            label.appendChild(name);
+            li.appendChild(label);
+            listEl.appendChild(li);
+            boxes.push(box);
+          })(DATA[i]);
+        }
+        if (!DATA.length) {
+          var empty = document.createElement('li');
+          empty.className = 'void-golden-modal__empty';
+          empty.textContent = 'No tracks available.';
+          listEl.appendChild(empty);
+          allBtn.disabled = true;
+        }
+      }
+
+      function selected() {
+        var out = [];
+        for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) out.push(DATA[i]);
+        return out;
+      }
+
+      function syncSelection() {
+        var n = 0;
+        for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) n++;
+        countEl.textContent = n + ' selected';
+        playBtn.disabled = busy || n === 0;
+        allBtn.textContent = (n > 0 && n === boxes.length) ? 'Clear all' : 'Select all';
+        allBtn.disabled = boxes.length === 0;
+      }
 
       function setBusy(on) {
         busy = !!on;
         link.setAttribute('aria-busy', busy ? 'true' : 'false');
+        syncSelection();
       }
+
       function clearHide() {
         if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
       }
@@ -395,100 +706,242 @@
         clearHide();
         chip.className = '';
         chip.setAttribute('aria-hidden', 'true');
+        /* A hidden pill must not keep a live action behind it. */
+        actionKind = '';
+        actionEl.hidden = true;
+        chip.removeAttribute('aria-label');
       }
       function show(state, message, actionLabel, kind, autoHideMs) {
-        lastState = state;
         clearHide();
         chip.className = 'is-on is-' + state + (actionLabel ? ' is-action' : '');
-        text.textContent = message;
+        textEl.textContent = message;
         actionKind = kind || '';
         if (actionLabel) {
-          action.hidden = false;
-          action.textContent = actionLabel;
+          actionEl.hidden = false;
+          actionEl.textContent = actionLabel;
           chip.setAttribute('aria-label', message + ' — ' + actionLabel);
         } else {
-          action.hidden = true;
+          actionEl.hidden = true;
           chip.removeAttribute('aria-label');
         }
         chip.setAttribute('aria-hidden', 'false');
         if (autoHideMs) hideTimer = setTimeout(hideChip, autoHideMs);
       }
 
-      function start(force) {
+      function restoreOpenerFocus() {
+        try { link.focus({ preventScroll: true }); } catch (e) {}
+        if (document.activeElement === link) return;
+        var handle = document.getElementById('void-topnav-handle');
+        if (handle) { try { handle.focus({ preventScroll: true }); } catch (e) {} }
+      }
+
+      function openDialog() {
+        /* Every open starts unchecked, even if a Golden Folder track is playing. */
+        for (var i = 0; i < boxes.length; i++) boxes[i].checked = false;
+        syncSelection();
+        if (!dialog.open) {
+          try { dialog.showModal(); }
+          catch (e) { dialog.setAttribute('open', ''); }
+        }
+        link.setAttribute('aria-expanded', 'true');
+        var first = boxes.length ? boxes[0] : cancelBtn;
+        if (first) { try { first.focus({ preventScroll: true }); } catch (e) {} }
+      }
+
+      function closeDialog() {
+        if (!dialog.open) return;
+        dialog.close();
+        link.setAttribute('aria-expanded', 'false');
+        restoreOpenerFocus();
+      }
+
+      function requestPlay(entries, force) {
         var VM = window.VoidMusic;
-        if (!VM) {
+        if (!VM || typeof VM.add !== 'function') {
           show('error', 'The player is not ready. Reload the page.', '', '', 0);
           return;
         }
         if (busy && !force) return;
+        if (!entries || !entries.length) return;
         try { if (!VM.isOpen()) VM.enter(); } catch (e) {}
-        var st = null;
-        try { st = VM.getState(); } catch (e) {}
-        /* Already selected: resume or report, never assign the same source twice. */
-        if (!force && st && st.currentUrl === TRACK.url) {
-          if (st.ended || lastState === 'error') force = true;
-          else if (st.playing) { show('playing', 'Playing', '', '', 2600); return; }
-          else {
-            setBusy(true);
-            show('loading', 'Connecting…', '', '', 0);
-            try { VM.toggle(); }
-            catch (e) { setBusy(false); show('error', 'Could not start the track', 'Retry', 'retry', 0); }
-            return;
-          }
-        }
+        var before = null;
+        try { before = VM.getState ? VM.getState() : null; } catch (e) {}
+        /* The player intentionally leaves an already-playing first track untouched, so
+           no state event will follow: report that real state, not a stalled "Connecting…". */
+        var alreadyPlaying = !force && !!(before && before.playing && before.currentUrl === entries[0].url);
         setBusy(true);
-        show('loading', 'Connecting…', '', '', 0);
-        try {
-          VM.add([{ url: TRACK.url, name: TRACK.name, title: TRACK.title }], { playFirst: true, force: !!force });
-        } catch (e) {
+        retryEntry = null;
+        lastEntries = entries.map(function (t) { return { url: t.url, title: t.title }; });
+        if (alreadyPlaying) show('playing', 'Playing · ' + entries[0].title, '', '', 6000);
+        else show('loading', entries.length === 1 ? 'Connecting… · ' + entries[0].title : 'Connecting…', '', '', 0);
+        var p;
+        try { p = VM.add(lastEntries, { playFirst: true, force: !!force }); }
+        catch (e) {
           setBusy(false);
+          /* The chip sits under the modal's top layer; close it so Retry is reachable. */
+          closeDialog();
           show('error', 'Could not start the track', 'Retry', 'retry', 0);
+          return;
+        }
+        if (p && typeof p.then === 'function') {
+          p.then(function () {
+            setBusy(false);
+            closeDialog();
+          }, function () {
+            setBusy(false);
+            closeDialog();
+            show('error', 'Could not start the track', 'Retry', 'retry', 0);
+          });
+        } else {
+          setBusy(false);
+          closeDialog();
         }
       }
 
+      function titleFor(url) {
+        var entry = entryFor(url);
+        return (entry && entry.title) || 'Golden Folder';
+      }
+
+      buildList();
+      syncSelection();
+
       link.addEventListener('click', function (e) {
         e.preventDefault();
-        start(false);
+        openDialog();
       });
 
-      action.addEventListener('click', function (e) {
+      allBtn.addEventListener('click', function () {
+        var all = boxes.length > 0;
+        for (var i = 0; i < boxes.length; i++) if (!boxes[i].checked) all = false;
+        for (var j = 0; j < boxes.length; j++) boxes[j].checked = !all;
+        syncSelection();
+      });
+
+      cancelBtn.addEventListener('click', closeDialog);
+
+      playBtn.addEventListener('click', function () {
+        if (busy) return;
+        var picked = selected();
+        if (!picked.length) return;
+        requestPlay(picked, false);
+      });
+
+      actionEl.addEventListener('click', function (e) {
         e.preventDefault();
-        if (actionKind === 'retry') start(true);
-        else if (actionKind === 'play') {
-          setBusy(true);
-          show('loading', 'Connecting…', '', '', 0);
+        if (actionKind === 'retry') {
+          var one = retryEntry ? [retryEntry] : lastEntries;
+          if (!one || !one.length) { hideChip(); return; }
+          /* Already recovered while the failure was still on screen: report the real
+             state instead of restarting a track that is playing. */
+          if (playingUrl() === one[0].url) {
+            notePlaying(one[0].url);
+            return;
+          }
+          requestPlay(one, true);
+        } else if (actionKind === 'play') {
+          var st = playerState();
+          if (st && st.playing) { hideChip(); return; }
           try { window.VoidMusic.toggle(); }
-          catch (err) { setBusy(false); show('error', 'Could not start the track', 'Retry', 'retry', 0); }
+          catch (err) { show('error', 'Could not start the track', 'Retry', 'retry', 0); }
+        } else {
+          hideChip();
         }
       });
 
+      dialog.addEventListener('close', function () {
+        link.setAttribute('aria-expanded', 'false');
+      });
+      dialog.addEventListener('cancel', function (e) {
+        e.preventDefault();
+        closeDialog();
+      });
+      /* The panel fills the dialog box, so a click that targets the dialog itself
+         is a click on the ::backdrop. */
+      dialog.addEventListener('click', function (e) {
+        if (e.target === dialog) closeDialog();
+      });
+
+      /* While the window is open, the player's document-capture shortcuts must not
+         reach playback controls. Space/Enter/Tab stay untouched: checkboxes already
+         pass the player's own typing guard and the backdrop is inert. */
+      var PLAYER_KEYS = { k: 1, m: 1, n: 1, p: 1, f: 1, w: 1, ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1 };
+      window.addEventListener('keydown', function (e) {
+        if (!dialog.open) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          closeDialog();
+          return;
+        }
+        if (PLAYER_KEYS[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) e.stopPropagation();
+      }, true);
+
       window.addEventListener('voidmusic:remote-state', function (e) {
         var d = e.detail || {};
-        if (!d || d.url !== TRACK.url) return;
+        if (!d || !d.url || !URLS.has(d.url)) return;
+        var title = d.title || titleFor(d.url);
         /* Another source took over (local file, web player, removed track, stop):
            a stale "Connecting…" must never stay behind. */
-        if (d.state === 'inactive') { activeToken = 0; terminalToken = 0; setBusy(false); hideChip(); return; }
+        if (d.state === 'inactive') { activeToken = 0; terminalToken = 0; retryEntry = null; setBusy(false); hideChip(); return; }
         if (d.state === 'loading') {
           /* play() may reject before the native loadstart task lands; a late loadstart
              of the same attempt must not turn a visible block/error back into "Connecting…". */
           if (d.token && d.token === terminalToken) return;
           activeToken = d.token || 0;
-          setBusy(true);
-          show('loading', 'Connecting…', '', '', 0);
+          show('loading', 'Connecting… · ' + title, '', '', 0);
+          return;
+        }
+        /* Playing is checked before the token guard: real playback is the strongest
+           signal, and adopting its token stops a late failure from an older attempt
+           from replacing "Playing" with a Retry that nothing would clear. */
+        if (d.state === 'playing') {
+          if (activeToken && d.token && d.token < activeToken) return;
+          activeToken = d.token || activeToken;
+          notePlaying(d.url);
           return;
         }
         /* A late event from an older attempt (same URL, older token) must not
            overwrite the status of the attempt that is running now. */
         if (activeToken && d.token && d.token !== activeToken) return;
-        if (d.state === 'buffering' || d.state === 'stalled') { show('buffering', 'Buffering…', '', '', 0); }
-        else if (d.state === 'playing') { terminalToken = 0; setBusy(false); show('playing', 'Playing', '', '', 2600); }
-        else if (d.state === 'paused') {
-          // Ignore the pause caused by swapping a local source out; only a real mid-track pause clears the chip.
-          if ((d.readyState || 0) >= 2) { terminalToken = 0; setBusy(false); hideChip(); }
+        if (d.state === 'buffering' || d.state === 'stalled') {
+          show('buffering', 'Buffering… · ' + title, '', '', 0);
+        } else if (d.state === 'paused') {
+          // Ignore the pause caused by swapping a local source out; only a real mid-track pause shows.
+          if ((d.readyState || 0) >= 2) {
+            terminalToken = 0; setBusy(false);
+            show('paused', 'Paused · ' + title, 'Play', 'play', 0);
+          }
+        } else if (d.state === 'ended') {
+          terminalToken = 0; setBusy(false);
+          show('ended', 'Ended · ' + title, '', '', 4000);
+        } else if (d.state === 'blocked') {
+          if (playingUrl() === d.url) {
+            if (actionKind === 'play' || chip.className.indexOf('is-blocked') >= 0) notePlaying(d.url);
+            return;
+          }
+          terminalToken = d.token || 0; retryEntry = entryFor(d.url); setBusy(false);
+          show('blocked', 'Playback needs a tap · ' + title, 'Play', 'play', 0);
+        } else if (d.state === 'error') {
+          /* The failure is history if this very URL is already playing again. */
+          if (playingUrl() === d.url) {
+            if (actionKind === 'retry' || chip.className.indexOf('is-error') >= 0) notePlaying(d.url);
+            return;
+          }
+          terminalToken = d.token || 0; retryEntry = entryFor(d.url); setBusy(false);
+          show('error', 'Couldn\u2019t load · ' + title, retryEntry ? 'Retry' : '', retryEntry ? 'retry' : '', 0);
         }
-        else if (d.state === 'ended') { terminalToken = 0; setBusy(false); hideChip(); }
-        else if (d.state === 'blocked') { terminalToken = d.token || 0; setBusy(false); show('blocked', 'Playback needs a tap', 'Play', 'play', 0); }
-        else if (d.state === 'error') { terminalToken = d.token || 0; setBusy(false); show('error', 'This track could not be loaded', 'Retry', 'retry', 0); }
+      });
+
+      /* Recovery can reach the player without a matching remote-state event (its own
+         play control, a filtered late event). Reconcile the chip with the real state
+         so a Retry/Play pill never outlives the failure it described. */
+      window.addEventListener('voidmusic:playing', function (e) {
+        if (!e.detail || !e.detail.playing) return;
+        if (actionKind !== 'retry' && actionKind !== 'play' && chip.className.indexOf('is-error') < 0) return;
+        var url = playingUrl();
+        if (!url || !URLS.has(url)) return;
+        notePlaying(url);
       });
     })();
   </script>
