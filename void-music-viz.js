@@ -52,17 +52,19 @@
     // ambientShow=false = دقیقاً همان ambientِ امروز (هیچ چیز از این بلوک اجرا نمی‌شود).
     // ambientShowLevel (۰..۱) شدتِ کلِ نمایشِ آرایشی است (پرتوِ روشنایی، رنگ، flare).
     ambientShow: true, ambientShowLevel: 0.8,
-    // §IDLE «حالتِ سکوتِ تکین»: همان کرهٔ سیاه و همان قرصِ کهکشان با نورِ بسیار کم حاضرند و
-    // آرام حرکت می‌کنند؛ شفق، ستاره‌های موسیقی، ذرات و تحلیلِ صدا خاموش می‌مانند. افسونِ کهربایی
-    // در idleِ ثابت دیده نمی‌شود (aura در enchUniforms با idleW خاموش می‌شود).
+    // §IDLE «حالتِ سکوتِ تکین» (Singularity Idle Mode): تبی که *صدا* دارد ولی منبعِ موسیقیِ
+    // معتبرِ کهکشان نیست (اتاقِ صوتی/کالان — خودِ لایهٔ منبع آن را با activeInfo.audioOnly اعلام
+    // می‌کند؛ ما «صدا» را با «موسیقی» یکی نمی‌گیریم). در این حالت کهکشان، ستاره‌ها، شفق، ذرات و
+    // تحلیلِ صدا خاموش می‌مانند و فقط همان هالهٔ همیشگیِ پشتِ کرهٔ سیاه (همان FS_HORIZON که با
+    // uTime=V.haloT می‌چرخد) آرام حرکت می‌کند؛ عنوانِ تب هم همان‌طور که بود می‌ماند.
     // ورود/خروج با همان blend نرم است (هیچ پرش و هیچ سیاهی‌ای ندارد) و خروجِ کامل از حالت،
     // همان رفتارِ قبلی است: فریمِ کم‌نورِ فریزشده.
     // یک‌خط برگشت: idleHalo = false ⇒ هیچ چیز از این حالت اجرا نمی‌شود و صفحه دقیقاً مثلِ دیروز است.
-    idleHalo: true, idleHaloLevel: 0.06, idleHaloFadeS: 0.9, idleGalaxyDim: 0.10,
+    idleHalo: true, idleHaloLevel: 0.30, idleHaloFadeS: 0.9,
     // §SCENE مدلِ سه‌حالتهٔ «تکینِ افسون‌شده ← بیداریِ کهکشانی ← کهکشانِ زنده»:
-    //   idle    = هیچ منبعی نیست (یا منبعِ فقط-صدا) ⇒ کرهٔ سیاه + قرصِ کهکشان با نورِ کم.
-    //             قرص با همان Lg/geometry موجود و dimِ idleGalaxyDim رسم می‌شود؛ هاله هم با
-    //             idleHaloLevelِ کم. هیچ لایه یا شیدرِ تازه‌ای اضافه نشده است.
+    //   idle    = هیچ منبعی نیست (یا منبعِ فقط-صدا) ⇒ همان هالهٔ زندهٔ بالا، با هیچ‌چیزِ دیگر.
+    //             سطحش را با idleHaloLevelِ دست‌نخورده می‌گیریم: هاله‌ای که قبلاً بازبینی شده،
+    //             پس در idleِ بی‌منبع هم همان نقره‌ای-بنفشِ آرام است و عددِ تازه‌ای اضافه نشده.
     //   source  = منبع تشخیص داده شده ولی پخش تأیید نشده ⇒ قرصِ تجمع از ردِ کم‌نورِ holeRest
     //             تا awakenLevel بیدار می‌شود (uRevealِ حلقه‌ها از همان Lg می‌آید؛ هیچ لایهٔ
     //             تازه‌ای نیست). هیچ عددِ صوتیِ ساختگی نمایش داده نمی‌شود: FEAT دست‌نخورده
@@ -73,16 +75,24 @@
     // scene=false ⇒ هر دو شاخهٔ تازه خاموش‌اند و اعدادِ فریم مثلِ دیروز است.
     scene: true, awakenLevel: 0.34, awakenFadeS: 1.8,
     // §ENCHANT «هالهٔ افسونگر» + «ورودِ باشکوه» (فقط لایهٔ بصری؛ هیچ ربطی به تحلیل/پخش صدا ندارد):
-    //   enchant       = «اژدهای خفته» فقط در گذارِ خروج از idle (شروعِ پخش) دیده می‌شود؛ در idleِ
-    //                   ثابت aura صفر است و مارپیچ کهربایی رسم نمی‌شود. با شروعِ پخش نرم محو می‌شود
-    //                   و افکتِ اصلی جایش را می‌گیرد (یک پاسِ شیدرِ سبکِ جدا، بعد از پاسِ افق؛
-    //                   کرهٔ سیاه کدر می‌ماند). enchantLevel شدتِ آن.
+    //   enchant       = در حالتِ idle (بی‌منبع یا فقط-صدا) دورِ کرهٔ سیاه یک «اژدهای خفته» می‌چرخد: پیچِ مارپیچیِ
+    //                   کوچک و کم‌نورِ کهربایی-گرم (هم‌رنگِ هالهٔ افق) با پولکِ ریز و گرهِ ستاره‌ای، یک اخگرِ بسیار
+    //                   کم‌نور، و غبارِ ریز؛ با شروعِ پخش نرم محو می‌شود و افکتِ اصلی جایش را می‌گیرد
+    //                   (یک پاسِ شیدرِ سبکِ جدا، بعد از پاسِ افق؛ کرهٔ سیاه کدر می‌ماند). enchantLevel شدتِ آن.
     //   grandEntrance = لحظهٔ آغازِ واقعیِ پخش (پس از سکوتی ≥ entranceCooldownS) یک نمایشِ ~entranceS ثانیه‌ای:
     //                   اژدها بیدار می‌شود: نفسِ عمیق ← اخگر روشن ← دو موجِ شوک ← جریان شتاب می‌گیرد، هم‌زمان با ابزارهای موجودِ همین فایل
     //                   (V.flare / V.ejBurst / spawnBloom / awakenDistantGroups). با reduced-motion اجرا نمی‌شود.
     // یک‌خط برگشت: enchant:false و/یا grandEntrance:false ⇒ صفحه دقیقاً مثلِ قبل است.
-    enchant: true, enchantLevel: 0.85,
-    grandEntrance: true, entranceS: 5.0, entranceCooldownS: 20,
+    enchant: false, enchantLevel: 0.85,
+    grandEntrance: false, entranceS: 5.0, entranceCooldownS: 20,
+    // §DORMANT «کهکشانِ خفته»: در حالتِ idle (هیچ منبعی نیست) همان کرهٔ سیاه و همان کهکشانِ موجود — با نورِ بسیار کم
+    //   و همان حرکتِ آرامِ همیشگی — حاضر می‌ماند؛ نه هالهٔ جدا و نه شیدر/سیستمِ تازه. سطحِ آن فقط همان عددِ سکونِ
+    //   کهکشان (V.L.galaxy) است، مثلِ awakenLevel برای حالتِ «منبع هست». نکتهٔ مهم: دیسک فقط تا شعاعِ
+    //   uReveal = Lg*1.4-0.1 نشان داده می‌شود و ذرات از r≈0.14 (نزدیکِ افق) و حلقه‌ها از r=0.19 شروع می‌شوند؛ پس زیرِ
+    //   Lg≈0.17 هیچ ذره‌ای دیده نمی‌شود (۰٫۱۶ = صفحهٔ خالی). ۰٫۳۲ ⇒ حلقهٔ اول ~۶۰٪ و تا r≈0.33 محو؛ awakenLevel (۰٫۳۴) هنوز کمی روشن‌تر.
+    //   شروعِ پخش همان مسیرِ همیشگیِ بالا آمدنِ
+    //   Lg را می‌گیرد (از این سطح، نه از صفر ⇒ بدونِ پرش). یک‌خط برگشت: idleGalaxy:false ⇒ همان هالهٔ قبلی.
+    idleGalaxy: true, idleGalaxyLevel: 0.32,
     // حساسیت: انرژیِ نرمال‌شده (۰..۱) نسبت به بازهٔ پویاییِ همین آهنگ؛ sens بزرگ‌تر = زودتر و بیشتر. با HUD (Shift+D) تنظیم کن
     sens: 1.15, enterE: 0.46, enterFluxE: 0.34, enterFluxR: 1.45, exitE: 0.26,
     minGalaxyS: 1.2, exitHoldS: 1.4, enterHoldS: 0.18, cooldownS: 0.6, holeRest: 0.20, holeBase: 0.30,
@@ -560,6 +570,9 @@
   /* §SCENE جایی که کهکشان در «منبع هست، پخش نیست» می‌نشیند. از holeRest پایین‌تر نمی‌آید
      (بیداری هرگز تاریکیِ بیشتر نسازد) و از ۱ بالا نمی‌رود. */
   function awakenTarget() { return clamp(CFG.awakenLevel, CFG.holeRest, 1); }
+  /* §DORMANT idle = «کهکشانِ خفته» (به‌جای هالهٔ تنها). از holeRest پایین‌تر هم می‌تواند بیاید: هدف «نورِ بسیار کم» است. */
+  function dormantOn() { return !!(CFG.scene && CFG.idleGalaxy); }
+  function dormantTarget() { return clamp(CFG.idleGalaxyLevel, 0, 1); }
   function sceneWanted() { return !!CFG.scene && VM.isOpen() && (V.vstate === 'idle' || V.vstate === 'source'); }
   /* §SCENE تک‌فریمِ بی‌حرکت برایِ prefers-reduced-motion: صحنه «مرده» نمی‌ماند ولی هیچ
      انیمیشنی هم نمی‌بیند. مخلوط‌ها بی‌درنگ رویِ هدفِ خودشان می‌نشینند، یک فریم رسم می‌شود و
@@ -570,7 +583,7 @@
     V.vstate = visualState();
     const idle = V.vstate === 'idle';
     V.idleX = idle ? 1 : 0; V.awakenX = idle ? 0 : 1;
-    V.L.aurora = 0; V.L.galaxy = idle ? (CFG.idleHalo ? 1 : 0) : awakenTarget(); V.L.lum = 0.35;
+    V.L.aurora = 0; V.L.galaxy = idle ? (dormantOn() ? dormantTarget() : 0) : awakenTarget(); V.L.lum = 0.35;   // §DORMANT
     // همان فازِ ایستِ حلقه (بی‌حرکت): عددِ حرکتِ هاله از V.haloT خوانده می‌شود و haloT جلو نمی‌رود،
     // پس Motion-Reduce یک فریمِ «زنده ولی بی‌جنبش» می‌بیند، نه انیمیشنِ تیک‌تیک‌ی ۳ ثانیه‌ای.
     V.idleE = V.haloE = idle ? idleHaloEnergy() : 0;
@@ -779,7 +792,7 @@
   }
 
   /* ==================================================================
-     §ENCHANT — «بیدارشدنِ باشکوه» در گذارِ خروج از idle ← آغازِ پخش
+     §ENCHANT — «اژدهای خفته» (idle) و «بیدارشدنِ باشکوه» (آغازِ پخش)
      فقط بصری: نه تحلیلِ صدا، نه capture، نه تصمیمِ پخش. ورودی‌ها فقط V.playing (که بقیهٔ فایل
      تعیین می‌کند)، idleX (همان blendِ هاله) و ساعتِ خودِ این بلوک‌اند.
      ورود فقط وقتی شروع می‌شود که *گذارِ* «پخش نمی‌شد ← پخش می‌شود» را در فریم‌های پیاپیِ
@@ -846,7 +859,7 @@
   function enchUniforms(idleW) {
     if (!CFG.enchant) return null;
     const o = ENCH_OUT;
-    o.aura = clamp(CFG.enchantLevel, 0, 1.2) * idleW * smoother5(clamp((1 - idleW) / 0.2, 0, 1));
+    o.aura = clamp(CFG.enchantLevel, 0, 1.2) * idleW;
     if (ENCH.intro.on) enchEnvelope(ENCH.intro.t, o); else { o.swell = 0; o.squeeze = 0; o.r1 = 1; o.a1 = 0; o.r2 = 1; o.a2 = 0; }
     if (o.aura < 0.004 && o.swell < 0.004 && o.a1 < 0.004 && o.a2 < 0.004) return null;
     return o;
@@ -2404,7 +2417,7 @@ void main(){
       G.hor = program(gl, VS_TRI, FS_HORIZON, ['uCanvas', 'uPx', 'uCenter', 'uScale', 'uHoleR', 'uLevel', 'uLum', 'uTime', 'uEnergy', 'uBass', 'uFlare', 'uAxis', 'uTint']);
     } catch (e) { teardownGL(); V.dead = true; return false; }
     // §ENCHANT برنامهٔ شیدرِ هاله در try جدا: اگر روی یک GPU کامپایل نشد، فقط همین افکت خاموش می‌شود
-    try { G.ench = program(V.gl, VS_TRI, FS_ENCHANT, ['uCanvas', 'uPx', 'uCenter', 'uScale', 'uHoleR', 'uTime', 'uFlow', 'uAura', 'uSwell', 'uSqueeze', 'uR1', 'uA1', 'uR2', 'uA2']); } catch (e) { G.ench = null; }
+    try { G.ench = !CFG.enchant ? null : program(V.gl, VS_TRI, FS_ENCHANT, ['uCanvas', 'uPx', 'uCenter', 'uScale', 'uHoleR', 'uTime', 'uFlow', 'uAura', 'uSwell', 'uSqueeze', 'uR1', 'uA1', 'uR2', 'uA2']); } catch (e) { G.ench = null; }
     try {
       const gl = V.gl;
       G.pow = program(gl, VS_POWDER, FS_DOTS, ['uView', 'uCenter', 'uProg', 'uApp', 'uSin', 'uPx', 'uBoxX', 'uBoxW', 'uMode', 'uEnter', 'uCoreR', 'uFade', 'uHasStars']);
@@ -2930,10 +2943,11 @@ void main(){
     }
 
     const soft = 1 - energy;
-    /* §IDLE blend: شفق با idleX به صفر می‌رود؛ کهکشان به هدفِ idleW (reveal کامل) می‌رسد و
-       uDim در draw آن را کم‌نور می‌کند. ستاره‌ها/دنباله‌دارها/ذراتِ جداشده/.hot-spot همچنان از
-       آستانه‌های LaAir/Lg عبور می‌کنند؛ LaAir در idle صفر است و hot-spot با (1-idleW) خفه می‌شود. */
-    const idleW = CFG.idleHalo ? clamp(V.idleX, 0, 1) : 0;
+    /* §IDLE blend: در حالتِ «صدا هست، موسیقی نیست» هر دو لایه با وزنِ idleX به صفر می‌روند؛
+       شفق و کهکشان. چون ستاره‌ها/دنباله‌دارها/ذراتِ جداشده/.hot-spot همه از همین دو آستانه
+       (LaAir و Lg) گذر می‌کنند، یک blendِ خطی کافی است تا «هیچ کهکشانی» بماند — بدونِ دروازهٔ
+       تازه در رسم و بدونِ پرش: آمدنِ موسیقی = idleX پایین و Lg بالا ⇒ دقیقاً همان عددِ همیشگی. */
+    const idleW = (CFG.idleHalo && !dormantOn()) ? clamp(V.idleX, 0, 1) : 0;   // §DORMANT: با کهکشانِ خفته، idle دیگر Lg را صفر نمی‌کند
     const aT = (!V.playing ? 0 : (V.stage === 'galaxy' ? 0.30 + 0.24 * soft : 0.46 + 0.50 * Math.pow(soft, 1.2) + 0.06 * energy) * (rm ? 0.6 : 1)) * (1 - idleW);
     V.rich += ((V.stage === 'galaxy' ? 0.30 : 0.45 + 0.55 * soft) - V.rich) * expK(dt, 1.2);
     // سیاه‌چاله همیشه (حتی کم‌رنگ و میانِ شفق) حاضر است: با آهنگ بارگذاری‌شده حتی در مکث یک ردِ ملایم می‌ماند
@@ -2942,8 +2956,10 @@ void main(){
        نه لایهٔ تازه، نه عددِ صوتیِ ساختگی. با آمدنِ پخشِ واقعی شاخهٔ قبلی (V.playing) را می‌گیرد،
        با رفتنِ منبع awakenX به صفر برمی‌گردد و دقیقاً همان holeRestِ همیشگی می‌ماند. */
     const awakenW = CFG.scene ? clamp(V.awakenX, 0, 1) : 0;
-    const gRest = awakenW > 0.0005 ? lerp(CFG.holeRest, awakenTarget(), awakenW) : CFG.holeRest;
-    const gT = (!V.playing ? gRest : (V.stage === 'galaxy' ? 1 : (pst.on ? 0.8 : CFG.holeBase + 0.25 * energy))) * (1 - idleW) + idleW;   // §IDLE: قرص با reveal کامل، ولی uDim کم‌نورش می‌کند
+    const gRest0 = awakenW > 0.0005 ? lerp(CFG.holeRest, awakenTarget(), awakenW) : CFG.holeRest;
+    const dormW = dormantOn() ? clamp(V.idleX, 0, 1) : 0;
+    const gRest = dormW > 0.0005 ? lerp(gRest0, dormantTarget(), dormW) : gRest0;   // §DORMANT idle: همان دیسکِ موجود، کم‌نور
+    const gT = (!V.playing ? gRest : (V.stage === 'galaxy' ? 1 : (pst.on ? 0.8 : CFG.holeBase + 0.25 * energy))) * (1 - idleW);
     V.L.aurora += (aT - V.L.aurora) * expK(dt, aT > V.L.aurora ? 0.9 : (V.playing ? 1.2 : 0.55));
     V.L.galaxy += (gT - V.L.galaxy) * expK(dt, gT > V.L.galaxy ? 0.45 : (V.playing ? 1.4 : 0.8));
     V.L.lum += ((0.35 + 0.65 * energy) - V.L.lum) * expK(dt, 0.3);
@@ -3118,7 +3134,7 @@ void main(){
     const LaAir = La * air;
     // §IDLE وزنِ حالتِ «صدا بدونِ موسیقی» (از همان blend در step خوانده می‌شود، نه رأیِ تازه):
     // با idleW=0 همهٔ عبارتهای پایین دقیقاً همان اعدادِ امروزند.
-    const idleW = CFG.idleHalo ? clamp(V.idleX, 0, 1) : 0;
+    const idleW = (CFG.idleHalo && !dormantOn()) ? clamp(V.idleX, 0, 1) : 0;   // §DORMANT
     enchStep(nowS, rm);                                           // §ENCHANT ساعتِ هاله + گذارِ شروعِ پخش
     const baseIncl = Number.isFinite(V.inclNow) ? V.inclNow : V.incl;
     const mix = Number.isFinite(V.breath.mix) ? clamp(V.breath.mix, 0, 1) : 0;
@@ -3193,11 +3209,11 @@ void main(){
     }
 
     if (LaAir > 0.003 && COMETS.length) drawComets(sceneScale, sinI, roll, LaAir);
-    const diskLg = Lg * (1 - idleW);
-    if (diskLg > 0.004 && air > 0.02) { drawHotSpot(sceneScale, diskLg * air); drawEjecta(sceneScale, sinI, roll, nowS, rm, air); }
+    if (Lg > 0.004 && air > 0.02) { drawHotSpot(sceneScale, Lg * air); drawEjecta(sceneScale, sinI, roll, nowS, rm, air); }
 
-    /* §IDLE در idle، Lg=1 است تا همان حلقه‌های کهکشان با reveal کامل رسم شوند؛ uDim در setDots
-       آن‌ها را کم‌نور می‌کند. aurDots همچنان با LaAir=0 خاموش است. هاله پاسِ افقِ *همین* بلوک است. */
+    /* §IDLE حلقه‌ها/شفقِ کهکشانی فقط با Lg زنده‌اند؛ هاله پاسِ افقِ *همان* بلوک است. پس بلوک
+       وقتی کهکشان رفته هم باز می‌ماند (haloOn) تا سیاه‌چاله و هاله‌اش روی صفحه بمانند، ولی
+       هیچ پاسِ نقطه‌ای (dots/aurDots) دیگر اجرا نمی‌شود. آستانه‌ها دست‌نخورده‌اند. */
     const dotsOn = Lg > 0.004;
     const haloOn = idleW > 0.0005;
     if (dotsOn || haloOn) {
@@ -3227,8 +3243,7 @@ void main(){
         gl.uniform1f(u.uLum, V.L.lum); gl.uniform1f(u.uTime, nowS % 6000);
         gl.uniform1f(u.uPulseR, 0.12 + 0.95 * pp); gl.uniform1f(u.uPulseA, pp < 1 ? V.pulse.amp * Math.pow(1 - pp, 1.5) : 0);
         const baseDim = clamp(0.45 + 0.55 * V.scale / 700, 0.45, 1);
-        const idleDim = 1 - idleW * (1 - CFG.idleGalaxyDim);
-        gl.uniform1f(u.uDim, Math.max(baseDim, tunnelMode ? 0.95 * dive : 0) * idleDim);
+        gl.uniform1f(u.uDim, Math.max(baseDim, tunnelMode ? 0.95 * dive : 0));
         gl.uniform1f(u.uMid, rm ? 0 : FEAT.mid); gl.uniform1f(u.uHigh, rm ? 0 : FEAT.treble); gl.uniform1f(u.uStructure, rm ? 0 : V.structure);
         gl.uniform1f(u.uDive, dive); gl.uniform1f(u.uTravel, V.travel);
         // §B وزنِ دو پاس از splitWeights() خوانده می‌شود؛ dive=0 → همان (۱,۱)ِ همیشگی.
@@ -3279,9 +3294,9 @@ void main(){
         gl.bindVertexArray(G.emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.disable(gl.SCISSOR_TEST);
       };
-      /* §IDLE هاله فقط «یک» پاسِ افق است، نه پاسِ دوم: در idle سهمِ Lg با (1-idleW) حذف می‌شود و
-         فقط idleHaloLevel می‌ماند؛ در گذار هم level پیوسته عوض می‌شود، پس هیچ فریمی دوبار روشن
-         نمی‌شود و هیچ سیاهی‌ای هم دیده نمی‌شود. */
+      /* §IDLE هاله فقط «یک» پاسِ افق است، نه پاسِ دوم: level با همان idleX بینِ کهکشان (Lg) و
+         نورِ هاله مخلوط می‌شود، پس در گذار هیچ فریمی دوبار روشن نمی‌شود و هیچ سیاهی‌ای هم
+         نمی‌بینیم (Lg=holeRest→0 با هالهٔ 0→level هم‌زمان و روی هم پیوسته). */
       const horLevel = Lg * (1 - idleW) + idleHaloLevel() * idleW;
       const horFlare = V.flare * (1 - idleW);
       const horEnergy = idleW > 0.0005 ? V.haloE : undefined;
@@ -3789,7 +3804,7 @@ void main(){
       idleAudioEval: idleAudioEval, idleHaloLevel: idleHaloLevel, idleHaloEnergy: idleHaloEnergy, idleHaloCheck: idleHaloCheck,
       // §SCENE رأیِ منبع + حالتِ مشتق + هدفِ بیداری + دروازهٔ فریز/تک‌فریمِ بی‌حرکت (همه بی‌GPU)
       scenePoll: scenePoll, visualState: visualState, awakenTarget: awakenTarget, sceneWanted: sceneWanted,
-      paintSceneStill: paintSceneStill,
+      paintSceneStill: paintSceneStill, dormantOn: dormantOn, dormantTarget: dormantTarget,
       // §ENCHANT هالهٔ افسونگر / ورودِ باشکوه (بی‌نیازی از GPU)
       ENCH: ENCH, enchStep: enchStep, enchEnvelope: enchEnvelope, enchUniforms: enchUniforms,
       opening: { start: startCinematicOpening, retime: retimeOpening, close: closeCinematicOpening, reset: resetCinematicOpening, signalOk: gateSignalOk, timing: openingTiming } }
