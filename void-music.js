@@ -2132,8 +2132,15 @@
      CSS همه‌چیز را پنهان می‌کند؛ این جاروب فقط چیزهایی را می‌گیرد که با وجودِ آن هنوز دیده می‌شوند
      (مثلاً ابزاری که خودش !important می‌گذارد یا بعداً به <html>/<body> اضافه می‌شود). */
   const SKIP_TAGS = /^(HEAD|BODY|SCRIPT|STYLE|LINK|META|TITLE|NOSCRIPT|TEMPLATE)$/;
+  // گره‌های خودِ افزونه (ابزارک، پنل‌ها و Music Orb) نباید جاروب شوند؛ شناسه‌های دقیق، نه الگوی باز
+  const EXT_OWNED_IDS = ['ai-orbit-root', 'ai-inline-form', 'ai-quick-note-form', 'ai-calc-panel', 'ai-clock-panel',
+    'ai-todo-panel', 'ai-search-panel', 'ai-tier-dots', 'ai-hub-dots', 'ai-star-editor-popup', 'void-music-remote-host'];
   let sweepObs = null, sweepT = 0;
-  function isOurs(n) { return n.id === 'starfield' || n.id === 'void-music-root' || n.id === 'void-music-mini' || (n.classList && n.classList.contains('space-vignette')); }
+  function isOurs(n) {
+    return n.id === 'starfield' || n.id === 'void-music-root' || n.id === 'void-music-mini' ||
+      EXT_OWNED_IDS.indexOf(n.id) >= 0 ||
+      (n.classList && (n.classList.contains('space-vignette') || n.classList.contains('ai-toast-notification')));
+  }
   function visibleNow(n) {
     const cs = getComputedStyle(n);
     if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.04) return false;
