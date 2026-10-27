@@ -549,7 +549,7 @@
         else if (f && tr.file && tr.file.name === f.name && tr.file.size === f.size && tr.file.lastModified === f.lastModified) { dup = true; dupTr = tr; break; }
       }
       if (dup) { if (!firstTarget) firstTarget = dupTr; continue; }
-      const tr = { stars: 0, ts: Date.now() + added, id: uid(), name: name, title: en.title || nameToTitle(name), artist: en.artist || '', file: f, handle: h, url: url, bad: false, rootId: en.root ? en.root.id : null, path: en.root ? en.path : null, copy: null };
+      const tr = { stars: en.golden ? 5 : 0, golden: !!en.golden, ts: Date.now() + added, id: uid(), name: name, title: en.title || nameToTitle(name), artist: en.artist || '', file: f, handle: h, url: url, bad: false, rootId: en.root ? en.root.id : null, path: en.root ? en.path : null, copy: null };
       if (S.copyMode) {
         // «نسخهٔ خصوصی»: فایل یک بار در OPFS کپی می‌شود؛ از آن به بعد هیچ مجوزی لازم نیست
         try {
@@ -1104,6 +1104,10 @@
       '.vm-rate-s{all:unset;cursor:pointer;font-size:13px;line-height:1;padding:3px 1px;color:rgba(255,255,255,.26);transition:color .12s,transform .12s}' +
       '.vm-rate-s.is-on{color:#ffd68c}.vm-rate-s:hover{color:#ffe7b0;transform:scale(1.2)}' +
       '.vm-rate-s:focus-visible{outline:1px solid rgba(199,210,254,.7);border-radius:3px}' +
+      '.vm-row.is-golden:not(.is-bad):not(.is-grant) .vm-row-main .t{color:#B76E79}' +
+      '.vm-row.is-golden .vm-rate-s.is-on{color:#D4AF37}.vm-row.is-golden .vm-rate-s.is-on:hover{color:#E8C45A}' +
+      '.vm-meta.is-golden .vm-title{color:#B76E79}' +
+      '.vm-stars.is-golden .vm-star{color:#D4AF37;text-shadow:0 0 10px rgba(212,175,55,.55),0 0 2px rgba(255,255,255,.6)}' +
       '.vm-stars{position:fixed;z-index:3;display:flex;gap:7px;transform:translateX(-50%);pointer-events:none;direction:ltr}' +
       '.vm-stars[hidden]{display:none!important}' +
       '.vm-star{font-size:19px;line-height:1;color:#ffd68c;text-shadow:0 0 10px rgba(255,200,120,.65),0 0 2px rgba(255,255,255,.7);transition:opacity .35s,transform .35s}' +
@@ -1247,6 +1251,8 @@
     const apply = function () {
       els.title.textContent = title || '';
       els.artist.textContent = artist || '';
+      const cur = curTrack();
+      els.meta.classList.toggle('is-golden', !!(cur && cur.golden));
       renderStars();
       if (coverUrl) { els.cover.src = coverUrl; els.cover.hidden = false; }
       else { els.cover.removeAttribute('src'); els.cover.hidden = true; }
@@ -1543,6 +1549,7 @@
     if (S.starsFor !== S.curId) { S.starsFor = S.curId; S.flownId = null; }
     const tr = curTrack(), n = tr ? (tr.stars || 0) : 0;
     els.stars.textContent = '';
+    els.stars.classList.toggle('is-golden', !!(tr && tr.golden));
     const flown = S.flownId === S.curId;
     for (let i = 0; i < n; i++) { const sp = el('span', 'vm-star' + (flown ? ' is-gone' : '')); sp.textContent = '\u2605'; els.stars.appendChild(sp); }
     els.stars.hidden = !n;
@@ -1653,7 +1660,7 @@
       /* دو حالتِ متمایز: «فایل واقعاً نیست» (is-bad، خط‌خورده) و «هست ولی پوشه اجازه می‌خواهد»
          (is-grant، نقطهٔ رُز + راهنما). بی‌این تفکیک، کاربرِ گرفتارِ «دسترسی باطل» ردیفِ سالم
          را خراب می‌پنداشت و روی همان کلیک نمی‌کرد. */
-      const li = el('li', 'vm-row' + (tr.id === S.curId ? ' is-cur' : '') + (tr.bad ? ' is-bad' : '') + (tr.needGrant && !tr.bad ? ' is-grant' : ''));
+      const li = el('li', 'vm-row' + (tr.id === S.curId ? ' is-cur' : '') + (tr.golden ? ' is-golden' : '') + (tr.bad ? ' is-bad' : '') + (tr.needGrant && !tr.bad ? ' is-grant' : ''));
       const main = el('button', 'vm-row-main', { type: 'button' });
       main.appendChild(el('span', 'dot'));
       const tt = el('span', 't'); tt.textContent = tr.title + (tr.artist ? ' \u2014 ' + tr.artist : ''); tt.setAttribute('dir', 'auto');

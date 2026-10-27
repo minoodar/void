@@ -144,10 +144,10 @@
       border-radius: 20px;
       /* Deep-space glass: the galaxy stays visible through the window; only the
          text layer is dense enough to keep every label readable. */
-      background: linear-gradient(180deg, rgba(5, 7, 12, .40) 0%, rgba(2, 3, 8, .54) 100%);
-      -webkit-backdrop-filter: blur(18px) saturate(118%);
-      backdrop-filter: blur(18px) saturate(118%);
-      box-shadow: 0 30px 80px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(235, 240, 245, .045);
+      background: linear-gradient(180deg, rgba(5, 7, 12, .26) 0%, rgba(2, 3, 8, .42) 100%);
+      -webkit-backdrop-filter: blur(7px) saturate(118%);
+      backdrop-filter: blur(7px) saturate(118%);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 0 0 1px rgba(235, 240, 245, .10);
       color: rgba(250, 252, 255, .95);
       text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
       overflow: hidden;
@@ -155,7 +155,7 @@
     }
     #void-golden-modal[open] { display: block; animation: vgmIn .22s cubic-bezier(.22, 1, .36, 1); }
     #void-golden-modal::backdrop {
-      background: rgba(2, 3, 8, .34);
+      background: rgba(2, 3, 8, .22);
       -webkit-backdrop-filter: blur(2px);
       backdrop-filter: blur(2px);
     }
@@ -303,9 +303,9 @@
     .void-golden-modal__net {
       margin: 0;
       padding: 0 2px;
-      font-size: 11.5px;
+      font-size: 12.5px;
       line-height: 1.5;
-      color: rgba(235, 240, 245, .64);
+      color: rgba(235, 240, 245, .74);
     }
     .void-golden-modal__foot { display: flex; justify-content: flex-end; gap: 10px; padding-top: 2px; }
     .void-golden-modal__btn {
@@ -386,8 +386,8 @@
       <div class="void-golden-modal__tools">
         <button id="void-golden-select-all" class="void-golden-modal__all" type="button">Select all</button>
       </div>
+      <p id="void-golden-net" class="void-golden-modal__net">In Iran, a VPN may be needed to connect to Cloudflare for online streaming. Local files play without a VPN.</p>
       <ul id="void-golden-list" class="void-golden-modal__list" aria-label="Golden Folder tracks"></ul>
-      <p id="void-golden-net" class="void-golden-modal__net">If you’re in Iran, you may need a VPN to reach Cloudflare’s servers and stream these tracks. Local files play without one.</p>
       <div class="void-golden-modal__foot">
         <button id="void-golden-cancel" class="void-golden-modal__btn" type="button">Cancel</button>
         <button id="void-golden-play" class="void-golden-modal__btn void-golden-modal__btn--primary" type="button" disabled>Play selected</button>
@@ -771,7 +771,7 @@
         var alreadyPlaying = !force && !!(before && before.playing && before.currentUrl === entries[0].url);
         setBusy(true);
         retryEntry = null;
-        lastEntries = entries.map(function (t) { return { url: t.url, title: t.title }; });
+        lastEntries = entries.map(function (t) { return { url: t.url, title: t.title, golden: true }; });
         if (alreadyPlaying) show('playing', 'Playing · ' + entries[0].title, '', '', 6000);
         else show('loading', entries.length === 1 ? 'Connecting… · ' + entries[0].title : 'Connecting…', '', '', 0);
         var p;
