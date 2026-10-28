@@ -237,6 +237,8 @@
     .void-golden-modal__list {
       flex: 1 1 auto;
       min-height: 0;
+      /* Fixed to the height of four rows: extra tracks scroll inside instead of growing the dialog. */
+      height: 174.25px;
       max-height: min(46vh, 360px);
       margin: 0;
       padding: 2px 4px 2px 0;
@@ -334,7 +336,7 @@
       #void-golden-modal { width: calc(100vw - 20px); border-radius: 18px; }
       .void-golden-modal__panel { padding: 18px 16px max(14px, calc(env(safe-area-inset-bottom, 0px) + 12px)); }
       .void-golden-modal__pick { padding: 13px 6px; }
-      .void-golden-modal__list { max-height: min(50vh, 380px); }
+      .void-golden-modal__list { height: 182.25px; max-height: min(50vh, 380px); }
     }
     @media (prefers-reduced-motion: reduce) {
       #void-golden-modal[open] { animation: none; }

@@ -20,5 +20,15 @@ window.GOLDEN_FOLDER_TRACKS = [
     id: 'a-toi',
     title: 'A-Toi',
     url: 'https://pub-fa04af4cffb74c979c0f18d50fa5f218.r2.dev/A-Toi.mp3'
+  },
+  {
+    id: 'piano-sleep',
+    title: 'Piano Music for Sleep',
+    url: 'https://pub-fa04af4cffb74c979c0f18d50fa5f218.r2.dev/Piano-Music-for-Sleep.mp3'
+  },
+  {
+    id: 'rachmaninoff',
+    title: 'The Most Beautiful Rachmaninoff',
+    url: 'https://pub-fa04af4cffb74c979c0f18d50fa5f218.r2.dev/The-Most-Beautiful-Rachmaninoff.mp3'
   }
 ];
