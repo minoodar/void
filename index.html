@@ -206,7 +206,7 @@
       max-height: inherit;
       padding: 22px 22px max(18px, calc(env(safe-area-inset-bottom, 0px) + 14px));
     }
-    .void-golden-modal__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .void-golden-modal__head { display: flex; align-items: baseline; justify-content: flex-start; gap: 9px; }
     .void-golden-modal__title {
       margin: 0;
       font-size: 16px;
@@ -214,13 +214,39 @@
       letter-spacing: .015em;
       color: rgba(250, 252, 255, .96);
     }
+    .void-golden-modal__title::before {
+      content: "";
+      display: inline-block;
+      width: 2px;
+      height: 12px;
+      margin-right: 9px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, rgba(251, 191, 36, .82), rgba(251, 191, 36, .22));
+      vertical-align: -1px;
+    }
+    .void-golden-modal__total {
+      flex: none;
+      align-self: center;
+      padding: 1px 8px;
+      border: 1px solid rgba(251, 191, 36, .20);
+      border-radius: 999px;
+      background: rgba(251, 191, 36, .06);
+      color: rgba(255, 228, 168, .82);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: .075em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
     .void-golden-modal__count {
       flex: none;
       font-size: 11px;
       letter-spacing: .04em;
-      color: rgba(235, 240, 245, .64);
+      color: rgba(235, 240, 245, .62);
+      transition: color .18s ease;
     }
-    .void-golden-modal__tools { display: flex; align-items: center; }
+    .void-golden-modal__count.is-active { color: rgba(255, 228, 168, .80); }
+    .void-golden-modal__tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .void-golden-modal__all {
       padding: 2px 0;
       border: 0;
@@ -246,16 +272,18 @@
       overscroll-behavior: contain;
       list-style: none;
       scrollbar-width: thin;
-      scrollbar-color: rgba(235, 240, 245, .22) transparent;
+      scrollbar-color: rgba(235, 240, 245, .30) rgba(235, 240, 245, .05);
     }
     .void-golden-modal__list::-webkit-scrollbar { width: 6px; }
-    .void-golden-modal__list::-webkit-scrollbar-track { background: transparent; }
-    .void-golden-modal__list::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(235, 240, 245, .20); }
-    .void-golden-modal__row { display: flex; }
+    .void-golden-modal__list::-webkit-scrollbar-button { display: none; }
+    .void-golden-modal__list::-webkit-scrollbar-track { border-radius: 999px; background: rgba(235, 240, 245, .05); }
+    .void-golden-modal__list::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(235, 240, 245, .28); }
+    .void-golden-modal__list::-webkit-scrollbar-thumb:hover { background: rgba(235, 240, 245, .44); }
+    .void-golden-modal__row { display: flex; position: relative; }
     .void-golden-modal__pick {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       width: 100%;
       padding: 12px 8px;
       border-radius: 10px;
@@ -264,6 +292,49 @@
       transition: background .18s ease;
     }
     .void-golden-modal__pick:hover { background: rgba(235, 240, 245, .045); }
+    .void-golden-modal__pick:focus-within { background: rgba(235, 240, 245, .035); }
+    .void-golden-modal__icon {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      color: rgba(235, 240, 245, .56);
+      transition: color .18s ease;
+    }
+    .void-golden-modal__icon svg { display: block; }
+    .void-golden-modal__pick:hover .void-golden-modal__icon { color: rgba(235, 240, 245, .84); }
+    .void-golden-modal__row.is-playing .void-golden-modal__pick { box-shadow: inset 2px 0 0 rgba(251, 191, 36, .60); }
+    .void-golden-modal__row.is-playing .void-golden-modal__icon { color: rgba(251, 191, 36, .92); }
+    .void-golden-modal__eq { display: none; }
+    .void-golden-modal__row.is-playing .void-golden-modal__note { display: none; }
+    .void-golden-modal__row.is-playing .void-golden-modal__eq { display: block; }
+    .void-golden-modal__eq rect {
+      transform-box: fill-box;
+      transform-origin: 50% 100%;
+      animation: vgEq 1.05s ease-in-out infinite;
+    }
+    .void-golden-modal__eq rect:nth-child(2) { animation-duration: .82s; animation-delay: -.2s; }
+    .void-golden-modal__eq rect:nth-child(3) { animation-duration: 1.25s; animation-delay: -.45s; }
+    @keyframes vgEq {
+      0%, 100% { transform: scaleY(.45); }
+      50%      { transform: scaleY(1); }
+    }
+    .void-golden-modal__now {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
+    }
     .void-golden-modal__pick input {
       appearance: none;
       -webkit-appearance: none;
@@ -309,6 +380,13 @@
       line-height: 1.5;
       color: rgba(235, 240, 245, .74);
     }
+    .void-golden-modal__info {
+      width: 14px;
+      height: 14px;
+      margin-right: 7px;
+      vertical-align: -2px;
+      opacity: .55;
+    }
     .void-golden-modal__foot { display: flex; justify-content: flex-end; gap: 10px; padding-top: 2px; }
     .void-golden-modal__btn {
       padding: 9px 16px;
@@ -345,7 +423,10 @@
       .void-golden-modal__pick,
       .void-golden-modal__pick input,
       .void-golden-modal__pick input::after,
+      .void-golden-modal__icon,
+      .void-golden-modal__count,
       .void-golden-modal__btn { transition: none; }
+      .void-golden-modal__eq rect { animation: none; }
     }
   </style>
 </head>
@@ -383,12 +464,13 @@
     <div class="void-golden-modal__panel">
       <div class="void-golden-modal__head">
         <h2 id="void-golden-modal-title" class="void-golden-modal__title">Golden Folder</h2>
-        <span id="void-golden-count" class="void-golden-modal__count" aria-live="polite">0 selected</span>
+        <span id="void-golden-total" class="void-golden-modal__total">0 tracks</span>
       </div>
       <div class="void-golden-modal__tools">
         <button id="void-golden-select-all" class="void-golden-modal__all" type="button">Select all</button>
+        <span id="void-golden-count" class="void-golden-modal__count" aria-live="polite">0 selected</span>
       </div>
-      <p id="void-golden-net" class="void-golden-modal__net">In Iran, a VPN may be needed to connect to Cloudflare for online streaming. Local files play without a VPN.</p>
+      <p id="void-golden-net" class="void-golden-modal__net"><svg class="void-golden-modal__info" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="4.8" r=".85" fill="currentColor"/></svg>In Iran, a VPN may be needed to connect to Cloudflare for online streaming. Local files play without a VPN.</p>
       <ul id="void-golden-list" class="void-golden-modal__list" aria-label="Golden Folder tracks"></ul>
       <div class="void-golden-modal__foot">
         <button id="void-golden-cancel" class="void-golden-modal__btn" type="button">Cancel</button>
@@ -610,14 +692,16 @@
       var dialog = document.getElementById('void-golden-modal');
       var listEl = document.getElementById('void-golden-list');
       var countEl = document.getElementById('void-golden-count');
+      var totalEl = document.getElementById('void-golden-total');
       var allBtn = document.getElementById('void-golden-select-all');
       var playBtn = document.getElementById('void-golden-play');
       var cancelBtn = document.getElementById('void-golden-cancel');
-      if (!link || !chip || !dialog || !listEl || !countEl || !allBtn || !playBtn || !cancelBtn) return;
+      if (!link || !chip || !dialog || !listEl || !countEl || !totalEl || !allBtn || !playBtn || !cancelBtn) return;
 
       var textEl = chip.querySelector('.void-golden-status__text');
       var actionEl = chip.querySelector('.void-golden-status__action');
       var boxes = [];
+      var rows = [];
 
       var busy = false;
       var hideTimer = 0;
@@ -650,6 +734,20 @@
         return null;
       }
 
+      /* Inline glyphs only: a beamed note for idle rows, three bars that animate while
+         that very track is streaming. */
+      var ICON_SVG =
+        '<svg class="void-golden-modal__note" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">' +
+          '<path d="M5.9 11.05V4.75l7.2-1.6v6.05" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>' +
+          '<circle cx="4.35" cy="11.05" r="1.55" fill="currentColor"/>' +
+          '<circle cx="11.55" cy="9.2" r="1.55" fill="currentColor"/>' +
+        '</svg>' +
+        '<svg class="void-golden-modal__eq" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">' +
+          '<rect x="2.4" y="6" width="2.2" height="8" rx="1.1" fill="currentColor"/>' +
+          '<rect x="6.9" y="2.4" width="2.2" height="11.6" rx="1.1" fill="currentColor"/>' +
+          '<rect x="11.4" y="4.6" width="2.2" height="9.4" rx="1.1" fill="currentColor"/>' +
+        '</svg>';
+
       function buildList() {
         for (var i = 0; i < DATA.length; i++) {
           (function (entry) {
@@ -661,16 +759,26 @@
             box.type = 'checkbox';
             box.value = entry.id;
             box.addEventListener('change', syncSelection);
+            var icon = document.createElement('span');
+            icon.className = 'void-golden-modal__icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.innerHTML = ICON_SVG;
             var name = document.createElement('span');
             name.className = 'void-golden-modal__label';
             name.textContent = entry.title;
             label.appendChild(box);
+            label.appendChild(icon);
             label.appendChild(name);
             li.appendChild(label);
+            var now = document.createElement('span');
+            now.className = 'void-golden-modal__now';
+            li.appendChild(now);
             listEl.appendChild(li);
             boxes.push(box);
+            rows.push(li);
           })(DATA[i]);
         }
+        totalEl.textContent = DATA.length + (DATA.length === 1 ? ' track' : ' tracks');
         if (!DATA.length) {
           var empty = document.createElement('li');
           empty.className = 'void-golden-modal__empty';
@@ -690,9 +798,25 @@
         var n = 0;
         for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) n++;
         countEl.textContent = n + ' selected';
+        countEl.classList.toggle('is-active', n > 0);
         playBtn.disabled = busy || n === 0;
         allBtn.textContent = (n > 0 && n === boxes.length) ? 'Clear all' : 'Select all';
         allBtn.disabled = boxes.length === 0;
+      }
+
+      /* The row marker uses the same "really playing" test as the chip, so a paused,
+         buffering or failed source never keeps a gold bar alive. */
+      function syncPlaying() {
+        var url = playingUrl();
+        for (var i = 0; i < rows.length; i++) {
+          var on = !!url && DATA[i].url === url;
+          if (rows[i].classList.contains('is-playing') === on) continue;
+          rows[i].classList.toggle('is-playing', on);
+          if (on) rows[i].setAttribute('aria-current', 'true');
+          else rows[i].removeAttribute('aria-current');
+          var now = rows[i].querySelector('.void-golden-modal__now');
+          if (now) now.textContent = on ? 'Now playing' : '';
+        }
       }
 
       function setBusy(on) {
@@ -741,6 +865,7 @@
         /* Every open starts unchecked, even if a Golden Folder track is playing. */
         for (var i = 0; i < boxes.length; i++) boxes[i].checked = false;
         syncSelection();
+        syncPlaying();
         if (!dialog.open) {
           try { dialog.showModal(); }
           catch (e) { dialog.setAttribute('open', ''); }
@@ -881,6 +1006,7 @@
 
       window.addEventListener('voidmusic:remote-state', function (e) {
         var d = e.detail || {};
+        syncPlaying();
         if (!d || !d.url || !URLS.has(d.url)) return;
         var title = d.title || titleFor(d.url);
         /* Another source took over (local file, web player, removed track, stop):
@@ -939,6 +1065,7 @@
          play control, a filtered late event). Reconcile the chip with the real state
          so a Retry/Play pill never outlives the failure it described. */
       window.addEventListener('voidmusic:playing', function (e) {
+        syncPlaying();
         if (!e.detail || !e.detail.playing) return;
         if (actionKind !== 'retry' && actionKind !== 'play' && chip.className.indexOf('is-error') < 0) return;
         var url = playingUrl();
