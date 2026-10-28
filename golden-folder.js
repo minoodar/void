@@ -30,5 +30,10 @@ window.GOLDEN_FOLDER_TRACKS = [
     id: 'rachmaninoff',
     title: 'The Most Beautiful Rachmaninoff',
     url: 'https://pub-fa04af4cffb74c979c0f18d50fa5f218.r2.dev/The-Most-Beautiful-Rachmaninoff.mp3'
+  },
+  {
+    id: 'ave-maria',
+    title: 'Tania Kassis - Ave Maria',
+    url: 'https://pub-fa04af4cffb74c979c0f18d50fa5f218.r2.dev/Tania%20Kassis%20-%20Ave%20Maria.mp3'
   }
 ];
