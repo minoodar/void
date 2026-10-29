@@ -1060,13 +1060,12 @@
 
     els.toast = el('div', 'vm-toast', { role: 'status' });
     els.corner = el('div', 'vm-corner');
-    els.close = mkBtn('vm-cbtn vm-close', 'voidMusicClose', icon(ICON.close));
     els.fs = mkBtn('vm-cbtn vm-fs', 'voidMusicFullscreen');
     els.fs.append(icon(ICON.fs, 'i-fs'), icon(ICON.fsExit, 'i-fsx'));
     els.fs.setAttribute('aria-pressed', 'false');
     els.widget = mkBtn('vm-cbtn vm-widget-btn', 'voidMusicShowWidget', icon(ICON.orbit));
     els.widget.setAttribute('aria-pressed', 'false');
-    els.corner.append(els.close, els.fs, els.widget);
+    els.corner.append(els.fs, els.widget);
     els.file = el('input', 'vm-sr', { type: 'file', accept: 'audio/*,.flac,.m4a,.opus', multiple: '', tabindex: '-1', 'aria-hidden': 'true' });
     els.folder = el('input', 'vm-sr', { type: 'file', webkitdirectory: '', multiple: '', tabindex: '-1', 'aria-hidden': 'true' });
 
@@ -1141,7 +1140,7 @@
   function relabel() {
     refreshMenuLabel();                       // دکمهٔ نوارِ بالا و منو حتی پیش از ساخته‌شدنِ پلیر
     if (!S.built) return;
-    [els.vol, els.prev, els.next, els.queueBtn, els.open, els.close].forEach(function (b) {
+    [els.vol, els.prev, els.next, els.queueBtn, els.open].forEach(function (b) {
       const s = L(b.dataset.k); b.setAttribute('aria-label', s); b.title = s;
     });
     const pk = els.play.getAttribute('aria-pressed') === 'true' ? 'voidMusicPause' : 'voidMusicPlay';
@@ -1926,7 +1925,6 @@
     els.prev.addEventListener('click', prev);
     els.next.addEventListener('click', next);
     els.open.addEventListener('click', pickFiles);
-    els.close.addEventListener('click', exit);
     els.fs.addEventListener('click', toggleFullscreen);
     els.widget.addEventListener('click', function () { setWidget(!S.widgetShown); });
     document.addEventListener('fullscreenchange', function () { if (S.built) relabel(); if (!document.fullscreenElement) S.fsByUs = false; });
