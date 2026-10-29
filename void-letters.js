@@ -1,15 +1,27 @@
 /* Void Galaxy Music — «پیام‌های کهکشان».
-   فاز ۲ رابط: کلیک روی ناحیهٔ کهکشان یک ستارهٔ موقت در همان نقطه می‌سازد و پیام
-   را در یک پنل شیشه‌ای نشان می‌دهد؛ Copy/Share دارد و با کلیک دوبارهٔ ستاره یا
-   Escape بسته می‌شود. ویژوالایزر، شیدر و منطق پخش دست‌نخورده‌اند: این ماژول هیچ
-   ستاره‌ای به آرایهٔ ویژوالایزر اضافه نمی‌کند و هیچ درخواست شبکه‌ای نمی‌فرستد.
-   پیام‌ها در این مرحله فقط از مجموعهٔ آزمایشیِ محلی می‌آیند؛ هیچ نوشتن/ثبتِ
-   واقعی وجود ندارد و دکمهٔ X تا تأیید موفقیت واقعیِ ثبت غیرفعال است. */
+   کلیک روی ناحیهٔ کهکشان یک ستارهٔ موقت در همان نقطه می‌سازد و نامه را در یک
+   پنل شیشه‌ای نشان می‌دهد؛ Copy/Share دارد و با کلیک دوبارهٔ ستاره یا Escape
+   بسته می‌شود. ویژوالایزر، شیدر و منطق پخش دست‌نخورده‌اند: این ماژول هیچ
+   ستاره‌ای به آرایهٔ ویژوالایزر اضافه نمی‌کند. منبع داده و ثبتِ نامه از
+   void-letters-api.js می‌آید. مجموعهٔ آزمایشی فقط با
+   window.VoidLettersDevDemo === true فعال می‌شود و پیش‌فرض خاموش است. */
 (function () {
   'use strict';
 
   var MAX_POINTS = 500;
   var PLAYER_KEYS = { ' ': 1, k: 1, m: 1, n: 1, p: 1, f: 1, w: 1, ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1 };
+
+  var api = window.VoidLettersApi || null;
+  var DEV_DEMO = window.VoidLettersDevDemo === true;
+  /* The Worker stores the language of the letter itself, not of the interface. */
+  var ARABIC_SCRIPT = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  var LATIN_SCRIPT = /[A-Za-z\u00C0-\u024F]/;
+
+  function detectLang(text) {
+    if (ARABIC_SCRIPT.test(text)) return 'fa';
+    if (LATIN_SCRIPT.test(text)) return 'en';
+    return null;
+  }
 
   /* مجموعهٔ آزمایشی: متن‌های ثابت و واضحاً نمونه. هیچ‌کدام از کاربران واقعی نیستند
      و هیچ‌جا ذخیره نمی‌شوند. لایهٔ داده همان جایی است که فاز بک‌اند جایگزین می‌شود. */
@@ -26,14 +38,21 @@
   /* متن ثابتِ اشتراک‌گذاری در X — هرگز متن نامه در آن نیست. */
   var X_SHARE_TEXT = 'I left a star in the galaxy. \u2728\n\nMaybe one day, if you click around the galaxy, you\u2019ll find my message.\n\nDiscover Void Galaxy Music: https://minoodar.github.io/void-galaxy-music/';
 
-  /* لایهٔ داده. در فاز بک‌اند فقط همین شیء عوض می‌شود: kind='api'، next() از
-     پیام‌های واقعی انتخاب می‌کند و submit() نامه را می‌فرستد. */
-  var source = {
-    kind: 'demo',
-    tag: 'Demo \u00b7 no real messages yet',
-    next: nextDemo,
-    submit: null                                      // در این مرحله هیچ POSTی وجود ندارد
-  };
+  /* لایهٔ داده. مسیر production از API واقعی می‌خواند؛ مجموعهٔ آزمایشی فقط با
+     فلگ صریح توسعه فعال است و هرگز با دادهٔ production مخلوط نمی‌شود. */
+  var source = DEV_DEMO
+    ? {
+        kind: 'demo',
+        tag: 'Demo \u00b7 no real messages yet',
+        next: nextDemo,
+        submit: null
+      }
+    : {
+        kind: 'api',
+        tag: 'From the galaxy',
+        next: nextRemote,
+        submit: submitRemote
+      };
 
   var el = null;
   var num = null;
@@ -76,6 +95,12 @@
   var guardOn = false;
   var pool = [];
   var lastPickId = null;
+  var feed = null;
+  var remoteStarted = false;
+  var successTitle = null;
+  var successNote = null;
+  var cooldownTimer = 0;
+  var cooldownUntil = 0;
 
   function findRoot() {
     try {
@@ -171,8 +196,56 @@
       : BAD_CHARS.test(text)
         ? 'Remove invisible formatting or control characters.'
         : '';
-    var ok = !over && !BAD_CHARS.test(text) && text.trim().length > 0 && !!(ackEl && ackEl.checked);
-    submitBtn.disabled = !ok || sending;
+    syncSubmit();
+  }
+
+  function fmtLeft(sec) {
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m > 0 ? m + ':' + (s < 10 ? '0' + s : s) : s + 's';
+  }
+
+  /* The Worker's retry_after is a whole number of seconds. */
+  function startCooldown(seconds) {
+    var s = Number(seconds);
+    if (!isFinite(s) || s <= 0) return;
+    cooldownUntil = Date.now() + Math.min(s, 3600) * 1000;
+    if (cooldownTimer) clearInterval(cooldownTimer);
+    cooldownTimer = setInterval(function () {
+      if (Date.now() >= cooldownUntil) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = 0;
+        cooldownUntil = 0;
+      }
+      syncSubmit();
+    }, 1000);
+    syncSubmit();
+  }
+
+  function syncSubmit() {
+    if (!submitBtn) return;
+    submitBtn.setAttribute('aria-busy', sending ? 'true' : 'false');
+    var left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+    if (sending) {
+      submitBtn.textContent = 'Sending\u2026';
+      submitBtn.disabled = true;
+      return;
+    }
+    if (left > 0) {
+      submitBtn.textContent = 'Try again in ' + fmtLeft(left);
+      submitBtn.disabled = true;
+      return;
+    }
+    submitBtn.textContent = 'Submit letter';
+    if (published) { submitBtn.disabled = true; return; }
+    var text = composer.value;
+    var ok = codePoints(text) <= MAX_POINTS && !BAD_CHARS.test(text) &&
+      text.trim().length > 0 && !!(ackEl && ackEl.checked);
+    submitBtn.disabled = !ok;
+  }
+
+  function notice(text) {
+    noticeEl.textContent = text;
+    noticeEl.hidden = false;
   }
 
   function restoreFocus(primary) {
@@ -461,11 +534,14 @@
     if (msg.lang) panelText.setAttribute('lang', msg.lang);
     else panelText.removeAttribute('lang');
     panelTag.textContent = source.tag;
-    panelMeta.textContent = 'Sample message from the local demo set \u2014 no real messages have arrived yet. Nothing is sent or stored.';
+    panelMeta.textContent = source.kind === 'demo'
+      ? 'Sample message from the local demo set \u2014 no real messages have arrived yet. Nothing is sent or stored.'
+      : 'Anonymous public letter' + (msg.expires_at ? ' \u00b7 fades ' + fadeInLabel(msg.expires_at) : '');
     clearTimeout(feedbackTimer);
     panelFeedback.hidden = true;
     panelFeedback.textContent = '';
     panelCopy.textContent = 'Copy';
+    panelCopy.disabled = false;
     var canShare = !!(navigator.share && typeof navigator.share === 'function');
     panelShare.disabled = false;
     panelShare.title = canShare
@@ -474,6 +550,65 @@
     panelShare.setAttribute('aria-label', canShare
       ? 'Share this message'
       : 'Share unavailable \u2014 copy the message instead');
+  }
+
+  function fadeInLabel(expiresAt) {
+    var ms = Number(expiresAt) * 1000 - Date.now();
+    if (!isFinite(ms) || ms <= 60000) return 'soon';
+    var mins = Math.round(ms / 60000);
+    if (mins < 90) return 'in about ' + Math.max(1, mins) + ' min';
+    var hours = Math.round(mins / 60);
+    if (hours < 36) return 'in about ' + hours + ' hours';
+    return 'in about ' + Math.round(hours / 24) + ' days';
+  }
+
+  /* Panel states reuse the existing tag/text/meta elements so the layout and
+     styling stay untouched while the feed loads, is empty, or fails. */
+  function showPanelState(state) {
+    currentMessage = null;
+    panelTag.textContent = source.tag;
+    panelCopy.disabled = true;
+    panelShare.disabled = true;
+    clearTimeout(feedbackTimer);
+    panelFeedback.hidden = true;
+    panelFeedback.textContent = '';
+    if (state === 'empty') {
+      panelText.textContent = 'No letters in the galaxy yet.';
+      panelMeta.textContent = 'Be the first to leave one \u2014 the quill is on the right.';
+    } else if (state === 'error') {
+      panelText.textContent = 'The galaxy is out of reach right now.';
+      panelMeta.textContent = 'Could not load letters. The send form still works.';
+    } else {
+      panelText.textContent = 'Looking for a letter\u2026';
+      panelMeta.textContent = 'Loading the newest letters.';
+    }
+  }
+
+  function nextRemote() {
+    if (!api) return Promise.reject(new Error('api missing'));
+    if (!feed) feed = api.createFeed();
+    return feed.next().then(function (res) {
+      if (res.status === 'ok') return res.letter;
+      if (res.status === 'error') throw new Error('feed');
+      return null;
+    });
+  }
+
+  /* Feed and counter load independently: either can fail without blocking the
+     other or the composer. */
+  function refreshCount() {
+    if (!api) return;
+    api.count().then(function (n) {
+      if (n !== null) setCount(n);
+    });
+  }
+
+  function startRemote() {
+    if (remoteStarted || source.kind !== 'api' || !api) return;
+    remoteStarted = true;
+    if (!feed) feed = api.createFeed();
+    feed.prefetch();
+    refreshCount();
   }
 
   function layoutPanel(x, y, focus) {
@@ -565,16 +700,24 @@
   function openMessageAt(x, y) {
     if (!ensureMounted()) return;
     clearScene();
-    var msg = source.next();
-    if (!msg) return;
-    currentMessage = msg;
     panelOpen = true;
-    renderMessage(msg);
     var p = anchorPoint(x, y);
     starX = p.x;
     starY = p.y;
     buildAnchorAt(starX, starY);
     layoutPanel(starX, starY, true);
+    showPanelState('loading');
+    Promise.resolve().then(function () { return source.next(); }).then(function (msg) {
+      if (!panelOpen) return;
+      if (!msg) { showPanelState('empty'); layoutPanel(starX, starY, false); return; }
+      currentMessage = msg;
+      renderMessage(msg);
+      layoutPanel(starX, starY, false);
+    }, function () {
+      if (!panelOpen) return;
+      showPanelState('error');
+      layoutPanel(starX, starY, false);
+    });
   }
 
   function hidePanelNow() {
@@ -697,9 +840,8 @@
   }
 
   /* ==================================================================
-     پنجرهٔ نوشتنِ نامه + مسیر آمادهٔ ثبت و اشتراک در X
-     هیچ بک‌اندی وجود ندارد: submit جا ندارد، پس هیچ موفقیتی هم ساخته
-     نمی‌شود. onPublished فقط از پاسخِ واقعیِ source.submit صدا زده می‌شود.
+     پنجرهٔ نوشتنِ نامه + مسیر ثبت و اشتراک در X
+     submit فقط از پاسخِ واقعیِ source.submit (Worker) صدا زده می‌شود.
      ================================================================== */
   function closeCompose() {
     if (!compose || !compose.open) return;
@@ -759,7 +901,7 @@
       'A letter becomes a small star in the galaxy: anonymous, public, and temporary. Write with care \u2014 once it leaves, it cannot be taken back.');
     intro.id = 'void-god-intro';
 
-    var demo = make('p', 'void-god-demo', 'Local preview only \u2014 this phase does not send or store anything. X sharing stays locked until real publishing exists.');
+    var demo = make('p', 'void-god-demo', 'Your letter is stored anonymously on the public sky until it fades. Pressing Submit is final \u2014 it cannot be edited or deleted afterwards.');
     demo.id = 'void-god-demo';
 
     var label = make('label', 'void-god-label', 'Your letter');
@@ -828,15 +970,16 @@
     successEl.hidden = true;
     successEl.tabIndex = -1;
     successEl.setAttribute('role', 'status');
-    successEl.appendChild(make('p', 'void-god-published__title', 'Your letter is in the galaxy'));
-    successEl.appendChild(make('p', 'void-god-published__note',
-      'It will fade after 7 days. Sharing on X is optional and never includes your letter text.'));
+    successTitle = make('p', 'void-god-published__title', 'Your letter is in the galaxy');
+    successEl.appendChild(successTitle);
+    successNote = make('p', 'void-god-published__note', '');
+    successEl.appendChild(successNote);
     var okFoot = make('div', 'void-god-foot');
     xShareBtn = make('button', 'void-god-btn', 'Share on X');
     xShareBtn.type = 'button';
     xShareBtn.id = 'void-god-x-share';
     xShareBtn.disabled = true;
-    xShareBtn.title = 'Available after your letter is published';
+    xShareBtn.title = 'Sharing will be available when letters have public pages';
     var done = make('button', 'void-god-btn void-god-btn--primary', 'Done');
     done.type = 'button';
     okFoot.appendChild(xShareBtn);
@@ -873,8 +1016,7 @@
       e.preventDefault();
       if (submitBtn.disabled || sending) return;
       if (typeof source.submit !== 'function') {
-        noticeEl.textContent = 'Publication will be enabled in a later phase. Nothing was sent or stored \u2014 this is a local preview.';
-        noticeEl.hidden = false;
+        notice('Sending is unavailable right now. Nothing was sent.');
         return;
       }
       submitLetter();
@@ -886,6 +1028,12 @@
     return checked ? checked.value : '7d';
   }
 
+  function submitRemote(payload) {
+    if (!api) return Promise.resolve({ kind: 'network' });
+    var pending = api.begin(payload.text, payload.expiry, detectLang(payload.text));
+    return api.submit(pending);
+  }
+
   function submitLetter() {
     if (sending || typeof source.submit !== 'function') return;
     sending = true;
@@ -894,32 +1042,72 @@
     var payload = { text: composer.value, expiry: currentExpiry() };
     source.submit(payload).then(function (result) {
       sending = false;
-      updateState();
-      if (!result || result.ok !== true || !result.id) { onPublishError(); return; }
-      onPublished(result);
+      handleSubmitResult(result || { kind: 'error' });
     }, function () {
       sending = false;
-      updateState();
-      onPublishError();
+      handleSubmitResult({ kind: 'network' });
     });
   }
 
-  function onPublished() {
+  var REASON_TEXT = {
+    short: 'The letter is too short \u2014 at least 3 characters.',
+    long: 'The letter is longer than 500 characters.',
+    links: 'Links, domains and addresses are not allowed in a letter.',
+    unicode: 'The letter contains characters that are not allowed.',
+    control: 'The letter contains characters that are not allowed.',
+    expiry: 'That fade time is not valid. Please pick another one.',
+    request_id: 'The request could not be accepted. Please press Submit again.',
+    body: 'The letter could not be read. Please try again.'
+  };
+
+  function handleSubmitResult(result) {
+    if (result.kind === 'created' || result.kind === 'recovered') {
+      onPublished(result);
+      return;
+    }
+    if (result.kind === 'busy') return;
+    if (result.kind === 'already') {
+      var when = result.next_allowed_at
+        ? new Date(result.next_allowed_at * 1000).toLocaleString()
+        : '';
+      notice('You already have an active letter.' + (when ? ' You can send a new one from ' + when + '.' : ''));
+    } else if (result.kind === 'expired') {
+      notice('The previous letter has expired. Press Submit again to send this one as a new letter.');
+    } else if (result.kind === 'rate') {
+      startCooldown(result.retry_after);
+      notice('Too many attempts. Please try again shortly \u2014 your letter has not been lost.');
+    } else if (result.kind === 'invalid') {
+      notice(REASON_TEXT[result.reason] || 'The letter or its settings are not valid. Please check it and try again.');
+    } else {
+      notice('The service is temporarily unavailable. Your letter is still here \u2014 try again in a moment.');
+    }
+    syncSubmit();
+  }
+
+  function onPublished(result) {
     published = true;
-    xShareBtn.disabled = false;
-    xShareBtn.title = 'Share the galaxy on X';
-    xShareBtn.setAttribute('aria-label', 'Share on X');
+    /* No public per-letter route exists, so an id alone must not unlock a link. */
+    xShareBtn.disabled = true;
+    xShareBtn.title = 'Sharing will be available when letters have public pages';
+    xShareBtn.setAttribute('aria-label', 'Sharing is not available yet');
+    successTitle.textContent = result.kind === 'recovered'
+      ? 'This letter was already sent'
+      : 'Your letter is in the galaxy';
+    successNote.textContent = (result.kind === 'recovered' ? 'It was saved earlier, so nothing new was added. ' : '') +
+      (result.expires_at ? 'It will fade ' + fadeInLabel(result.expires_at) + '. ' : '') +
+      'Sharing on X stays locked until letters have their own public pages.';
     composeForm.classList.add('is-published');
     successEl.hidden = false;
     noticeEl.hidden = true;
+    composer.value = '';
+    ackEl.checked = false;
+    refreshCount();
+    if (api) {
+      feed = api.createFeed();
+      feed.prefetch();
+    }
+    updateState();
     try { successEl.focus({ preventScroll: true }); } catch (e) {}
-  }
-
-  function onPublishError() {
-    published = false;
-    xShareBtn.disabled = true;
-    noticeEl.textContent = 'Could not publish your letter. Nothing was sent or stored \u2014 please try again.';
-    noticeEl.hidden = false;
   }
 
   /* اشتراک در X: فقط با اقدام صریحِ کاربر و فقط پس از ثبت واقعی. متنِ ثابت است
@@ -961,6 +1149,7 @@
     buildGalaxy(host);
     buildPanel(host);
     buildCompose(host);
+    startRemote();
   }
 
   function onGuardKey(e) {
