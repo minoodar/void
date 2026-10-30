@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="void-music.css">
   <link rel="stylesheet" href="void-counter.css">
   <link rel="stylesheet" href="void-letters.css">
+  <link rel="stylesheet" href="void-admin.css">
   <style>
     html, body { height: 100%; margin: 0; overflow: hidden; }
     body {
@@ -600,7 +601,10 @@
           return;
         }
 
-        window.VoidMusic.enter();
+        /* ?admin=true is a management surface, not the visitor experience: no
+           player keyboard capture and no automatic music mode behind the overlay. */
+        var adminMode = /[?&]admin=(?:1|true)(?:&|#|$)/.test(location.search);
+        if (!adminMode) window.VoidMusic.enter();
 
         var root = document.getElementById('void-music-root');
         var reopen = document.getElementById('void-reopen');
@@ -611,7 +615,7 @@
         }
         syncReopen();
 
-        if (!webgl2Available()) {
+        if (!adminMode && !webgl2Available()) {
           showNote(
             'Galaxy view is unavailable because this browser does not support WebGL2. ' +
             'Playback, queue, seek and volume still work normally.',
@@ -633,9 +637,19 @@
     (function () {
       'use strict';
 
-      var DATA = Array.isArray(window.GOLDEN_FOLDER_TRACKS) ? window.GOLDEN_FOLDER_TRACKS : [];
+      if (/[?&]admin=(?:1|true)(?:&|#|$)/.test(location.search)) return;
+
+      /* The static file next to this page is the fallback. When the letters
+         worker answers GET /tracks (after the admin migration is applied), the
+         keeper-managed playlist replaces it without touching the player. */
+      var STATIC = Array.isArray(window.GOLDEN_FOLDER_TRACKS) ? window.GOLDEN_FOLDER_TRACKS : [];
+      var DATA = STATIC.slice();
       var URLS = new Set();
-      for (var d = 0; d < DATA.length; d++) URLS.add(DATA[d].url);
+      function indexUrls() {
+        URLS.clear();
+        for (var i = 0; i < DATA.length; i++) if (DATA[i] && DATA[i].url) URLS.add(DATA[i].url);
+      }
+      indexUrls();
 
       var link = document.getElementById('void-golden-folder');
       var chip = document.getElementById('void-golden-status');
@@ -699,6 +713,9 @@
         '</svg>';
 
       function buildList() {
+        listEl.textContent = '';
+        boxes = [];
+        rows = [];
         for (var i = 0; i < DATA.length; i++) {
           (function (entry) {
             var li = document.createElement('li');
@@ -848,7 +865,9 @@
         var alreadyPlaying = !force && !!(before && before.playing && before.currentUrl === entries[0].url);
         setBusy(true);
         retryEntry = null;
-        lastEntries = entries.map(function (t) { return { url: t.url, title: t.title, golden: true }; });
+        lastEntries = entries.map(function (t) {
+          return { url: t.url, title: t.title, artist: t.artist || '', artwork: t.artwork_url || null, golden: true };
+        });
         if (alreadyPlaying) show('playing', 'Playing · ' + entries[0].title, '', '', 6000);
         else show('loading', entries.length === 1 ? 'Connecting… · ' + entries[0].title : 'Connecting…', '', '', 0);
         var p;
@@ -880,8 +899,73 @@
         return (entry && entry.title) || 'Golden Folder';
       }
 
+      /* Managed playlist. A stale worker (404), a missing table (503) or any
+         network failure keeps the static bytes above; a real 200 response,
+         including an intentionally empty list, wins. */
+      function resolveMedia(value) {
+        if (typeof value !== 'string' || !value) return null;
+        try {
+          var u = new URL(value, location.href);
+          return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : null;
+        } catch (e) { return null; }
+      }
+
+      function normalizeTracks(payload) {
+        if (!payload || payload.ok !== true || !Array.isArray(payload.tracks)) return null;
+        var out = [];
+        for (var i = 0; i < payload.tracks.length; i++) {
+          var row = payload.tracks[i];
+          if (!row || typeof row.title !== 'string' || typeof row.audio_url !== 'string') continue;
+          var audio = resolveMedia(row.audio_url);
+          if (!audio) continue;
+          out.push({
+            id: typeof row.id === 'string' ? row.id : 'track-' + i,
+            title: row.title,
+            artist: typeof row.artist === 'string' ? row.artist : '',
+            url: audio,
+            artwork_url: resolveMedia(row.artwork_url),
+            duration: typeof row.duration === 'number' ? row.duration : null,
+            tags: Array.isArray(row.tags) ? row.tags.filter(function (t) { return typeof t === 'string'; }) : []
+          });
+        }
+        return out;
+      }
+
+      function applyTracks(list) {
+        if (dialog.open) { setTimeout(loadManagedTracks, 800); return; }
+        DATA = list;
+        indexUrls();
+        buildList();
+        syncSelection();
+        syncPlaying();
+      }
+
+      function loadManagedTracks() {
+        if (typeof window.fetch !== 'function') return;
+        var api = window.VoidLettersApi;
+        var base = api && typeof api.base === 'string' ? api.base : 'https://void-galaxy-letters.minoodar.workers.dev';
+        var controller = typeof AbortController === 'function' ? new AbortController() : null;
+        var timer = 0;
+        if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, 8000);
+        window.fetch(String(base).replace(/\/+$/, '') + '/tracks', {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          mode: 'cors',
+          credentials: 'omit',
+          signal: controller ? controller.signal : undefined
+        }).then(function (res) {
+          clearTimeout(timer);
+          if (!res || !res.ok) return null;
+          return res.json();
+        }).then(function (payload) {
+          var list = normalizeTracks(payload);
+          if (list) applyTracks(list);
+        }, function () { clearTimeout(timer); });
+      }
+
       buildList();
       syncSelection();
+      loadManagedTracks();
 
       link.addEventListener('click', function (e) {
         e.preventDefault();
@@ -1027,5 +1111,7 @@
   <script src="void-counter.js" defer></script>
   <script src="void-letters-api.js" defer></script>
   <script src="void-letters.js" defer></script>
+  <script src="void-artwork.js" defer></script>
+  <script src="void-admin.js" defer></script>
 </body>
 </html>

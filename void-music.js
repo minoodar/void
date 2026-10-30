@@ -114,6 +114,8 @@
   const SHUFFLE_DEFAULT = false, SHUF_KEY = 'voidMusic.shuffle';
   try { const sv = localStorage.getItem(SHUF_KEY); S.shuffle = sv === null ? SHUFFLE_DEFAULT : sv === '1'; } catch (e) { S.shuffle = SHUFFLE_DEFAULT; }
   let root, dock, els = {};
+  /* Cosmic fallback for the current track: used when an artwork URL fails to load. */
+  let coverFallback = null;
 
   /* ------------------------------------------------------------------ */
   /* ابزارها                                                              */
@@ -549,7 +551,7 @@
         else if (f && tr.file && tr.file.name === f.name && tr.file.size === f.size && tr.file.lastModified === f.lastModified) { dup = true; dupTr = tr; break; }
       }
       if (dup) { if (!firstTarget) firstTarget = dupTr; continue; }
-      const tr = { stars: en.golden ? 5 : 0, golden: !!en.golden, ts: Date.now() + added, id: uid(), name: name, title: en.title || nameToTitle(name), artist: en.artist || '', file: f, handle: h, url: url, bad: false, rootId: en.root ? en.root.id : null, path: en.root ? en.path : null, copy: null };
+      const tr = { stars: en.golden ? 5 : 0, golden: !!en.golden, ts: Date.now() + added, id: uid(), name: name, title: en.title || nameToTitle(name), artist: en.artist || '', artwork: typeof en.artwork === 'string' && en.artwork ? en.artwork : null, file: f, handle: h, url: url, bad: false, rootId: en.root ? en.root.id : null, path: en.root ? en.path : null, copy: null };
       if (S.copyMode) {
         // «نسخهٔ خصوصی»: فایل یک بار در OPFS کپی می‌شود؛ از آن به بعد هیچ مجوزی لازم نیست
         try {
@@ -705,6 +707,44 @@
     return S.bag.pop();
   }
 
+  /* ---- artwork for remote streams ---- */
+  function resolveMediaUrl(value) {
+    if (typeof value !== 'string' || !value) return null;
+    try {
+      const u = new URL(value, location.href);
+      return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null;
+    } catch (e) { return null; }
+  }
+  function cosmicCover(title, key) {
+    try {
+      return window.VoidArtwork && typeof window.VoidArtwork.cosmic === 'function'
+        ? window.VoidArtwork.cosmic(title, key)
+        : null;
+    } catch (e) { return null; }
+  }
+  function applyCover(tok, tr, url) {
+    if (tok !== S.token || S.curId !== tr.id || !url) return;
+    setMeta(tr.title, tr.artist, url);
+    publishSession(tr, url);
+    pushRemote(true);
+  }
+  /* Custom URL > embedded ID3 (CORS permitting) > deterministic cosmic cover.
+     The cosmic cover is painted first so a slow header read never leaves the
+     meta line empty. */
+  function resolveRemoteCover(tr, tok) {
+    const fallback = cosmicCover(tr.title, tr.url || '');
+    coverFallback = fallback;
+    const explicit = resolveMediaUrl(tr.artwork);
+    if (explicit) { applyCover(tok, tr, explicit); return; }
+    if (fallback) setMeta(tr.title, tr.artist, fallback);
+    const art = window.VoidArtwork;
+    if (!art || typeof art.extractId3 !== 'function') return;
+    art.extractId3(tr.url).then(function (found) {
+      if (tok !== S.token || S.curId !== tr.id) return;
+      if (found && found.url) applyCover(tok, tr, found.url);
+    }, function () {});
+  }
+
   async function playId(id, opts) {
     opts = opts || {};
     if (S.web) detachWeb({ pauseSite: true });          // پخشِ محلی شروع شد: منبعِ وب جدا و مکث می‌شود
@@ -751,8 +791,10 @@
     if (prevTr && prevTr.url && prevTr.id !== id) emitRemoteFor(prevTr, 'inactive');
     playbackLog('audio-source-set', { readyState: a.readyState, paused: a.paused, muted: a.muted, volume: a.volume, hasSource: !!a.currentSrc, fileType: remote ? 'remote-url' : (file.type || ''), fileSize: remote ? null : file.size, remote: remote });
     setMeta(tr.title, tr.artist, null);
+    coverFallback = null;
     renderQueue();
     publishSession(tr, null);
+    if (remote) resolveRemoteCover(tr, tok);
     pushRemote(true);
     try { window.dispatchEvent(new CustomEvent('voidmusic:track', { detail: { id: id, title: tr.title, seed: S.seed } })); } catch (e) {}
     let playbackStarted = false;
@@ -770,9 +812,11 @@
       if (m.artist) tr.artist = m.artist;
       let cu = null;
       if (m.cover) { cu = URL.createObjectURL(m.cover); }
+      const cosmic = cosmicCover(tr.title, tr.name || '');
+      coverFallback = cosmic;
       if (S.coverUrl) { try { URL.revokeObjectURL(S.coverUrl); } catch (e) {} }
       S.coverUrl = cu;
-      setMeta(tr.title, tr.artist, cu, function () {
+      setMeta(tr.title, tr.artist, cu || cosmic, function () {
         if (!playbackStarted || tok !== S.token || S.curId !== id || a.paused) return;
         try { window.dispatchEvent(new CustomEvent('voidmusic:title-ready', { detail: { id: id, title: tr.title, artist: tr.artist, seed: S.seed, generation: tok } })); } catch (e) {}
       });
@@ -932,7 +976,10 @@
   function publishSession(tr, coverUrl) {
     if (!('mediaSession' in navigator)) return;
     try {
-      const art = coverUrl ? [{ src: coverUrl, sizes: '300x300' }] : [];
+      /* Media Session fetches artwork itself; data: covers (the cosmic SVG) are
+         skipped instead of flooding the OS metadata with an inline document. */
+      const safe = typeof coverUrl === 'string' && /^(https?:|blob:)/.test(coverUrl) ? coverUrl : null;
+      const art = safe ? [{ src: safe, sizes: '300x300' }] : [];
       navigator.mediaSession.metadata = new MediaMetadata({ title: tr.title || '', artist: tr.artist || '', album: 'Void Galaxy', artwork: art });
     } catch (e) {}
   }
@@ -981,6 +1028,10 @@
     // عنوان + جلد
     els.meta = el('div', 'vm-meta is-blank');
     els.cover = el('img', 'vm-cover', { alt: '', hidden: '', draggable: 'false' });
+    els.cover.addEventListener('error', function () {
+      if (!coverFallback || els.cover.src === coverFallback) return;
+      els.cover.src = coverFallback;
+    });
     const tx = el('div', 'vm-text');
     els.title = el('div', 'vm-title', { dir: 'auto', 'aria-live': 'polite' });
     els.artist = el('div', 'vm-artist', { dir: 'auto' });
