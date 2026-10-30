@@ -307,14 +307,33 @@
     return limit;
   }
 
+  /* The clickable region is the black hole sphere itself, not its bounding
+     rectangle or the surrounding galaxy. void-music-viz.js draws that disk at
+     (uCenter) with R = uHoleR * uScale, where uHoleR is HOLE_R and uScale is
+     V.scale scaled by the camera breath. Reading the same live values keeps the
+     circle aligned across viewport sizes and while the camera breathes; without
+     a rendered hole (no WebGL / not initialised) the gate stays closed. */
+  var HOLE_R = 0.11;
+
+  function holeCircle() {
+    try {
+      var viz = window.VoidMusicViz;
+      var V = viz && viz._test && viz._test.V;
+      if (!V || !V.ok) return null;
+      var cx = Number(V.cx), cy = Number(V.cy), scale = Number(V.scale);
+      if (!isFinite(cx) || !isFinite(cy) || !isFinite(scale) || scale <= 0) return null;
+      var b = V.breath || {};
+      var mix = isFinite(Number(b.mix)) ? clamp(Number(b.mix), 0, 1) : 0;
+      var zoom = isFinite(Number(b.zoom)) ? Number(b.zoom) : 1;
+      return { cx: cx, cy: cy, r: HOLE_R * scale * (1 + (zoom - 1) * mix) };
+    } catch (e) { return null; }
+  }
+
   function isGalaxyPoint(x, y) {
-    if (y > safeBottom()) return false;
-    var meta = document.querySelector('#void-music-root .vm-meta');
-    if (meta && isShownBox(meta)) {
-      var r = meta.getBoundingClientRect();
-      if (x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 8 && y <= r.bottom + 8) return false;
-    }
-    return true;
+    var hole = holeCircle();
+    if (!hole) return false;
+    var dx = x - hole.cx, dy = y - hole.cy;
+    return dx * dx + dy * dy <= hole.r * hole.r;
   }
 
   function overlaps(a, b) {
