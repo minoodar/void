@@ -69,13 +69,8 @@
   var statsOpen = false;
   var statsHoverTimer = 0;
   var pillShown = false;
-  var visitorsN = null;
-  var rowVisitors = null;
-  var rowSessions = null;
-  var rowReturned = null;
   var rowLetters = null;
   var letterTotal = null;
-  var visitorTotal = null;
 
   var quillBtn = null;
   var galaxyLayer = null;
@@ -152,13 +147,10 @@
     return r.width > 1 && r.height > 1;
   }
 
-  /* ---- تبلتِ آمار کهکشان: بازدیدکننده‌ها و نامه‌ها در یک جا ------------------
-     همان نشانگرِ پایین‌راست، ولی حالا دکمه‌ای است که هر دو عدد را نشان می‌دهد و
-     با کلیک/هاور پنلی کوچک باز می‌کند: افراد، سشن‌ها، درصد بازگشت و نامه‌های
-     فعال. داده‌ها همان‌هایی هستند که از قبل وجود دارند: void-counter.js آمار
-     بازدید را می‌گیرد و از طریق رویداد voidcounter:stats منتشر می‌کند، و
-     /letters/count تعداد نامه‌ها را می‌دهد. هیچ endpoint یا درخواست تازه‌ای
-     ساخته نمی‌شود. */
+  /* ---- تبلتِ آمار کهکشان: تعداد نامه‌های فعال -------------------------------
+     دکمهٔ پایین‌راست تعداد نامه‌ها را از /letters/count می‌گیرد و با کلیک/هاور
+     پنلی کوچک باز می‌کند. شمارشِ بازدیدکننده‌ها با حذف ویجتِ قدیمی کنار رفت؛
+     هیچ درخواست یا endpoint دیگری ساخته نمی‌شود. */
   function fmt(n) {
     return new Intl.NumberFormat('en-US').format(Math.max(0, Math.floor(Number(n) || 0)));
   }
@@ -185,19 +177,11 @@
     el.setAttribute('title', 'Galaxy statistics');
     var dot = make('span', 'vm-gs__dot');
     dot.setAttribute('aria-hidden', 'true');
-    var people = make('span', 'vm-gs__fig');
-    visitorsN = make('span', 'vm-gs__n', '\u2014');
-    people.appendChild(visitorsN);
-    people.appendChild(make('span', 'vm-gs__l', 'explorers'));
-    var sep = make('span', 'vm-gs__sep');
-    sep.setAttribute('aria-hidden', 'true');
     var letters = make('span', 'vm-gs__fig');
     num = make('span', 'vm-gs__n', '\u2014');
     letters.appendChild(num);
     letters.appendChild(make('span', 'vm-gs__l', 'letters'));
     el.appendChild(dot);
-    el.appendChild(people);
-    el.appendChild(sep);
     el.appendChild(letters);
     host.appendChild(el);
 
@@ -207,18 +191,9 @@
     statsPanel.setAttribute('role', 'dialog');
     statsPanel.setAttribute('aria-modal', 'false');
     statsPanel.setAttribute('aria-label', 'Galaxy statistics');
-    var r1 = statRow('explorers', '\u2014');
-    var r2 = statRow('sessions', '\u2014');
-    var r3 = statRow('returned', '\u2014');
-    var r4 = statRow('letters', '\u2014');
-    rowVisitors = r1.value;
-    rowSessions = r2.value;
-    rowReturned = r3.value;
-    rowLetters = r4.value;
-    statsPanel.appendChild(r1.row);
-    statsPanel.appendChild(r2.row);
-    statsPanel.appendChild(r3.row);
-    statsPanel.appendChild(r4.row);
+    var lettersRow = statRow('letters', '\u2014');
+    rowLetters = lettersRow.value;
+    statsPanel.appendChild(lettersRow.row);
     statsRead = make('button', 'void-god-btn vm-gs-read', 'No letters yet');
     statsRead.type = 'button';
     statsRead.disabled = true;
@@ -256,16 +231,12 @@
       if (el.contains(e.target) || statsPanel.contains(e.target)) return;
       closeStats(false);
     }, true);
-    /* از این لحظه تنها سطح آمار همین دکمه است؛ ویجت قدیمی باید کنار برود،
-       حتی اگر داده‌اش پیش از ساخته‌شدنِ این دکمه رسیده باشد. */
-    try { if (typeof window.VoidCounterSync === 'function') window.VoidCounterSync(); } catch (e) {}
   }
 
   function showPill() {
     if (!el || pillShown) return;
     pillShown = true;
     el.hidden = false;
-    try { if (typeof window.VoidCounterSync === 'function') window.VoidCounterSync(); } catch (e) {}
     if (showFrame) cancelAnimationFrame(showFrame);
     showFrame = requestAnimationFrame(function () {
       showFrame = 0;
@@ -386,30 +357,6 @@
       (ok ? ': ' + n + (n === 1 ? ' letter' : ' letters') : ''));
     showPill();
     return true;
-  }
-
-  function setVisitors(s) {
-    if (!s) return;
-    var u = Number(s.u), t = Number(s.t), r = Number(s.r);
-    if (!isFinite(u) || u < 0) return;
-    visitorTotal = u;
-    if (visitorsN) visitorsN.textContent = fmt(u);
-    if (rowVisitors) rowVisitors.textContent = fmt(u);
-    if (rowSessions) rowSessions.textContent = isFinite(t) && t >= 0 ? fmt(t) : '\u2014';
-    if (rowReturned) rowReturned.textContent = isFinite(r) ? Math.round(r) + '%' : '\u2014';
-    showPill();
-  }
-
-  /* آمار بازدید را void-counter.js می‌گیرد (با همان /hit و /stats همیشگی)؛
-     این‌جا فقط منتظرش می‌مانیم تا ویجتِ دوم ساخته نشود. */
-  function listenVisitors() {
-    window.addEventListener('voidcounter:stats', function (e) { setVisitors(e.detail); });
-    if (window.VoidCounterStats) { setVisitors(window.VoidCounterStats); return; }
-    var tries = 0;
-    (function poll() {
-      if (!window.VoidCounterStats && ++tries < 80) return setTimeout(poll, 250);
-      if (window.VoidCounterStats) setVisitors(window.VoidCounterStats);
-    })();
   }
 
   /* ---- شمارشِ نقطه‌های کد (نه واحدهای UTF-16) ---- */
@@ -604,7 +551,6 @@
     add('#void-topnav .void-topnav__link', 10, 10);
     add('#void-god-quill', 10, 10);
     add('.vm-corner', 10, 10);
-    add('#void-counter', 10, 10);
     add('#void-golden-status', 10, 10);
     add('#void-music-root .vm-meta', 8, 1);
     return out;
@@ -1474,7 +1420,6 @@
     buildPanel(host);
     buildCompose(host);
     startRemote();
-    listenVisitors();
   }
 
   function onGuardKey(e) {

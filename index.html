@@ -8,7 +8,6 @@
  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
 <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="stylesheet" href="void-music.css">
-  <link rel="stylesheet" href="void-counter.css">
   <link rel="stylesheet" href="void-letters.css">
   <link rel="stylesheet" href="void-admin.css">
   <style>
@@ -526,10 +525,6 @@
       .void-golden-modal__eq rect { animation: none; }
     }
 
-    /* The galaxy click surface lives inside #void-music-root (z-index 1000) and
-       spans the viewport, so the visitor counter is lifted above it to keep its
-       stats button clickable. Look and position are unchanged. */
-    #void-counter { z-index: 1001; }
   </style>
 </head>
 <body>
@@ -1108,7 +1103,6 @@
       });
     })();
   </script>
-  <script src="void-counter.js" defer></script>
   <script src="void-letters-api.js" defer></script>
   <script src="void-letters.js" defer></script>
   <script src="void-artwork.js" defer></script>

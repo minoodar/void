@@ -45,7 +45,6 @@
     font-size: 9px; letter-spacing: .09em; text-transform: uppercase;
     color: rgba(235, 240, 245, .55);
 }
-.vm-gs__sep { width: 1px; height: 11px; flex: none; background: rgba(235, 240, 245, .18); }
 
 #void-galaxy-stats-panel {
     position: fixed;
