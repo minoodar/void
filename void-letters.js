@@ -1,6 +1,6 @@
 /* Void Galaxy Music — «پیام‌های کهکشان».
    کلیک روی ناحیهٔ کهکشان یک ستارهٔ موقت در همان نقطه می‌سازد و نامه را در یک
-   پنل شیشه‌ای نشان می‌دهد؛ Copy/Share دارد و با کلیک دوبارهٔ ستاره یا Escape
+   پنل شیشه‌ای نشان می‌دهد؛ Copy/Share on X دارد و با کلیک دوبارهٔ ستاره یا Escape
    بسته می‌شود. ویژوالایزر، شیدر و منطق پخش دست‌نخورده‌اند: این ماژول هیچ
    ستاره‌ای به آرایهٔ ویژوالایزر اضافه نمی‌کند. منبع داده و ثبتِ نامه از
    void-letters-api.js می‌آید. مجموعهٔ آزمایشی فقط با
@@ -38,6 +38,10 @@
   /* متن ثابتِ اشتراک‌گذاری در X — هرگز متن نامه در آن نیست. */
   var X_LETTER_TEXT = 'I left a star in the galaxy. \u2726 Read it before it fades:';
   var X_LETTER_TEXT_FA = '\u0633\u062a\u0627\u0631\u0647\u200c\u0627\u06cc \u062f\u0631 \u06a9\u0647\u06a9\u0634\u0627\u0646 \u062c\u0627 \u06af\u0630\u0627\u0634\u062a\u0645. \u2726 \u062a\u0627 \u0645\u062d\u0648 \u0646\u0634\u062f\u0647 \u0628\u062e\u0648\u0627\u0646\u06cc\u062f\u0634:';
+  /* متنِ پنلِ خواندنِ نامهٔ دیگران؛ کوتاه می‌ماند تا با لینک زیرِ سقفِ ۲۸۰ کاراکترِ X
+     جا شود. متنِ نامه هرگز در توییت نمی‌رود. */
+  var X_PANEL_TEXT = 'A star is burning in the Void Galaxy. \u2726 Read it before it fades:';
+  var X_PANEL_TEXT_FA = '\u0633\u062a\u0627\u0631\u0647\u200c\u0627\u06cc \u062f\u0631 \u06a9\u0647\u06a9\u0634\u0627\u0646 \u0645\u06cc\u200c\u062f\u0631\u062e\u0634\u062f. \u2726 \u067e\u06cc\u0634 \u0627\u0632 \u0622\u0646\u06a9\u0647 \u0645\u062d\u0648 \u0634\u0648\u062f \u0628\u062e\u0648\u0627\u0646\u06cc\u062f\u0634:';
   var X_INTENT = 'https://twitter.com/intent/tweet?text=';
 
   /* لایهٔ داده. مسیر production از API واقعی می‌خواند؛ مجموعهٔ آزمایشی فقط با
@@ -753,7 +757,7 @@
     panelCopy = make('button', 'void-god-btn', 'Copy');
     panelCopy.type = 'button';
     panelCopy.id = 'void-god-copy';
-    panelShare = make('button', 'void-god-btn', 'Share');
+    panelShare = make('button', 'void-god-btn', 'Share on X');
     panelShare.type = 'button';
     panelShare.id = 'void-god-share';
     actions.appendChild(panelCopy);
@@ -792,14 +796,14 @@
     panelFeedback.textContent = '';
     panelCopy.textContent = 'Copy';
     panelCopy.disabled = false;
-    var canShare = !!(navigator.share && typeof navigator.share === 'function');
-    panelShare.disabled = false;
+    var canShare = !!messageLink(msg);
+    panelShare.disabled = !canShare;
     panelShare.title = canShare
-      ? 'Share this message'
-      : 'Sharing is not available in this browser \u2014 the message will be copied instead';
+      ? 'Share this letter on X'
+      : 'This message has no public link \u2014 use Copy instead';
     panelShare.setAttribute('aria-label', canShare
-      ? 'Share this message'
-      : 'Share unavailable \u2014 copy the message instead');
+      ? 'Share this letter on X'
+      : 'Sharing unavailable \u2014 copy the message instead');
   }
 
   function fadeInLabel(expiresAt) {
@@ -1105,24 +1109,29 @@
     });
   }
 
-  function onShare() {
-    if (!currentMessage) return;
-    var msg = currentMessage;
-    if (!navigator.share) { shareFallback(msg); return; }
-    var payload = { title: 'A message from the Void Galaxy', text: msg.text };
-    navigator.share(payload).then(function () {
-      feedback('Shared.', false);
-    }, function (err) {
-      if (err && err.name === 'AbortError') return;      // لغوِ کاربر خطا نیست
-      shareFallback(msg);
-    });
+  /* اشتراک در X با همان روشِ دکمهٔ «Share on X» پس از ثبت: یک لینکِ مستقیمِ
+     intent که هیچ اپِ نصب‌شده‌ای لازم ندارد. navigator.share عمداً کنار گذاشته
+     شد چون در ویندوز پنجرهٔ اشتراکِ سیستم را باز می‌کند که X در آن نیست. */
+  function messageLink(msg) {
+    if (!msg || typeof msg.id !== 'string' || !api || typeof api.letterUrl !== 'function') return null;
+    return api.letterUrl(msg.id) || null;
   }
 
-  function shareFallback(msg) {
-    copyText(msg.text).then(function () {
-      feedback('Sharing is unavailable \u2014 the message was copied instead.', true);
+  function onShare() {
+    if (!currentMessage) return;
+    var link = messageLink(currentMessage);
+    if (!link) { shareFallback(); return; }
+    var text = currentMessage.lang === 'fa' ? X_PANEL_TEXT_FA : X_PANEL_TEXT;
+    var url = X_INTENT + encodeURIComponent(text) + '&url=' + encodeURIComponent(link);
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e) {}
+  }
+
+  function shareFallback() {
+    if (!currentMessage) return;
+    copyText(currentMessage.text).then(function () {
+      feedback('This message has no public link yet \u2014 it was copied instead.', true);
     }, function () {
-      feedback('Could not share or copy \u2014 select the message text and copy it.', false);
+      feedback('Could not copy \u2014 select the message text and copy it.', false);
     });
   }
 
