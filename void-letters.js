@@ -36,7 +36,9 @@
   ];
 
   /* متن ثابتِ اشتراک‌گذاری در X — هرگز متن نامه در آن نیست. */
-  var X_LETTER_TEXT = 'I left a star in the galaxy. \u2728 Read it before it fades:';
+  var X_LETTER_TEXT = 'I left a star in the galaxy. \u2726 Read it before it fades:';
+  var X_LETTER_TEXT_FA = '\u0633\u062a\u0627\u0631\u0647\u200c\u0627\u06cc \u062f\u0631 \u06a9\u0647\u06a9\u0634\u0627\u0646 \u062c\u0627 \u06af\u0630\u0627\u0634\u062a\u0645. \u2726 \u062a\u0627 \u0645\u062d\u0648 \u0646\u0634\u062f\u0647 \u0628\u062e\u0648\u0627\u0646\u06cc\u062f\u0634:';
+  var X_INTENT = 'https://twitter.com/intent/tweet?text=';
 
   /* لایهٔ داده. مسیر production از API واقعی می‌خواند؛ مجموعهٔ آزمایشی فقط با
      فلگ صریح توسعه فعال است و هرگز با دادهٔ production مخلوط نمی‌شود. */
@@ -105,6 +107,7 @@
   var published = false;
   var shareUrl = null;
   var publishedBase = '';
+  var publishedLang = null;
   var sending = false;
   var guardOn = false;
   var pool = [];
@@ -249,12 +252,16 @@
       if (el.contains(e.target) || statsPanel.contains(e.target)) return;
       closeStats(false);
     }, true);
+    /* از این لحظه تنها سطح آمار همین دکمه است؛ ویجت قدیمی باید کنار برود،
+       حتی اگر داده‌اش پیش از ساخته‌شدنِ این دکمه رسیده باشد. */
+    try { if (typeof window.VoidCounterSync === 'function') window.VoidCounterSync(); } catch (e) {}
   }
 
   function showPill() {
     if (!el || pillShown) return;
     pillShown = true;
     el.hidden = false;
+    try { if (typeof window.VoidCounterSync === 'function') window.VoidCounterSync(); } catch (e) {}
     if (showFrame) cancelAnimationFrame(showFrame);
     showFrame = requestAnimationFrame(function () {
       showFrame = 0;
@@ -1144,6 +1151,7 @@
     published = false;
     shareUrl = null;
     publishedBase = '';
+    publishedLang = null;
     sending = false;
     ackEl.checked = false;
     noticeEl.hidden = true;
@@ -1166,9 +1174,9 @@
 
     var head = make('div', 'void-god-head');
     var titles = make('div', 'void-god-titles');
-    var h = make('h2', 'void-god-title', 'Message to God');
+    var h = make('h2', 'void-god-title', '\u2726 Message to Galaxy');
     h.id = 'void-god-title';
-    var fa = make('span', 'void-god-title-fa', 'نامه به خدا');
+    var fa = make('span', 'void-god-title-fa', '\u0646\u0627\u0645\u0647 \u0628\u0647 \u06a9\u0647\u06a9\u0634\u0627\u0646');
     fa.lang = 'fa';
     fa.dir = 'rtl';
     titles.appendChild(h);
@@ -1180,7 +1188,7 @@
     head.appendChild(x);
 
     var intro = make('p', 'void-god-intro',
-      'A letter becomes a small star in the galaxy: anonymous, public, and temporary. Write with care \u2014 once it leaves, it cannot be taken back.');
+      'Leave a thought among the stars. It becomes a small star in the galaxy: anonymous, public, and temporary. Write with care \u2014 once it leaves, it cannot be taken back.');
     intro.id = 'void-god-intro';
 
     var demo = make('p', 'void-god-demo', 'Your letter is stored anonymously on the public sky until it fades. Pressing Submit is final \u2014 it cannot be edited or deleted afterwards.');
@@ -1369,6 +1377,7 @@
   function onPublished(result) {
     published = true;
     shareUrl = null;
+    publishedLang = detectLang(composer.value);
     xShareBtn.disabled = true;
     xShareBtn.title = 'Sharing unlocks once the letter has its public page';
     xShareBtn.setAttribute('aria-label', 'Sharing is not available yet');
@@ -1416,11 +1425,11 @@
   }
 
   /* اشتراک در X: فقط با اقدام صریحِ کاربر و فقط پس از ثبت واقعی. متنِ ثابت است
-     و هرگز متن نامه را در بر نمی‌گیرد. */
+     و هرگز متن نامه را در بر نمی‌گیرد؛ فقط زبانِ نامه انتخابش می‌کند. */
   function onShareX() {
     if (!published || !shareUrl) return;
-    var url = 'https://x.com/intent/post?text=' + encodeURIComponent(X_LETTER_TEXT) +
-      '&url=' + encodeURIComponent(shareUrl);
+    var text = publishedLang === 'fa' ? X_LETTER_TEXT_FA : X_LETTER_TEXT;
+    var url = X_INTENT + encodeURIComponent(text) + '&url=' + encodeURIComponent(shareUrl);
     try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e) {}
   }
 
@@ -1435,8 +1444,8 @@
     quillBtn = make('button', 'void-god-quill');
     quillBtn.id = 'void-god-quill';
     quillBtn.type = 'button';
-    quillBtn.setAttribute('aria-label', 'Message to God');
-    quillBtn.setAttribute('title', 'Message to God');
+    quillBtn.setAttribute('aria-label', 'Message to Galaxy');
+    quillBtn.setAttribute('title', 'Message to Galaxy');
     quillBtn.setAttribute('aria-haspopup', 'dialog');
     quillBtn.setAttribute('aria-expanded', 'false');
     quillBtn.setAttribute('aria-controls', 'void-god-dialog');

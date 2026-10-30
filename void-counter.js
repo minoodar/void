@@ -51,9 +51,13 @@
         if (b && Date.now() - b.at < 300000 && (s = good(b.d))) return render(s);
         api('/stats').then(ok, noop);
       } else {
+        // The numbers must not depend on the write: a blocked or failed /hit
+        // (ad-blocker, offline, filtered) still falls through to GET /stats.
         api('/hit', JSON.stringify({ returning: !!st(VK, null, 1) })).then(function () {
           st(NK, '1');
           st(VK, '1', 1);
+          return api('/stats');
+        }, function () {
           return api('/stats');
         }).then(ok, noop);
       }
@@ -186,4 +190,7 @@
   }
 
   addEventListener('load', function () { requestAnimationFrame(start); });
+  // The unified stats pill asks for a re-sync once it exists; until then this
+  // widget may have been shown for music mode at boot.
+  window.VoidCounterSync = sync;
 })();

@@ -272,14 +272,14 @@
       return Promise.resolve({ status: 'not_found' });
     }
     return request(BASE + '/letters/' + id, { method: 'GET' }).then(function (res) {
-      var raw = res.status === 200 && res.data ? res.data.letter : null;
-      if (raw && raw.id === id && typeof raw.body === 'string') {
+      var raw = res.status === 200 && res.data ? res.data : null;
+      if (raw && raw.id === id && typeof raw.text === 'string') {
         return {
           status: 'ok',
           letter: {
             id: raw.id,
             lang: typeof raw.lang === 'string' ? raw.lang : null,
-            text: raw.body,
+            text: raw.text,
             created_at: num(raw.created_at),
             expires_at: num(raw.expires_at)
           }
