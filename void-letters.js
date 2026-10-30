@@ -36,7 +36,7 @@
   ];
 
   /* متن ثابتِ اشتراک‌گذاری در X — هرگز متن نامه در آن نیست. */
-  var X_SHARE_TEXT = 'I left a star in the galaxy. \u2728\n\nMaybe one day, if you click around the galaxy, you\u2019ll find my message.\n\nDiscover Void Galaxy Music: https://minoodar.github.io/void-galaxy-music/';
+  var X_LETTER_TEXT = 'I left a star in the galaxy. \u2728 Read it before it fades:';
 
   /* لایهٔ داده. مسیر production از API واقعی می‌خواند؛ مجموعهٔ آزمایشی فقط با
      فلگ صریح توسعه فعال است و هرگز با دادهٔ production مخلوط نمی‌شود. */
@@ -58,6 +58,18 @@
   var num = null;
   var hideTimer = 0;
   var showFrame = 0;
+  var statsPanel = null;
+  var statsRead = null;
+  var statsOpen = false;
+  var statsHoverTimer = 0;
+  var pillShown = false;
+  var visitorsN = null;
+  var rowVisitors = null;
+  var rowSessions = null;
+  var rowReturned = null;
+  var rowLetters = null;
+  var letterTotal = null;
+  var visitorTotal = null;
 
   var quillBtn = null;
   var galaxyLayer = null;
@@ -91,6 +103,8 @@
   var successEl = null;
   var xShareBtn = null;
   var published = false;
+  var shareUrl = null;
+  var publishedBase = '';
   var sending = false;
   var guardOn = false;
   var pool = [];
@@ -131,25 +145,209 @@
     return r.width > 1 && r.height > 1;
   }
 
-  /* ---- نشانگرِ پیام‌های فعال (فقط API؛ در این فاز همیشه پنهان است) ---- */
+  /* ---- تبلتِ آمار کهکشان: بازدیدکننده‌ها و نامه‌ها در یک جا ------------------
+     همان نشانگرِ پایین‌راست، ولی حالا دکمه‌ای است که هر دو عدد را نشان می‌دهد و
+     با کلیک/هاور پنلی کوچک باز می‌کند: افراد، سشن‌ها، درصد بازگشت و نامه‌های
+     فعال. داده‌ها همان‌هایی هستند که از قبل وجود دارند: void-counter.js آمار
+     بازدید را می‌گیرد و از طریق رویداد voidcounter:stats منتشر می‌کند، و
+     /letters/count تعداد نامه‌ها را می‌دهد. هیچ endpoint یا درخواست تازه‌ای
+     ساخته نمی‌شود. */
+  function fmt(n) {
+    return new Intl.NumberFormat('en-US').format(Math.max(0, Math.floor(Number(n) || 0)));
+  }
+
+  function statRow(label, value) {
+    var row = make('div', 'vm-gs-row');
+    var b = make('b', null, value);
+    row.appendChild(b);
+    row.appendChild(make('span', null, label));
+    return { row: row, value: b };
+  }
+
   function buildBadge(host) {
     if (el) return;
-    el = document.createElement('div');
-    el.id = 'void-galaxy-messages';
-    el.setAttribute('role', 'status');
-    el.setAttribute('aria-live', 'polite');
-    el.setAttribute('title', 'Galaxy messages');
+    el = document.createElement('button');
+    el.id = 'void-galaxy-stats';
+    el.className = 'vm-gs';
+    el.type = 'button';
     el.hidden = true;
-    var dot = make('span', 'vm-gm-dot');
+    el.setAttribute('aria-haspopup', 'dialog');
+    el.setAttribute('aria-expanded', 'false');
+    el.setAttribute('aria-controls', 'void-galaxy-stats-panel');
+    el.setAttribute('aria-label', 'Galaxy statistics');
+    el.setAttribute('title', 'Galaxy statistics');
+    var dot = make('span', 'vm-gs__dot');
     dot.setAttribute('aria-hidden', 'true');
-    num = make('span', 'vm-gm-n');
+    var people = make('span', 'vm-gs__fig');
+    visitorsN = make('span', 'vm-gs__n', '\u2014');
+    people.appendChild(visitorsN);
+    people.appendChild(make('span', 'vm-gs__l', 'explorers'));
+    var sep = make('span', 'vm-gs__sep');
+    sep.setAttribute('aria-hidden', 'true');
+    var letters = make('span', 'vm-gs__fig');
+    num = make('span', 'vm-gs__n', '\u2014');
+    letters.appendChild(num);
+    letters.appendChild(make('span', 'vm-gs__l', 'letters'));
     el.appendChild(dot);
-    el.appendChild(num);
+    el.appendChild(people);
+    el.appendChild(sep);
+    el.appendChild(letters);
     host.appendChild(el);
+
+    statsPanel = make('div', 'vm-gs-panel');
+    statsPanel.id = 'void-galaxy-stats-panel';
+    statsPanel.hidden = true;
+    statsPanel.setAttribute('role', 'dialog');
+    statsPanel.setAttribute('aria-modal', 'false');
+    statsPanel.setAttribute('aria-label', 'Galaxy statistics');
+    var r1 = statRow('explorers', '\u2014');
+    var r2 = statRow('sessions', '\u2014');
+    var r3 = statRow('returned', '\u2014');
+    var r4 = statRow('letters', '\u2014');
+    rowVisitors = r1.value;
+    rowSessions = r2.value;
+    rowReturned = r3.value;
+    rowLetters = r4.value;
+    statsPanel.appendChild(r1.row);
+    statsPanel.appendChild(r2.row);
+    statsPanel.appendChild(r3.row);
+    statsPanel.appendChild(r4.row);
+    statsRead = make('button', 'void-god-btn vm-gs-read', 'No letters yet');
+    statsRead.type = 'button';
+    statsRead.disabled = true;
+    statsPanel.appendChild(statsRead);
+    host.appendChild(statsPanel);
+
+    el.addEventListener('click', function () {
+      if (statsOpen) closeStats(false);
+      else openStats();
+    });
+    el.addEventListener('pointerenter', function (e) {
+      if (e.pointerType === 'touch') return;
+      clearTimeout(statsHoverTimer);
+      statsHoverTimer = setTimeout(openStats, 140);
+    });
+    el.addEventListener('pointerleave', function (e) {
+      if (e.pointerType === 'touch') return;
+      clearTimeout(statsHoverTimer);
+      statsHoverTimer = setTimeout(function () { closeStats(false); }, 1200);
+    });
+    statsPanel.addEventListener('pointerenter', function () {
+      clearTimeout(statsHoverTimer);
+    });
+    statsPanel.addEventListener('pointerleave', function (e) {
+      if (e.pointerType === 'touch') return;
+      clearTimeout(statsHoverTimer);
+      statsHoverTimer = setTimeout(function () { closeStats(false); }, 1200);
+    });
+    statsRead.addEventListener('click', readNewest);
+    window.addEventListener('resize', function () {
+      if (statsOpen) placeStats();
+    });
+    document.addEventListener('pointerdown', function (e) {
+      if (!statsOpen) return;
+      if (el.contains(e.target) || statsPanel.contains(e.target)) return;
+      closeStats(false);
+    }, true);
+  }
+
+  function showPill() {
+    if (!el || pillShown) return;
+    pillShown = true;
+    el.hidden = false;
+    if (showFrame) cancelAnimationFrame(showFrame);
+    showFrame = requestAnimationFrame(function () {
+      showFrame = 0;
+      if (el && !el.hidden) el.classList.add('is-on');
+    });
+  }
+
+  /* پنل آمار به دکمه می‌چسبد ولی جای‌گذاری‌اش مثل پنلِ نامه است: بین چند
+     کاندید، آن جایی انتخاب می‌شود که کمترین هم‌پوشانی با کنترل‌های صفحه
+     (ستون آیکن‌ها، قلم، گوشه‌ها، خودِ دکمه) را دارد. */
+  function placeStats() {
+    if (!statsPanel || !el) return;
+    var r = el.getBoundingClientRect();
+    var W = statsPanel.offsetWidth, H = statsPanel.offsetHeight;
+    var m = 10, gap = 8;
+    var maxLeft = Math.max(m, window.innerWidth - m - W);
+    var maxTop = Math.max(m, window.innerHeight - m - H);
+    var cands = [
+      { left: r.right - W, top: r.top - H - gap },
+      { left: r.right - W, top: r.bottom + gap },
+      { left: r.left, top: r.top - H - gap },
+      { left: r.left, top: r.bottom + gap },
+      { left: r.left - W - gap, top: r.bottom - H },
+      { left: r.right + gap, top: r.bottom - H }
+    ];
+    var obs = obstacleRects();
+    obs.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, weight: 10 });
+    var best = null, bestArea = Infinity, bestOff = Infinity;
+    for (var i = 0; i < cands.length; i++) {
+      var left = clamp(cands[i].left, m, maxLeft);
+      var top = clamp(cands[i].top, m, maxTop);
+      var rect = { left: left, top: top, right: left + W, bottom: top + H };
+      var area = 0;
+      for (var j = 0; j < obs.length; j++) area += overlapArea(rect, obs[j]);
+      var off = Math.abs(left - cands[i].left) + Math.abs(top - cands[i].top);
+      if (area < bestArea - 0.5 || (area <= bestArea + 0.5 && off < bestOff)) {
+        bestArea = area;
+        bestOff = off;
+        best = { left: left, top: top };
+      }
+    }
+    if (!best) best = { left: maxLeft, top: maxTop };
+    statsPanel.style.left = Math.round(best.left) + 'px';
+    statsPanel.style.top = Math.round(best.top) + 'px';
+  }
+
+  function openStats() {
+    if (!statsPanel || statsOpen) return;
+    statsOpen = true;
+    clearTimeout(statsHoverTimer);
+    clearTimeout(hideTimer);
+    statsPanel.hidden = false;
+    el.setAttribute('aria-expanded', 'true');
+    placeStats();
+    requestAnimationFrame(function () {
+      if (statsOpen && statsPanel) statsPanel.classList.add('is-on');
+    });
+    refreshCount();
+  }
+
+  function closeStats(focus) {
+    clearTimeout(statsHoverTimer);
+    if (!statsOpen) return;
+    statsOpen = false;
+    statsPanel.classList.remove('is-on');
+    el.setAttribute('aria-expanded', 'false');
+    setTimeout(function () {
+      if (!statsOpen && statsPanel) statsPanel.hidden = true;
+    }, 180);
+    if (focus) { try { el.focus({ preventScroll: true }); } catch (e) {} }
+  }
+
+  function holeCenter() {
+    try {
+      var V = window.VoidMusicViz && window.VoidMusicViz._test && window.VoidMusicViz._test.V;
+      if (V && V.ok && isFinite(V.cx) && isFinite(V.cy)) {
+        return { x: Number(V.cx), y: Number(V.cy) };
+      }
+    } catch (e) {}
+    return { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight * 0.45) };
+  }
+
+  function readNewest() {
+    if (!letterTotal) return;
+    closeStats(true);
+    var c = holeCenter();
+    openMessageAt(c.x, c.y);
   }
 
   function hide() {
     if (!el) return false;
+    pillShown = false;
+    closeStats(false);
     clearTimeout(hideTimer);
     if (showFrame) { cancelAnimationFrame(showFrame); showFrame = 0; }
     el.classList.remove('is-on');
@@ -163,18 +361,44 @@
     if (!mount()) return false;
     clearTimeout(hideTimer);
     n = Math.floor(Number(n));
-    if (!isFinite(n) || n < 1) return hide();          // صفر یا نامعتبر = هیچ‌چیز، نه «0»
-    num.textContent = new Intl.NumberFormat('en-US').format(n);
-    el.setAttribute('aria-label', 'Galaxy messages: ' + n + ' active');
-    if (el.hidden) {
-      el.hidden = false;
-      if (showFrame) cancelAnimationFrame(showFrame);
-      showFrame = requestAnimationFrame(function () {
-        showFrame = 0;
-        if (el && !el.hidden) el.classList.add('is-on');
-      });
+    var ok = isFinite(n) && n >= 0;
+    letterTotal = ok ? n : null;
+    num.textContent = ok ? fmt(n) : '\u2014';
+    if (rowLetters) rowLetters.textContent = num.textContent;
+    if (statsRead) {
+      var can = ok && n > 0;
+      statsRead.disabled = !can;
+      statsRead.textContent = can ? 'Read the newest letter' : 'No letters yet';
+      statsRead.title = can ? 'Open the newest letter' : 'The galaxy has no letters yet';
     }
+    el.setAttribute('aria-label', 'Galaxy statistics' +
+      (ok ? ': ' + n + (n === 1 ? ' letter' : ' letters') : ''));
+    showPill();
     return true;
+  }
+
+  function setVisitors(s) {
+    if (!s) return;
+    var u = Number(s.u), t = Number(s.t), r = Number(s.r);
+    if (!isFinite(u) || u < 0) return;
+    visitorTotal = u;
+    if (visitorsN) visitorsN.textContent = fmt(u);
+    if (rowVisitors) rowVisitors.textContent = fmt(u);
+    if (rowSessions) rowSessions.textContent = isFinite(t) && t >= 0 ? fmt(t) : '\u2014';
+    if (rowReturned) rowReturned.textContent = isFinite(r) ? Math.round(r) + '%' : '\u2014';
+    showPill();
+  }
+
+  /* آمار بازدید را void-counter.js می‌گیرد (با همان /hit و /stats همیشگی)؛
+     این‌جا فقط منتظرش می‌مانیم تا ویجتِ دوم ساخته نشود. */
+  function listenVisitors() {
+    window.addEventListener('voidcounter:stats', function (e) { setVisitors(e.detail); });
+    if (window.VoidCounterStats) { setVisitors(window.VoidCounterStats); return; }
+    var tries = 0;
+    (function poll() {
+      if (!window.VoidCounterStats && ++tries < 80) return setTimeout(poll, 250);
+      if (window.VoidCounterStats) setVisitors(window.VoidCounterStats);
+    })();
   }
 
   /* ---- شمارشِ نقطه‌های کد (نه واحدهای UTF-16) ---- */
@@ -594,6 +818,9 @@
     if (state === 'empty') {
       panelText.textContent = 'No letters in the galaxy yet.';
       panelMeta.textContent = 'Be the first to leave one \u2014 the quill is on the right.';
+    } else if (state === 'gone') {
+      panelText.textContent = 'This letter has faded.';
+      panelMeta.textContent = 'Shared letters disappear when their time runs out. The galaxy keeps the others.';
     } else if (state === 'error') {
       panelText.textContent = 'The galaxy is out of reach right now.';
       panelMeta.textContent = 'Could not load letters. The send form still works.';
@@ -716,7 +943,7 @@
     if (focus) { try { panel.focus({ preventScroll: true }); } catch (e) {} }
   }
 
-  function openMessageAt(x, y) {
+  function openMessageAt(x, y, load) {
     if (!ensureMounted()) return;
     clearScene();
     panelOpen = true;
@@ -726,8 +953,9 @@
     buildAnchorAt(starX, starY);
     layoutPanel(starX, starY, true);
     showPanelState('loading');
-    Promise.resolve().then(function () { return source.next(); }).then(function (msg) {
+    Promise.resolve().then(function () { return load ? load() : source.next(); }).then(function (msg) {
       if (!panelOpen) return;
+      if (msg && msg.state) { showPanelState(msg.state); layoutPanel(starX, starY, false); return; }
       if (!msg) { showPanelState('empty'); layoutPanel(starX, starY, false); return; }
       currentMessage = msg;
       renderMessage(msg);
@@ -736,6 +964,39 @@
       if (!panelOpen) return;
       showPanelState('error');
       layoutPanel(starX, starY, false);
+    });
+  }
+
+  /* اشتراک‌گذاری با لینک مستقیم: ?letter=<id> در آدرس صفحه. فقط شناسه‌ای که خودِ
+     API معتبر بداند پذیرفته می‌شود؛ نامهٔ منقضی همان «محو شده» را نشان می‌دهد. */
+  function sharedLetterId() {
+    if (source.kind !== 'api' || !api || typeof api.letterUrl !== 'function') return null;
+    var id = null;
+    try { id = new URLSearchParams(window.location.search).get('letter'); } catch (e) { id = null; }
+    return id && api.letterUrl(id) ? id : null;
+  }
+
+  function openSharedLetter(id) {
+    var c = holeCenter();
+    openMessageAt(c.x, c.y, function () {
+      return api.getLetter(id).then(function (res) {
+        if (res.status === 'ok') return res.letter;
+        if (res.status === 'not_found') return { state: 'gone' };
+        throw new Error('letter');
+      });
+    });
+  }
+
+  var deepLinkDone = false;
+
+  function openDeepLink() {
+    if (deepLinkDone) return;
+    var id = sharedLetterId();
+    if (!id) return;
+    deepLinkDone = true;
+    /* دو فریم صبر تا بوم و مرکز سیاه‌چاله جای خود را بگیرند. */
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { openSharedLetter(id); });
     });
   }
 
@@ -881,6 +1142,8 @@
     successEl.hidden = true;
     xShareBtn.disabled = true;
     published = false;
+    shareUrl = null;
+    publishedBase = '';
     sending = false;
     ackEl.checked = false;
     noticeEl.hidden = true;
@@ -998,7 +1261,7 @@
     xShareBtn.type = 'button';
     xShareBtn.id = 'void-god-x-share';
     xShareBtn.disabled = true;
-    xShareBtn.title = 'Sharing will be available when letters have public pages';
+    xShareBtn.title = 'Sharing unlocks once the letter has its public page';
     var done = make('button', 'void-god-btn void-god-btn--primary', 'Done');
     done.type = 'button';
     okFoot.appendChild(xShareBtn);
@@ -1105,16 +1368,16 @@
 
   function onPublished(result) {
     published = true;
-    /* No public per-letter route exists, so an id alone must not unlock a link. */
+    shareUrl = null;
     xShareBtn.disabled = true;
-    xShareBtn.title = 'Sharing will be available when letters have public pages';
+    xShareBtn.title = 'Sharing unlocks once the letter has its public page';
     xShareBtn.setAttribute('aria-label', 'Sharing is not available yet');
     successTitle.textContent = result.kind === 'recovered'
       ? 'This letter was already sent'
       : 'Your letter is in the galaxy';
-    successNote.textContent = (result.kind === 'recovered' ? 'It was saved earlier, so nothing new was added. ' : '') +
-      (result.expires_at ? 'It will fade ' + fadeInLabel(result.expires_at) + '. ' : '') +
-      'Sharing on X stays locked until letters have their own public pages.';
+    publishedBase = (result.kind === 'recovered' ? 'It was saved earlier, so nothing new was added. ' : '') +
+      (result.expires_at ? 'It will fade ' + fadeInLabel(result.expires_at) + '. ' : '');
+    shareNote(false);
     composeForm.classList.add('is-published');
     successEl.hidden = false;
     noticeEl.hidden = true;
@@ -1124,16 +1387,40 @@
     if (api) {
       feed = api.createFeed();
       feed.prefetch();
+      unlockShare(result.id);
     }
     updateState();
     try { successEl.focus({ preventScroll: true }); } catch (e) {}
   }
 
+  function shareNote(unlocked) {
+    successNote.textContent = publishedBase + (unlocked
+      ? 'Share it on X so someone can find it.'
+      : 'Sharing on X unlocks once the live service can serve this letter.');
+  }
+
+  /* لینک فقط وقتی باز می‌شود که خودِ سرویس همان نامه را با همین شناسه برگرداند.
+     ورکرِ منتشرنشده ۴۰۴ می‌دهد و دکمه قفل می‌ماند تا لینک مرده ساخته نشود. */
+  function unlockShare(id) {
+    if (!api || typeof api.getLetter !== 'function' || typeof api.letterUrl !== 'function') return;
+    var url = api.letterUrl(id);
+    if (!url) return;
+    api.getLetter(id).then(function (res) {
+      if (!published || res.status !== 'ok' || res.letter.id !== id) return;
+      shareUrl = url;
+      shareNote(true);
+      xShareBtn.disabled = false;
+      xShareBtn.title = 'Share this letter on X';
+      xShareBtn.setAttribute('aria-label', 'Share this letter on X');
+    }, function () {});
+  }
+
   /* اشتراک در X: فقط با اقدام صریحِ کاربر و فقط پس از ثبت واقعی. متنِ ثابت است
      و هرگز متن نامه را در بر نمی‌گیرد. */
   function onShareX() {
-    if (!published) return;
-    var url = 'https://x.com/intent/post?text=' + encodeURIComponent(X_SHARE_TEXT);
+    if (!published || !shareUrl) return;
+    var url = 'https://x.com/intent/post?text=' + encodeURIComponent(X_LETTER_TEXT) +
+      '&url=' + encodeURIComponent(shareUrl);
     try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e) {}
   }
 
@@ -1169,16 +1456,18 @@
     buildPanel(host);
     buildCompose(host);
     startRemote();
+    listenVisitors();
   }
 
   function onGuardKey(e) {
-    var open = (compose && compose.open) || panelOpen;
+    var open = (compose && compose.open) || panelOpen || statsOpen;
     if (!open) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
       if (compose && compose.open) closeCompose();
-      else closePanel({ dissolve: true, focus: true });
+      else if (panelOpen) closePanel({ dissolve: true, focus: true });
+      else closeStats(true);
       return;
     }
     /* Let the dialog own arrows/space (radios, buttons); only keep the player's
@@ -1219,10 +1508,11 @@
 
   function start() {
     bindKeys();
-    if (mount()) return;
+    if (mount()) { openDeepLink(); return; }
     var tries = 0;
     (function retry() {
-      if (mount() || ++tries > 120) return;            // ~۲ ثانیه صبر برای ساختِ ریشهٔ پلیر
+      if (mount()) { openDeepLink(); return; }
+      if (++tries > 120) return;            // ~۲ ثانیه صبر برای ساختِ ریشهٔ پلیر
       setTimeout(retry, 16);
     })();
   }

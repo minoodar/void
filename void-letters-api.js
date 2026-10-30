@@ -11,9 +11,11 @@
   var PENDING_KEY = 'voidLetters.pending.v1';
   var EXPIRY_VALUES = { '24h': true, '7d': true, '30d': true, '90d': true };
   var UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  /* The Worker exposes no public per-letter route, so no share URL may be
-     derived from an id. Kept as a single flag so the UI cannot invent one. */
-  var HAS_PUBLIC_LETTER_ROUTE = false;
+  var LETTER_ID_REGEX = /^[0-9a-f]{32}$/;
+  var SHARE_BASE = 'https://minoodar.github.io/void-galaxy-music/';
+  /* The Worker serves GET /letters/:id, so a shared link can be built from an
+     id. Only ids that match the Worker's own format are ever turned into URLs. */
+  var HAS_PUBLIC_LETTER_ROUTE = true;
 
   function storage() {
     try { return global.sessionStorage || null; } catch (e) { return null; }
@@ -263,8 +265,37 @@
     }, function () { return null; });
   }
 
-  function letterUrl() {
-    return null;
+  /* Single letter behind a share link. An expired or unknown id is the same
+     not_found, exactly like the Worker. Malformed ids never leave the browser. */
+  function getLetter(id) {
+    if (typeof id !== 'string' || !LETTER_ID_REGEX.test(id)) {
+      return Promise.resolve({ status: 'not_found' });
+    }
+    return request(BASE + '/letters/' + id, { method: 'GET' }).then(function (res) {
+      var raw = res.status === 200 && res.data ? res.data.letter : null;
+      if (raw && raw.id === id && typeof raw.body === 'string') {
+        return {
+          status: 'ok',
+          letter: {
+            id: raw.id,
+            lang: typeof raw.lang === 'string' ? raw.lang : null,
+            text: raw.body,
+            created_at: num(raw.created_at),
+            expires_at: num(raw.expires_at)
+          }
+        };
+      }
+      if (res.status === 404) return { status: 'not_found' };
+      return { status: 'error' };
+    }, function () {
+      return { status: 'error' };
+    });
+  }
+
+  function letterUrl(id) {
+    if (!HAS_PUBLIC_LETTER_ROUTE) return null;
+    if (typeof id !== 'string' || !LETTER_ID_REGEX.test(id)) return null;
+    return SHARE_BASE + '?letter=' + id;
   }
 
   global.VoidLettersApi = {
@@ -278,6 +309,7 @@
     loadPending: loadPending,
     createFeed: createFeed,
     count: count,
+    getLetter: getLetter,
     letterUrl: letterUrl
   };
 })(typeof window !== 'undefined' ? window : globalThis);

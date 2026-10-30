@@ -153,9 +153,25 @@
     data = s;
     pending = !rm;
     paint(rm ? s.u : 0, rm ? s.t : 0, s.r);
+    publish();
     sync();
   }
+  // The site shows one stats surface; void-letters.js renders it and listens here.
+  function publish() {
+    if (!data) return;
+    var payload = { u: data.u, t: data.t, r: data.r };
+    window.VoidCounterStats = payload;
+    try {
+      dispatchEvent(new CustomEvent('voidcounter:stats', { detail: payload }));
+    } catch (e) {}
+  }
   function sync() {
+    if (document.getElementById('void-galaxy-stats')) {
+      closeP();
+      root.hidden = 1;
+      cl.remove('is-on');
+      return;
+    }
     if (data && document.body.classList.contains('void-music-on')) {
       if (root.hidden) {
         root.hidden = 0;

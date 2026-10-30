@@ -4,14 +4,17 @@
    و نه sweep() آن را پنهان کند. هیچ وابستگی بیرونی و هیچ انیمیشنِ اجباری ندارد.
    ====================================================================== */
 
-/* ---- نشانگرِ پیام‌های فعال ---- */
-#void-galaxy-messages {
+/* ---- تبلتِ آمار کهکشان: بازدیدکننده‌ها و نامه‌ها در یک جا ----
+   یک دکمهٔ کوچک پایین‌راست که هر دو عدد را نشان می‌دهد؛ پنلش با جاوااسکریپت
+   نسبت به همان دکمه جای‌گذاری می‌شود تا در هیچ viewportی روی کنترل‌ها نیفتد. */
+#void-galaxy-stats {
     position: fixed;
     z-index: 3;
     right: max(14px, env(safe-area-inset-right, 0px));
     bottom: max(14px, env(safe-area-inset-bottom, 0px));
-    display: flex; align-items: center; gap: 7px;
-    padding: 5px 9px 5px 8px;
+    display: flex; align-items: center; gap: 8px;
+    margin: 0;
+    padding: 6px 11px 6px 9px;
     border: 1px solid rgba(235, 240, 245, .18);
     border-radius: 999px;
     background: rgba(8, 10, 14, .42);
@@ -20,25 +23,70 @@
     box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
     color: rgba(235, 240, 245, .78);
     font: 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    letter-spacing: .04em;
     font-variant-numeric: tabular-nums;
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: pointer;
     user-select: none; -webkit-user-select: none;
     opacity: 0; visibility: hidden; transform: translateY(4px) scale(.96);
     transition: opacity .35s ease, transform .4s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .4s;
 }
-#void-galaxy-messages[hidden] { display: none; }
-#void-galaxy-messages.is-on { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+#void-galaxy-stats[hidden] { display: none; }
+#void-galaxy-stats.is-on { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+#void-galaxy-stats:focus-visible { outline: 2px solid rgba(220, 230, 240, .85); outline-offset: 3px; }
 
-.vm-gm-dot {
+.vm-gs__dot {
     width: 6px; height: 6px; flex: none; border-radius: 50%;
     background: rgba(251, 191, 36, .85);
     box-shadow: 0 0 7px rgba(251, 191, 36, .32);
 }
-.vm-gm-n { font-size: 11.5px; font-weight: 600; color: rgba(250, 252, 255, .92); }
+.vm-gs__fig { display: flex; align-items: baseline; gap: 4px; }
+.vm-gs__n { font-size: 11.5px; font-weight: 600; color: rgba(250, 252, 255, .92); }
+.vm-gs__l {
+    font-size: 9px; letter-spacing: .09em; text-transform: uppercase;
+    color: rgba(235, 240, 245, .55);
+}
+.vm-gs__sep { width: 1px; height: 11px; flex: none; background: rgba(235, 240, 245, .18); }
 
-/* حالت quiet: رابط خودکار محو می‌شود؛ نشانگر کم‌نور می‌شود، ولی ناپدید نمی‌شود */
-body.vm-quiet #void-galaxy-messages { opacity: .5; }
+#void-galaxy-stats-panel {
+    position: fixed;
+    left: 0; top: 0;
+    z-index: 3;
+    box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 7px;
+    width: min(248px, calc(100vw - 20px));
+    padding: 12px 13px 11px;
+    border: 1px solid rgba(235, 240, 245, .16);
+    border-radius: 14px;
+    background:
+        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .07), transparent 62%),
+        rgba(9, 12, 18, .93);
+    -webkit-backdrop-filter: blur(14px) saturate(115%);
+            backdrop-filter: blur(14px) saturate(115%);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .62), 0 0 0 1px rgba(0, 0, 0, .3);
+    color: rgba(250, 252, 255, .94);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    pointer-events: auto;
+    opacity: 0; visibility: hidden; transform: translateY(4px) scale(.99);
+    transition: opacity .2s ease, transform .26s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .26s;
+}
+#void-galaxy-stats-panel[hidden] { display: none; }
+#void-galaxy-stats-panel.is-on {
+    opacity: 1; visibility: visible; transform: none; transition-delay: 0s;
+}
+
+.vm-gs-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.vm-gs-row b {
+    font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+    color: rgba(250, 252, 255, .96);
+}
+.vm-gs-row span {
+    font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
+    color: rgba(235, 240, 245, .55);
+}
+.vm-gs-read { margin-top: 3px; width: 100%; }
+
+/* حالت quiet: رابط خودکار محو می‌شود؛ تبلت کم‌نور می‌شود، ولی ناپدید نمی‌شود */
+body.vm-quiet #void-galaxy-stats { opacity: .5; }
 
 /* ---- دکمهٔ دایره‌ایِ «نامه به خدا» ----
    همان هندسه و جنسِ دکمه‌های دایره‌ایِ پخش (۴۴px، شیشهٔ ۴۲٪، حاشیهٔ .20، blur 10px)
@@ -573,15 +621,8 @@ body.vm-quiet .void-god-text,
 body.vm-quiet .void-god-msg-text { cursor: text !important; }
 body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
 
-@media (max-width: 1039px) {
-    #void-galaxy-messages {
-        right: auto; bottom: auto;
-        left: max(8px, env(safe-area-inset-left, 0px));
-        top: calc(env(safe-area-inset-top, 0px) + 60px);
-    }
-}
-
 @media (max-width: 520px) {
+    .vm-gs__l { display: none; }
     #void-god-dialog { width: calc(100vw - 20px); max-height: 90vh; max-height: 90dvh; }
     /* The site rail keeps its 44px column at the middle-right on these widths;
        ending the panel before it keeps every action button clear of the icons. */
@@ -626,7 +667,8 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #void-galaxy-messages { transition: none; }
+    #void-galaxy-stats { transition: none; }
+    #void-galaxy-stats-panel { transition: none; }
     #void-god-dialog[open] { animation: none; }
     #void-god-anchor,
     #void-god-anchor.is-closing,
