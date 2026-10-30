@@ -14,15 +14,16 @@ More than a music experience, it is the beginning of a universe built around fre
 
 ## ✨ Features
 
-- **Cosmic Audio Experience:** Ambient music playback paired with dynamic, lightweight galactic visuals.
-- **"Message to God / The Void":** A minimalist letter submission system where users cast thoughts into the cosmos with a gradual 90-day fade effect.
-- **Secure X (Twitter) Sharing:** Public single-letter retrieval and deep-linking support (`?letter=<id>`) with verified cryptographic validation.
-- **Live Cosmos Statistics:** Real-time counters showing active universe explorers and preserved letters.
-- **Edge Infrastructure:** Built on Cloudflare Workers and Cloudflare D1 distributed database for ultra-fast, zero-latency interactions globally.
-- **Unified Control Panel:** Dedicated dashboard for dynamic music management and galaxy moderation.
-
----
-
+- 🌌 **Interactive Cosmic Universe:** An immersive digital galaxy that transforms the experience of exploring the web into a visual journey through space.
+- 🎵 **Immersive Music Experience:** Ambient music paired with dynamic galactic visuals, blending sound, motion, and atmosphere into a unified experience.
+- 💌 **Anonymous Cosmic Letters:** Send thoughts and messages into the universe without making personal identity the focus of expression.
+- ⭐ **A Universe of Shared Thoughts:** Discover the idea of a shared digital space where individual messages become part of a larger cosmic experience.
+- ⏳ **Time-Based Message Lifecycle:** Letters gradually fade over a 90-day period, giving each message a temporary presence in the universe.
+- 🔗 **Shareable Letters:** Share individual letters through unique links, making selected messages accessible beyond the original experience.
+- 📡 **Live Universe Statistics:** Real-time counters offer a glimpse into activity across the evolving universe.
+- ☁️ **Cloud-Powered Infrastructure:** Cloudflare Workers and D1 support the platform's server-side logic and data storage.
+- 🛠️ **Unified Control Panel:** Dedicated tools for managing music content and moderating the cosmic experience.
+- 🚀 **A Vision Beyond Music:** The foundation for a new approach to anonymous social networking, where expression and human connection matter more than public identity.
 ## 💖 Support & Contribute
 
 As an independent developer maintaining and expanding this universe, your support helps keep the servers running and new features rolling out.
