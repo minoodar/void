@@ -51,3 +51,21 @@ CREATE TABLE IF NOT EXISTS letter_limits (
 );
 
 CREATE INDEX IF NOT EXISTS idx_letter_limits_bucket ON letter_limits(bucket);
+
+-- Playlist tracks managed by the admin dashboard. Public GET /tracks is read-only.
+-- Keep this table structural here; the 2026-10-30-admin-tracks migration seeds
+-- the original Golden Folder playlist exactly once.
+CREATE TABLE IF NOT EXISTS tracks (
+  id          TEXT PRIMARY KEY,              -- admin-created 32-hex id, or seeded slug
+  title       TEXT NOT NULL,
+  artist      TEXT NOT NULL DEFAULT '',
+  audio_url   TEXT NOT NULL,                 -- absolute https URL or same-site relative path
+  artwork_url TEXT DEFAULT NULL,             -- optional custom cover
+  duration    INTEGER DEFAULT NULL,          -- seconds, NULL when unknown
+  tags        TEXT NOT NULL DEFAULT '[]',    -- JSON array of lowercase tags
+  position    INTEGER NOT NULL DEFAULT 0,    -- playlist order, ascending
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tracks_position ON tracks(position);

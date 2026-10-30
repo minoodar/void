@@ -16,10 +16,21 @@ const DAY_SEC = 86400;
 // Idempotency is kept for the longest possible letter lifetime (90d).
 const SUBMISSION_RETENTION_SEC = 7776000;
 const MAX_BODY_BYTES = 4096;
+const MAX_TRACK_BODY_BYTES = 8192;
 const DEFAULT_PAGE = 20;
 const MAX_PAGE = 50;
+const MAX_ADMIN_PAGE = 500;
+const MAX_TRACKS = 200;
 const PRUNE_PER_RUN = 25;
 const DEV_SALT = 'DEV_FALLBACK_SALT_DO_NOT_USE_IN_PROD';
+const RESET_CONFIRMATION = 'RESET GALAXY';
+const TRACK_ID_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const LETTER_SORTS = Object.freeze({
+  seq: 'seq',
+  created: 'created_at',
+  expires: 'expires_at',
+  id: 'id'
+});
 
 const TTL_MAP = Object.freeze({
   '24h': 86400,
@@ -66,11 +77,42 @@ export default {
       if (url.pathname === '/letters' && request.method === 'POST') {
         return await createLetter(request, env, cors);
       }
-      if (url.pathname === '/admin/letters' && request.method === 'GET') {
-        return await adminListLetters(url, env, cors, request);
+      if (url.pathname === '/tracks' && request.method === 'GET') {
+        return await listTracks(env, cors, false);
       }
-      if (url.pathname === '/admin/letters/clear' && request.method === 'POST') {
-        return await adminClearLetters(request, env, cors);
+
+      // One guard for every management route: no handler below can forget auth.
+      if (url.pathname.startsWith('/admin/')) {
+        const headers = adminHeaders(cors);
+        const auth = await adminAuthorized(request, env);
+        if (!auth.ok) {
+          return json({ ok: false, error: auth.status === 503 ? 'unavailable' : 'forbidden' }, auth.status, headers);
+        }
+        if (url.pathname === '/admin/session' && request.method === 'GET') {
+          return json({ ok: true, service: 'void-galaxy-letters' }, 200, headers);
+        }
+        if (url.pathname === '/admin/letters' && request.method === 'GET') {
+          return await adminListLetters(url, env, cors);
+        }
+        if (url.pathname === '/admin/letters/clear' && request.method === 'POST') {
+          return await adminClearLetters(request, env, cors);
+        }
+        if (url.pathname.startsWith('/admin/letters/') && request.method === 'DELETE') {
+          return await adminDeleteLetter(url.pathname.slice('/admin/letters/'.length), env, cors);
+        }
+        if (url.pathname === '/admin/tracks' && request.method === 'GET') {
+          return await listTracks(env, cors, true);
+        }
+        if (url.pathname === '/admin/tracks' && request.method === 'POST') {
+          return await createTrack(request, env, cors);
+        }
+        if (url.pathname === '/admin/tracks/reorder' && request.method === 'POST') {
+          return await reorderTracks(request, env, cors);
+        }
+        if (url.pathname.startsWith('/admin/tracks/') && (request.method === 'PUT' || request.method === 'DELETE')) {
+          return await mutateTrack(url.pathname.slice('/admin/tracks/'.length), request, env, cors);
+        }
+        return json({ ok: false, error: 'not_found' }, 404, headers);
       }
       return json({ ok: false, error: 'not_found' }, 404, cors.headers);
     } catch (e) {
@@ -89,7 +131,7 @@ function corsFor(origin, env) {
   const headers = { Vary: 'Origin' };
   if (allowed) {
     headers['Access-Control-Allow-Origin'] = origin;
-    headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
+    headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
     headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
     headers['Access-Control-Max-Age'] = '86400';
   }
@@ -200,9 +242,10 @@ export function validatePayload(payload) {
   };
 }
 
-async function readJsonBody(request) {
+async function readJsonBody(request, maxBytes) {
+  const max = maxBytes || MAX_BODY_BYTES;
   const declared = Number(request.headers.get('content-length') || 0);
-  if (declared > MAX_BODY_BYTES) {
+  if (declared > max) {
     return { ok: false, status: 413, error: 'payload_too_large' };
   }
   let raw;
@@ -211,7 +254,7 @@ async function readJsonBody(request) {
   } catch (e) {
     return { ok: false, status: 400, error: 'invalid_json' };
   }
-  if (raw.length > MAX_BODY_BYTES) {
+  if (raw.length > max) {
     return { ok: false, status: 413, error: 'payload_too_large' };
   }
   try {
@@ -514,52 +557,140 @@ async function countLetters(env, cors) {
   );
 }
 
-async function adminListLetters(url, env, cors, request) {
+function adminQueryError(headers) {
+  return json({ ok: false, error: 'invalid_query' }, 400, headers);
+}
+
+// Admin listing keeps the original `before` seq cursor (used by the existing
+// contract) and adds page-based mode whenever a sort column is requested.
+// Filters and totals are identical in both modes; nothing is ever pruned here.
+async function adminListLetters(url, env, cors) {
   const headers = adminHeaders(cors);
   if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
 
-  const auth = await adminAuthorized(request, env);
-  if (!auth.ok) {
-    return json({ ok: false, error: auth.status === 503 ? 'unavailable' : 'forbidden' }, auth.status, headers);
-  }
-
   const rawLimit = url.searchParams.get('limit');
-  let limit = -1; // SQLite: negative LIMIT means no limit.
+  let limit = DEFAULT_PAGE;
   if (rawLimit !== null && rawLimit !== '') {
-    if (!/^\d+$/.test(rawLimit)) return json({ ok: false, error: 'invalid_query' }, 400, headers);
+    if (!/^\d+$/.test(rawLimit)) return adminQueryError(headers);
     const n = parseInt(rawLimit, 10);
-    if (!Number.isFinite(n) || n < 1) return json({ ok: false, error: 'invalid_query' }, 400, headers);
-    limit = Math.min(n, 1000);
+    if (!Number.isFinite(n) || n < 1) return adminQueryError(headers);
+    limit = Math.min(n, MAX_ADMIN_PAGE);
   }
+
+  const rawPage = url.searchParams.get('page');
+  let page = 0;
+  if (rawPage !== null && rawPage !== '') {
+    if (!/^\d+$/.test(rawPage)) return adminQueryError(headers);
+    page = parseInt(rawPage, 10);
+    if (!Number.isFinite(page) || page > 100000) return adminQueryError(headers);
+  }
+
   const before = parseCursor(url.searchParams.get('before'));
-  if (before === undefined) return json({ ok: false, error: 'invalid_query' }, 400, headers);
+  if (before === undefined) return adminQueryError(headers);
 
-  // Admin sees every row, including expired letters; nothing is pruned here.
-  const result = before === null
-    ? await env.DB.prepare(
-        'SELECT seq, id, body, lang, created_at, expires_at FROM letters ' +
-        'ORDER BY seq DESC LIMIT ?'
-      ).bind(limit).all()
-    : await env.DB.prepare(
-        'SELECT seq, id, body, lang, created_at, expires_at FROM letters ' +
-        'WHERE seq < ? ORDER BY seq DESC LIMIT ?'
-      ).bind(before, limit).all();
+  const rawSort = url.searchParams.get('sort');
+  const sortColumn = rawSort ? LETTER_SORTS[rawSort] : null;
+  if (rawSort && !sortColumn) return adminQueryError(headers);
+  const rawOrder = url.searchParams.get('order');
+  if (rawOrder && rawOrder !== 'asc' && rawOrder !== 'desc') return adminQueryError(headers);
+  const order = rawOrder === 'asc' ? 'ASC' : 'DESC';
 
-  const letters = (result && result.results) || [];
-  const nextBefore = limit > 0 && letters.length === limit
-    ? Number(letters[letters.length - 1].seq)
-    : null;
-  return json({ ok: true, letters, next_before: nextBefore }, 200, headers);
+  const q = (url.searchParams.get('q') || '').trim();
+  if (q.length > 120 || CONTROL_OR_BIDI_REGEX.test(q)) return adminQueryError(headers);
+
+  const lang = (url.searchParams.get('lang') || '').trim().toLowerCase();
+  if (lang && !/^[a-z]{2,3}(-[a-z0-9]{2,4})?$/.test(lang)) return adminQueryError(headers);
+
+  const status = url.searchParams.get('status');
+  if (status && status !== 'all' && status !== 'active' && status !== 'expired') {
+    return adminQueryError(headers);
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const where = [];
+  const args = [];
+  if (q) {
+    if (LETTER_ID_REGEX.test(q)) {
+      where.push('id = ?');
+      args.push(q);
+    } else {
+      where.push("body LIKE ? ESCAPE '\\'");
+      args.push('%' + q.replace(/[\\%_]/g, '\\$&') + '%');
+    }
+  }
+  if (lang) { where.push('lang = ?'); args.push(lang); }
+  if (status === 'active') { where.push('expires_at > ?'); args.push(now); }
+  else if (status === 'expired') { where.push('expires_at <= ?'); args.push(now); }
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+
+  const totalRow = await env.DB.prepare('SELECT COUNT(*) AS total FROM letters' + whereSql)
+    .bind(...args).first();
+  const total = Number(totalRow && totalRow.total) || 0;
+
+  const columns = 'SELECT seq, id, body, lang, created_at, expires_at FROM letters';
+  let rows = [];
+  let offset = 0;
+  let nextBefore = null;
+
+  if (sortColumn) {
+    const maxPage = total > 0 ? Math.floor((total - 1) / limit) : 0;
+    page = Math.min(page, maxPage);
+    offset = page * limit;
+    const result = await env.DB.prepare(
+      columns + whereSql + ' ORDER BY ' + sortColumn + ' ' + order + ', seq ' + order + ' LIMIT ? OFFSET ?'
+    ).bind(...args, limit, offset).all();
+    rows = (result && result.results) || [];
+  } else if (before === null) {
+    const result = await env.DB.prepare(columns + whereSql + ' ORDER BY seq DESC LIMIT ?')
+      .bind(...args, limit).all();
+    rows = (result && result.results) || [];
+  } else {
+    const seqWhere = where.length ? whereSql + ' AND seq < ?' : ' WHERE seq < ?';
+    const result = await env.DB.prepare(columns + seqWhere + ' ORDER BY seq DESC LIMIT ?')
+      .bind(...args, before, limit).all();
+    rows = (result && result.results) || [];
+  }
+
+  if (!sortColumn && rows.length === limit) nextBefore = Number(rows[rows.length - 1].seq);
+
+  const letters = rows.map(row => Object.assign({}, row, {
+    status: Number(row.expires_at) > now ? 'active' : 'expired'
+  }));
+
+  return json({
+    ok: true,
+    letters,
+    next_before: nextBefore,
+    total,
+    page: sortColumn ? page : null,
+    limit,
+    has_more: sortColumn ? offset + letters.length < total : nextBefore !== null
+  }, 200, headers);
+}
+
+async function adminDeleteLetter(rawId, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+  if (!LETTER_ID_REGEX.test(rawId)) return json({ ok: false, error: 'not_found' }, 404, headers);
+
+  const results = await env.DB.batch([
+    env.DB.prepare('DELETE FROM letters WHERE id = ?').bind(rawId),
+    env.DB.prepare('DELETE FROM letter_submissions WHERE letter_id = ?').bind(rawId),
+    env.DB.prepare('DELETE FROM letter_senders WHERE letter_id = ?').bind(rawId)
+  ]);
+
+  return json({
+    ok: true,
+    id: rawId,
+    deleted: changesOf(results[0]),
+    submissions_cleared: changesOf(results[1]),
+    legacy_claims_cleared: changesOf(results[2])
+  }, 200, headers);
 }
 
 async function adminClearLetters(request, env, cors) {
   const headers = adminHeaders(cors);
   if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
-
-  const auth = await adminAuthorized(request, env);
-  if (!auth.ok) {
-    return json({ ok: false, error: auth.status === 503 ? 'unavailable' : 'forbidden' }, auth.status, headers);
-  }
 
   const salt = resolveSalt(env);
   if (!salt) return json({ ok: false, error: 'unavailable' }, 503, headers);
@@ -569,6 +700,28 @@ async function adminClearLetters(request, env, cors) {
   const payload = body.value;
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return json({ ok: false, error: 'invalid_body' }, 400, headers);
+  }
+
+  // Nuclear reset: every letter-side row goes. Global hourly buckets stay, so
+  // clearing the galaxy does not also remove the service-wide abuse ceiling.
+  if (payload.all === true) {
+    if (payload.confirm !== RESET_CONFIRMATION) {
+      return json({ ok: false, error: 'confirmation_required' }, 400, headers);
+    }
+    const results = await env.DB.batch([
+      env.DB.prepare('DELETE FROM letters'),
+      env.DB.prepare('DELETE FROM letter_submissions'),
+      env.DB.prepare('DELETE FROM letter_senders'),
+      env.DB.prepare("DELETE FROM letter_limits WHERE scope <> 'global'")
+    ]);
+    return json({
+      ok: true,
+      mode: 'all',
+      letters_deleted: changesOf(results[0]),
+      submissions_cleared: changesOf(results[1]),
+      legacy_claims_cleared: changesOf(results[2]),
+      sender_limits_cleared: changesOf(results[3])
+    }, 200, headers);
   }
 
   const ip = typeof payload.ip === 'string' ? payload.ip.trim() : '';
@@ -606,4 +759,322 @@ async function adminClearLetters(request, env, cors) {
     legacy_claims_cleared: changesOf(results[offset + 1]),
     limits_cleared: changesOf(results[offset + 2])
   }, 200, headers);
+}
+
+/* ------------------------------------------------------------------ */
+/* Playlist tracks                                                      */
+/* ------------------------------------------------------------------ */
+
+function isMissingTracksTable(error) {
+  return /no such table:\s*tracks\b/i.test(String((error && error.message) || error || ''));
+}
+
+function parseTrackTags(raw) {
+  try {
+    const value = JSON.parse(raw || '[]');
+    return Array.isArray(value) ? value.filter(tag => typeof tag === 'string') : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function trackFromRow(row, includeMeta) {
+  const track = {
+    id: row.id,
+    title: row.title,
+    artist: row.artist || '',
+    audio_url: row.audio_url,
+    artwork_url: row.artwork_url || null,
+    duration: row.duration === null || row.duration === undefined ? null : Number(row.duration),
+    tags: parseTrackTags(row.tags),
+    position: Number(row.position)
+  };
+  if (includeMeta) {
+    track.created_at = Number(row.created_at);
+    track.updated_at = Number(row.updated_at);
+  }
+  return track;
+}
+
+function trackRows(result) {
+  return ((result && result.results) || []).map(row => trackFromRow(row, true));
+}
+
+async function listTracks(env, cors, admin) {
+  const headers = admin
+    ? adminHeaders(cors)
+    : Object.assign({ 'Cache-Control': 'public, max-age=60' }, cors.headers);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+
+  try {
+    const result = await env.DB.prepare(
+      'SELECT id, title, artist, audio_url, artwork_url, duration, tags, position, created_at, updated_at ' +
+      'FROM tracks ORDER BY position ASC, id ASC'
+    ).all();
+    const tracks = trackRows(result).map(track => admin ? track : {
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      audio_url: track.audio_url,
+      artwork_url: track.artwork_url,
+      duration: track.duration,
+      tags: track.tags,
+      position: track.position
+    });
+    return json({ ok: true, tracks }, 200, headers);
+  } catch (e) {
+    if (isMissingTracksTable(e)) {
+      return json({ ok: false, error: 'tracks_unavailable' }, 503, headers);
+    }
+    throw e;
+  }
+}
+
+function validText(value, field, max) {
+  if (typeof value !== 'string') return { ok: false, error: field + '_invalid' };
+  const clean = value.normalize('NFC').trim();
+  if (!clean) return { ok: false, error: field + '_required' };
+  if (clean.length > max) return { ok: false, error: field + '_too_long' };
+  if (CONTROL_OR_BIDI_REGEX.test(clean)) return { ok: false, error: field + '_invalid' };
+  return { ok: true, value: clean };
+}
+
+function optionalText(value, field, max) {
+  if (value === undefined || value === null || value === '') return { ok: true, value: '' };
+  if (typeof value !== 'string') return { ok: false, error: field + '_invalid' };
+  const clean = value.normalize('NFC').trim();
+  if (!clean) return { ok: true, value: '' };
+  if (clean.length > max) return { ok: false, error: field + '_too_long' };
+  if (CONTROL_OR_BIDI_REGEX.test(clean)) return { ok: false, error: field + '_invalid' };
+  return { ok: true, value: clean };
+}
+
+// Absolute http(s) URLs or same-origin relative paths. The Worker never calls
+// these URLs; the browser does, so schemes that execute code are refused.
+function validMediaUrl(value, field, required) {
+  if (value === undefined || value === null || value === '') {
+    return required ? { ok: false, error: field + '_required' } : { ok: true, value: null };
+  }
+  if (typeof value !== 'string') return { ok: false, error: field + '_invalid' };
+  const clean = value.trim();
+  if (!clean || clean.length > 2048) return { ok: false, error: field + '_invalid' };
+  if (/[\u0000-\u001F\u007F]/.test(clean)) return { ok: false, error: field + '_invalid' };
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(clean)) {
+    let parsed;
+    try { parsed = new URL(clean); } catch (e) { return { ok: false, error: field + '_invalid' }; }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return { ok: false, error: field + '_invalid' };
+    }
+    if (parsed.username || parsed.password) return { ok: false, error: field + '_invalid' };
+    return { ok: true, value: clean };
+  }
+  if (clean.startsWith('//')) return { ok: false, error: field + '_invalid' };
+  if (!/^[A-Za-z0-9._~!$&'()*+,;=:@%\/?#-]+$/.test(clean)) {
+    return { ok: false, error: field + '_invalid' };
+  }
+  return { ok: true, value: clean };
+}
+
+function validDuration(value) {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  let total = null;
+  if (typeof value === 'number') {
+    total = value;
+  } else if (typeof value === 'string') {
+    const raw = value.trim();
+    if (/^\d+$/.test(raw)) total = Number(raw);
+    else {
+      const parts = /^(\d{1,3}):([0-5]\d)$/.exec(raw);
+      if (!parts) return { ok: false, error: 'duration_invalid' };
+      total = Number(parts[1]) * 60 + Number(parts[2]);
+    }
+  }
+  if (!Number.isInteger(total) || total < 0 || total > 359999) {
+    return { ok: false, error: 'duration_invalid' };
+  }
+  return { ok: true, value: total };
+}
+
+function validTags(value) {
+  if (value === undefined || value === null || value === '') return { ok: true, value: [] };
+  let list;
+  if (Array.isArray(value)) list = value;
+  else if (typeof value === 'string') list = value.split(',');
+  else return { ok: false, error: 'tags_invalid' };
+
+  const tags = [];
+  for (const item of list) {
+    if (typeof item !== 'string') return { ok: false, error: 'tags_invalid' };
+    const tag = item.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+    if (!tag) continue;
+    if (tag.length > 24 || CONTROL_OR_BIDI_REGEX.test(tag)) {
+      return { ok: false, error: 'tags_invalid' };
+    }
+    if (tags.indexOf(tag) < 0) tags.push(tag);
+    if (tags.length > 12) return { ok: false, error: 'tags_invalid' };
+  }
+  return { ok: true, value: tags };
+}
+
+function buildTrackPayload(raw, existing) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'invalid_body' };
+  }
+  const base = existing ? trackFromRow(existing, false) : {};
+  const pick = key => Object.prototype.hasOwnProperty.call(raw, key) ? raw[key] : base[key];
+
+  const title = validText(pick('title'), 'title', 160);
+  if (!title.ok) return title;
+  const artist = optionalText(pick('artist'), 'artist', 160);
+  if (!artist.ok) return artist;
+  const audio = validMediaUrl(pick('audio_url'), 'audio_url', true);
+  if (!audio.ok) return audio;
+  const artwork = validMediaUrl(pick('artwork_url'), 'artwork_url', false);
+  if (!artwork.ok) return artwork;
+  const duration = validDuration(pick('duration'));
+  if (!duration.ok) return duration;
+  const tags = validTags(pick('tags'));
+  if (!tags.ok) return tags;
+
+  return {
+    ok: true,
+    data: {
+      title: title.value,
+      artist: artist.value,
+      audio_url: audio.value,
+      artwork_url: artwork.value,
+      duration: duration.value,
+      tags: tags.value
+    }
+  };
+}
+
+async function readTrackBody(request) {
+  const body = await readJsonBody(request, MAX_TRACK_BODY_BYTES);
+  if (!body.ok) return body;
+  if (!body.value || typeof body.value !== 'object' || Array.isArray(body.value)) {
+    return { ok: false, status: 400, error: 'invalid_body' };
+  }
+  return body;
+}
+
+async function createTrack(request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+
+  const body = await readTrackBody(request);
+  if (!body.ok) return json({ ok: false, error: body.error }, body.status, headers);
+
+  const validated = buildTrackPayload(body.value, null);
+  if (!validated.ok) return json({ ok: false, error: validated.error }, 400, headers);
+
+  try {
+    const countRow = await env.DB.prepare('SELECT COUNT(*) AS total FROM tracks').first();
+    if (Number(countRow && countRow.total) >= MAX_TRACKS) {
+      return json({ ok: false, error: 'track_limit' }, 409, headers);
+    }
+    const maxRow = await env.DB.prepare('SELECT COALESCE(MAX(position), -1) AS max FROM tracks').first();
+    const position = Number(maxRow && maxRow.max) + 1;
+    const now = Math.floor(Date.now() / 1000);
+    const id = randomId();
+    const data = validated.data;
+
+    await env.DB.prepare(
+      'INSERT INTO tracks (id, title, artist, audio_url, artwork_url, duration, tags, position, created_at, updated_at) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      id, data.title, data.artist, data.audio_url, data.artwork_url,
+      data.duration, JSON.stringify(data.tags), position, now, now
+    ).run();
+
+    const row = await env.DB.prepare('SELECT * FROM tracks WHERE id = ?').bind(id).first();
+    return json({ ok: true, track: trackFromRow(row, true) }, 201, headers);
+  } catch (e) {
+    if (isMissingTracksTable(e)) {
+      return json({ ok: false, error: 'tracks_unavailable' }, 503, headers);
+    }
+    throw e;
+  }
+}
+
+async function mutateTrack(rawId, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+  if (!TRACK_ID_REGEX.test(rawId)) return json({ ok: false, error: 'not_found' }, 404, headers);
+
+  try {
+    const existing = await env.DB.prepare('SELECT * FROM tracks WHERE id = ?').bind(rawId).first();
+
+    if (request.method === 'DELETE') {
+      const result = await env.DB.prepare('DELETE FROM tracks WHERE id = ?').bind(rawId).run();
+      return json({ ok: true, id: rawId, deleted: changesOf(result) }, 200, headers);
+    }
+
+    if (!existing) return json({ ok: false, error: 'not_found' }, 404, headers);
+    const body = await readTrackBody(request);
+    if (!body.ok) return json({ ok: false, error: body.error }, body.status, headers);
+
+    const validated = buildTrackPayload(body.value, existing);
+    if (!validated.ok) return json({ ok: false, error: validated.error }, 400, headers);
+
+    const data = validated.data;
+    const now = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(
+      'UPDATE tracks SET title = ?, artist = ?, audio_url = ?, artwork_url = ?, duration = ?, tags = ?, updated_at = ? ' +
+      'WHERE id = ?'
+    ).bind(
+      data.title, data.artist, data.audio_url, data.artwork_url,
+      data.duration, JSON.stringify(data.tags), now, rawId
+    ).run();
+
+    const row = await env.DB.prepare('SELECT * FROM tracks WHERE id = ?').bind(rawId).first();
+    return json({ ok: true, track: trackFromRow(row, true) }, 200, headers);
+  } catch (e) {
+    if (isMissingTracksTable(e)) {
+      return json({ ok: false, error: 'tracks_unavailable' }, 503, headers);
+    }
+    throw e;
+  }
+}
+
+async function reorderTracks(request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+
+  const body = await readTrackBody(request);
+  if (!body.ok) return json({ ok: false, error: body.error }, body.status, headers);
+  const ids = body.value.ids;
+  if (!Array.isArray(ids) || ids.length > MAX_TRACKS) {
+    return json({ ok: false, error: 'invalid_order' }, 400, headers);
+  }
+  const seen = new Set();
+  for (const id of ids) {
+    if (typeof id !== 'string' || !TRACK_ID_REGEX.test(id) || seen.has(id)) {
+      return json({ ok: false, error: 'invalid_order' }, 400, headers);
+    }
+    seen.add(id);
+  }
+
+  try {
+    const result = await env.DB.prepare('SELECT id FROM tracks').all();
+    const stored = (result && result.results) || [];
+    if (stored.length !== ids.length || stored.some(row => !seen.has(row.id))) {
+      // Reordering a stale list would create duplicate positions; make the
+      // client reload instead of silently accepting a partial order.
+      return json({ ok: false, error: 'incomplete_order' }, 409, headers);
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const statements = ids.map((id, index) => env.DB.prepare(
+      'UPDATE tracks SET position = ?, updated_at = ? WHERE id = ?'
+    ).bind(index, now, id));
+    await env.DB.batch(statements);
+    return json({ ok: true, updated: ids.length }, 200, headers);
+  } catch (e) {
+    if (isMissingTracksTable(e)) {
+      return json({ ok: false, error: 'tracks_unavailable' }, 503, headers);
+    }
+    throw e;
+  }
 }

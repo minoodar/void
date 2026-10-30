@@ -5,7 +5,7 @@
 // Run:
 //   ELECTRON_RUN_AS_NODE=1 "C:/Users/minoodar/AppData/Local/Programs/Qoder/Qoder.exe" worker/letters/test/phase-a.test.mjs
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -16,6 +16,13 @@ const root = resolve(here, '..');
 const schemaSql = await readFile(join(root, 'schema.sql'), 'utf8');
 const workerSource = await readFile(join(root, 'worker.js'), 'utf8');
 const wranglerToml = await readFile(join(root, 'wrangler.toml'), 'utf8');
+const migrationNames = (await readdir(join(root, 'migrations')))
+  .filter(name => name.endsWith('.sql'))
+  .sort();
+const migrations = await Promise.all(migrationNames.map(async name => ({
+  name,
+  sql: await readFile(join(root, 'migrations', name), 'utf8')
+})));
 const migrationSql = await readFile(join(root, 'migrations', '2026-10-30-daily-limit-admin.sql'), 'utf8');
 
 const workerUrl = 'data:text/javascript;base64,' + Buffer.from(workerSource, 'utf8').toString('base64');
@@ -107,6 +114,7 @@ class D1 {
 function createEnv(overrides = {}) {
   const raw = new DatabaseSync(':memory:');
   raw.exec(schemaSql);
+  for (const migration of migrations) raw.exec(migration.sql);
   return Object.assign({
     DB: new D1(raw),
     LETTER_SALT: TEST_SALT,
@@ -196,7 +204,7 @@ function currentHour() {
 await test('schema.sql executes and creates only the isolated tables', async () => {
   const env = createEnv();
   const names = env.__raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map(r => r.name);
-  for (const table of ['letters', 'letter_senders', 'letter_submissions', 'letter_limits']) {
+  for (const table of ['letters', 'letter_senders', 'letter_submissions', 'letter_limits', 'tracks']) {
     assert(names.includes(table), 'missing table ' + table);
   }
   for (const counterTable of ['visitors', 'daily', 'rate']) {
@@ -550,6 +558,67 @@ await test('GET /letters and GET /letters/count perform no DB writes', async () 
   equal(rows.n, 2, 'GET changed the row count');
 });
 
+await test('GET /letters/:id returns an active letter read-only', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const id = 'a'.repeat(32);
+  env.__raw.prepare(
+    'INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, 'single letter body', 'fa', now - 10, now + 500);
+
+  env.DB.writes = 0;
+  const response = await call(env, '/letters/' + id, { ip: nextIp() });
+  equal(response.status, 200, 'status');
+  equal(response.data.id, id, 'id');
+  equal(response.data.text, 'single letter body', 'text');
+  equal(response.data.lang, 'fa', 'lang');
+  equal(Number(response.data.created_at), now - 10, 'created_at');
+  equal(Number(response.data.expires_at), now + 500, 'expires_at');
+  equal(response.data.ok, undefined, 'public letter shape has no ok flag');
+  equal(response.headers.get('cache-control'), 'public, max-age=30', 'cache header');
+  equal(response.headers.get('access-control-allow-origin'), PROD, 'ACAO');
+  equal(env.DB.writes, 0, 'single-letter GET wrote to the database');
+});
+
+await test('GET /letters/:id treats expired ids as 404 and never returns the body', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const id = 'b'.repeat(32);
+  env.__raw.prepare(
+    'INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, 'faded body', null, now - 1000, now - 500);
+
+  env.DB.writes = 0;
+  const response = await call(env, '/letters/' + id, { ip: nextIp() });
+  equal(response.status, 404, 'expired is not found');
+  equal(response.data.error, 'not_found', 'error');
+  assert(response.text.indexOf('faded body') === -1, 'expired body leaked');
+  equal(env.DB.writes, 0, 'expired GET wrote to the database');
+});
+
+await test('GET /letters/:id rejects unknown and malformed ids identically', async () => {
+  const env = createEnv();
+  const unknown = await call(env, '/letters/' + 'c'.repeat(32), { ip: nextIp() });
+  equal(unknown.status, 404, 'unknown id');
+  equal(unknown.data.error, 'not_found', 'unknown error');
+
+  env.DB.writes = 0;
+  for (const path of ['/letters/active-id', '/letters/' + 'd'.repeat(31), '/letters/' + 'E'.repeat(32), '/letters/', '/letters/%20']) {
+    const bad = await call(env, path, { ip: nextIp() });
+    equal(bad.status, 404, 'malformed ' + path + ' status');
+    equal(bad.data.error, 'not_found', 'malformed ' + path + ' error');
+  }
+  equal(env.DB.writes, 0, 'malformed ids reached the database');
+});
+
+await test('GET /letters/:id fails closed without a database', async () => {
+  const env = createEnv();
+  delete env.DB;
+  const response = await call(env, '/letters/' + 'e'.repeat(32), { ip: nextIp(), origin: null });
+  equal(response.status, 503, 'missing DB');
+  equal(response.data.error, 'unavailable', 'error');
+});
+
 await test('global hourly ceiling returns 429 and stores nothing', async () => {
   const env = createEnv();
   const ip = nextIp();
@@ -803,6 +872,387 @@ await test('POST /admin/letters/clear validates IP and body', async () => {
   equal((await call(env, '/admin/letters/clear', {
     method: 'POST', origin: null, headers: adminAuth('nope'), body: { ip: '203.0.113.9' }
   })).status, 403, 'admin auth required');
+});
+
+// ---------------------------------------------------------------------------
+// Admin session, letter deletion and nuclear reset
+// ---------------------------------------------------------------------------
+
+await test('GET /admin/session proves the bearer without touching data', async () => {
+  const env = createEnv();
+  const ok = await call(env, '/admin/session', { origin: null, headers: adminAuth() });
+  equal(ok.status, 200, 'authorized session');
+  equal(ok.data.ok, true, 'ok flag');
+  equal(ok.data.service, 'void-galaxy-letters', 'service name');
+  equal(ok.headers.get('cache-control'), 'no-store', 'not cacheable');
+
+  equal((await call(env, '/admin/session', { origin: null })).status, 401, 'missing bearer');
+  equal((await call(env, '/admin/session', { origin: null, headers: adminAuth('wrong-secret-value') })).status, 403, 'wrong bearer');
+  const noSecret = createEnv({ ADMIN_SECRET: undefined });
+  equal((await call(noSecret, '/admin/session', { origin: null, headers: adminAuth() })).status, 503, 'unset secret fails closed');
+});
+
+await test('DELETE /admin/letters/:id removes the letter and its submission idempotently', async () => {
+  const env = createEnv();
+  const first = await call(env, '/letters', { method: 'POST', ip: nextIp(), body: validBody() });
+  const second = await call(env, '/letters', { method: 'POST', ip: nextIp(), body: validBody() });
+  equal(first.status, 201, 'first letter');
+  equal(second.status, 201, 'second letter');
+
+  const removed = await call(env, '/admin/letters/' + first.data.id, {
+    method: 'DELETE', origin: null, headers: adminAuth()
+  });
+  equal(removed.status, 200, 'delete status');
+  equal(removed.data.deleted, 1, 'one letter deleted');
+  equal(removed.data.submissions_cleared, 1, 'matching submission deleted');
+  equal(tableRows(env, 'letters').length, 1, 'other letter survives');
+  equal(tableRows(env, 'letter_submissions').length, 1, 'other submission survives');
+
+  const again = await call(env, '/admin/letters/' + first.data.id, {
+    method: 'DELETE', origin: null, headers: adminAuth()
+  });
+  equal(again.status, 200, 'second delete is idempotent');
+  equal(again.data.deleted, 0, 'nothing left to delete');
+
+  const malformed = await call(env, '/admin/letters/not-an-id', {
+    method: 'DELETE', origin: null, headers: adminAuth()
+  });
+  equal(malformed.status, 404, 'malformed id');
+  equal((await call(env, '/admin/letters/' + first.data.id, { method: 'DELETE', origin: null })).status, 401, 'auth required');
+});
+
+await test('DELETE /admin/letters/:id also removes an expired letter', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const id = 'f'.repeat(32);
+  env.__raw.prepare(
+    'INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, 'expired letter', null, now - 1000, now - 500);
+
+  const removed = await call(env, '/admin/letters/' + id, {
+    method: 'DELETE', origin: null, headers: adminAuth()
+  });
+  equal(removed.status, 200, 'status');
+  equal(removed.data.deleted, 1, 'expired row deleted');
+  equal(tableRows(env, 'letters').length, 0, 'table empty');
+});
+
+await test('nuclear reset requires the exact confirmation phrase', async () => {
+  const env = createEnv();
+  for (let i = 0; i < 3; i++) {
+    equal((await call(env, '/letters', { method: 'POST', ip: nextIp(), body: validBody() })).status, 201, 'seed letter');
+  }
+  const hash = await worker.getSenderHash(makeRequest('/letters', { ip: nextIp() }), TEST_SALT);
+  env.__raw.prepare(
+    'INSERT INTO letter_senders (sender_hash, letter_id, request_id, claimed_at, next_allowed_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(hash, 'legacy-id', randomUUID(), 1, 2);
+  env.__raw.prepare('INSERT INTO letter_limits (scope, bucket, count) VALUES (?, ?, ?)')
+    .run('sender:' + hash, currentHour(), 2);
+
+  const missing = await call(env, '/admin/letters/clear', {
+    method: 'POST', origin: null, headers: adminAuth(), body: { all: true }
+  });
+  equal(missing.status, 400, 'missing confirmation');
+  equal(missing.data.error, 'confirmation_required', 'error');
+  equal(tableRows(env, 'letters').length, 3, 'nothing deleted without confirmation');
+
+  const wrong = await call(env, '/admin/letters/clear', {
+    method: 'POST', origin: null, headers: adminAuth(), body: { all: true, confirm: 'reset galaxy' }
+  });
+  equal(wrong.status, 400, 'case-sensitive confirmation');
+  equal(tableRows(env, 'letters').length, 3, 'nothing deleted with wrong phrase');
+
+  const cleared = await call(env, '/admin/letters/clear', {
+    method: 'POST', origin: null, headers: adminAuth(), body: { all: true, confirm: 'RESET GALAXY' }
+  });
+  equal(cleared.status, 200, 'reset status');
+  equal(cleared.data.mode, 'all', 'mode');
+  equal(cleared.data.letters_deleted, 3, 'letters deleted');
+  equal(cleared.data.submissions_cleared, 3, 'submissions deleted');
+  equal(cleared.data.legacy_claims_cleared, 1, 'legacy claims deleted');
+  equal(cleared.data.sender_limits_cleared, 1, 'sender limits deleted');
+  equal(tableRows(env, 'letters').length, 0, 'letters table empty');
+  equal(tableRows(env, 'letter_submissions').length, 0, 'submissions table empty');
+  equal(tableRows(env, 'letter_senders').length, 0, 'legacy table empty');
+  const limits = tableRows(env, 'letter_limits');
+  assert(limits.every(row => row.scope === 'global'), 'global hourly ceiling must survive a reset');
+  equal((await call(env, '/letters/count', { ip: nextIp() })).data.active, 0, 'public count is zero');
+});
+
+// ---------------------------------------------------------------------------
+// Admin search, filters, sort and page mode
+// ---------------------------------------------------------------------------
+
+await test('GET /admin/letters filters, sorts and paginates without breaking the cursor mode', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const insert = env.__raw.prepare(
+    'INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+  );
+  insert.run('1'.repeat(32), 'alpha star', 'en', now - 30, now + 500);
+  insert.run('2'.repeat(32), 'beta moon', 'fa', now - 20, now + 500);
+  insert.run('3'.repeat(32), 'gamma dust 100%', null, now - 10, now - 5);
+
+  const text = await call(env, '/admin/letters?q=alpha', { origin: null, headers: adminAuth() });
+  equal(text.status, 200, 'text search status');
+  equal(text.data.letters.length, 1, 'text search length');
+  equal(text.data.letters[0].id, '1'.repeat(32), 'text search hit');
+  equal(text.data.total, 1, 'filtered total');
+
+  const byId = await call(env, '/admin/letters?q=' + '2'.repeat(32), { origin: null, headers: adminAuth() });
+  equal(byId.data.letters.length, 1, 'exact id search');
+  equal(byId.data.letters[0].body, 'beta moon', 'exact id body');
+
+  const percent = await call(env, '/admin/letters?q=' + encodeURIComponent('100%'), { origin: null, headers: adminAuth() });
+  equal(percent.data.letters.length, 1, 'LIKE wildcards are escaped');
+
+  const fa = await call(env, '/admin/letters?lang=fa', { origin: null, headers: adminAuth() });
+  equal(fa.data.letters.length, 1, 'language filter');
+  equal(fa.data.letters[0].lang, 'fa', 'language value');
+
+  const active = await call(env, '/admin/letters?status=active', { origin: null, headers: adminAuth() });
+  equal(active.data.letters.length, 2, 'active filter');
+  const expired = await call(env, '/admin/letters?status=expired', { origin: null, headers: adminAuth() });
+  equal(expired.data.letters.length, 1, 'expired filter');
+  equal(expired.data.letters[0].status, 'expired', 'computed status');
+
+  const page0 = await call(env, '/admin/letters?sort=created&order=asc&limit=2&page=0', { origin: null, headers: adminAuth() });
+  equal(page0.status, 200, 'page 0 status');
+  equal(page0.data.letters.length, 2, 'page 0 length');
+  equal(page0.data.letters[0].id, '1'.repeat(32), 'oldest first');
+  equal(page0.data.page, 0, 'page echoed');
+  equal(page0.data.total, 3, 'total');
+  equal(page0.data.has_more, true, 'has more');
+  equal(page0.data.next_before, null, 'cursor unused in page mode');
+
+  const page1 = await call(env, '/admin/letters?sort=created&order=asc&limit=2&page=1', { origin: null, headers: adminAuth() });
+  equal(page1.data.letters.length, 1, 'page 1 length');
+  equal(page1.data.letters[0].id, '3'.repeat(32), 'newest last');
+  equal(page1.data.has_more, false, 'no more pages');
+
+  const clamped = await call(env, '/admin/letters?sort=created&page=99&limit=2', { origin: null, headers: adminAuth() });
+  equal(clamped.data.page, 1, 'page is clamped to the last page');
+  equal(clamped.data.letters.length, 1, 'clamped page still returns rows');
+
+  const cursor = await call(env, '/admin/letters?limit=2', { origin: null, headers: adminAuth() });
+  const cursor2 = await call(env, '/admin/letters?limit=2&before=' + cursor.data.next_before, { origin: null, headers: adminAuth() });
+  equal(cursor2.data.letters.length, 1, 'legacy cursor mode still works');
+
+  for (const query of ['sort=drop', 'order=up', 'status=weird', 'lang=fa-IR-extra', 'q=%00']) {
+    equal((await call(env, '/admin/letters?' + query, { origin: null, headers: adminAuth() })).status, 400, 'invalid query: ' + query);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Public and admin playlist tracks
+// ---------------------------------------------------------------------------
+
+const SEEDED_TRACKS = 7;
+
+function trackBody(overrides = {}) {
+  return Object.assign({
+    title: 'New Track',
+    artist: 'Nova',
+    audio_url: 'https://example.com/audio/new-track.mp3',
+    artwork_url: 'https://example.com/art/new-track.png',
+    duration: '3:42',
+    tags: 'Ambient, Deep, ambient'
+  }, overrides);
+}
+
+await test('the tracks migration seeds the original Golden Folder playlist exactly once', async () => {
+  const env = createEnv();
+  const rows = tableRows(env, 'tracks');
+  equal(rows.length, SEEDED_TRACKS, 'seven seeded tracks');
+  equal(rows.map(row => row.position).sort((a, b) => a - b).join(','), '0,1,2,3,4,5,6', 'positions 0..6');
+  env.__raw.exec(migrations.find(m => m.name.includes('admin-tracks')).sql);
+  equal(tableRows(env, 'tracks').length, SEEDED_TRACKS, 'migration is idempotent');
+});
+
+await test('GET /tracks is public, ordered and cacheable; /admin/tracks requires the bearer', async () => {
+  const env = createEnv();
+  const publicList = await call(env, '/tracks', { ip: nextIp() });
+  equal(publicList.status, 200, 'public status');
+  equal(publicList.data.ok, true, 'ok');
+  equal(publicList.data.tracks.length, SEEDED_TRACKS, 'seed count');
+  equal(publicList.data.tracks[0].id, 'gf-adagio', 'first seeded track');
+  equal(publicList.data.tracks[0].position, 0, 'position');
+  equal(publicList.data.tracks[6].id, 'gf-ave-maria', 'last seeded track');
+  equal(publicList.headers.get('cache-control'), 'public, max-age=60', 'cache header');
+  equal(publicList.headers.get('access-control-allow-origin'), PROD, 'ACAO');
+  equal(publicList.data.tracks[0].created_at, undefined, 'public shape has no timestamps');
+  equal(publicList.data.tracks[0].tags.join(','), '', 'tags are arrays');
+
+  const admin = await call(env, '/admin/tracks', { origin: null, headers: adminAuth() });
+  equal(admin.status, 200, 'admin status');
+  assert(typeof admin.data.tracks[0].created_at === 'number', 'admin shape has timestamps');
+  equal(admin.headers.get('cache-control'), 'no-store', 'admin not cacheable');
+
+  equal((await call(env, '/admin/tracks', { origin: null })).status, 401, 'missing bearer');
+  equal((await call(env, '/admin/tracks', { origin: null, headers: adminAuth('short') })).status, 403, 'wrong bearer');
+});
+
+await test('admin track create validates, normalizes and appends', async () => {
+  const env = createEnv();
+  const created = await call(env, '/admin/tracks', {
+    method: 'POST', origin: null, headers: adminAuth(), body: trackBody()
+  });
+  equal(created.status, 201, 'create status');
+  equal(created.data.track.title, 'New Track', 'title');
+  equal(created.data.track.artist, 'Nova', 'artist');
+  equal(created.data.track.duration, 222, 'duration seconds from m:ss');
+  equal(created.data.track.tags.join(','), 'ambient,deep', 'tags normalized and deduplicated');
+  equal(created.data.track.position, SEEDED_TRACKS, 'appended at the end');
+  assert(/^[0-9a-f]{32}$/.test(created.data.track.id), 'new id is 32 hex');
+
+  const blankArt = await call(env, '/admin/tracks', {
+    method: 'POST', origin: null, headers: adminAuth(), body: trackBody({ artwork_url: '' })
+  });
+  equal(blankArt.status, 201, 'blank artwork accepted');
+  equal(blankArt.data.track.artwork_url, null, 'blank artwork stored as null');
+
+  const noAudio = await call(env, '/admin/tracks', {
+    method: 'POST', origin: null, headers: adminAuth(), body: { title: 'x' }
+  });
+  equal(noAudio.status, 400, 'missing audio status');
+  equal(noAudio.data.error, 'audio_url_required', 'missing audio error');
+
+  const cases = [
+    [{ title: '' }, 400, 'title_required'],
+    [{ title: 'x'.repeat(161) }, 400, 'title_too_long'],
+    [{ audio_url: 'javascript:alert(1)' }, 400, 'audio_url_invalid'],
+    [{ audio_url: 'ftp://example.com/a.mp3' }, 400, 'audio_url_invalid'],
+    [{ audio_url: '//example.com/a.mp3' }, 400, 'audio_url_invalid'],
+    [{ artwork_url: 'data:image/svg+xml,x' }, 400, 'artwork_url_invalid'],
+    [{ duration: '3:99' }, 400, 'duration_invalid'],
+    [{ tags: ['x'.repeat(25)] }, 400, 'tags_invalid']
+  ];
+  for (const [overrides, status, error] of cases) {
+    const bad = await call(env, '/admin/tracks', {
+      method: 'POST', origin: null, headers: adminAuth(), body: trackBody(overrides)
+    });
+    equal(bad.status, status, 'bad create status: ' + error);
+    equal(bad.data.error, error, 'bad create error');
+  }
+
+  const huge = await call(env, '/admin/tracks', {
+    method: 'POST', origin: null, headers: adminAuth(), body: trackBody({ title: 'x'.repeat(9000) })
+  });
+  equal(huge.status, 413, 'oversized track body');
+});
+
+await test('admin track update is partial, revalidates and keeps omitted fields', async () => {
+  const env = createEnv();
+  const created = await call(env, '/admin/tracks', {
+    method: 'POST', origin: null, headers: adminAuth(), body: trackBody()
+  });
+  const id = created.data.track.id;
+
+  const updated = await call(env, '/admin/tracks/' + id, {
+    method: 'PUT', origin: null, headers: adminAuth(), body: { title: 'Renamed' }
+  });
+  equal(updated.status, 200, 'update status');
+  equal(updated.data.track.title, 'Renamed', 'title changed');
+  equal(updated.data.track.artist, 'Nova', 'artist preserved');
+  equal(updated.data.track.audio_url, trackBody().audio_url, 'audio preserved');
+  equal(updated.data.track.duration, 222, 'duration preserved');
+  equal(updated.data.track.tags.join(','), 'ambient,deep', 'tags preserved');
+
+  const bad = await call(env, '/admin/tracks/' + id, {
+    method: 'PUT', origin: null, headers: adminAuth(), body: { audio_url: 'javascript:alert(1)' }
+  });
+  equal(bad.status, 400, 'invalid update');
+  equal(bad.data.error, 'audio_url_invalid', 'invalid update error');
+
+  equal((await call(env, '/admin/tracks/' + 'x'.repeat(32), {
+    method: 'PUT', origin: null, headers: adminAuth(), body: { title: 'x' }
+  })).status, 404, 'unknown track');
+});
+
+await test('admin reorder requires the complete current list and changes public order', async () => {
+  const env = createEnv();
+  const publicBefore = await call(env, '/tracks', { ip: nextIp() });
+  const ids = publicBefore.data.tracks.map(track => track.id);
+  const reversed = ids.slice().reverse();
+
+  const reordered = await call(env, '/admin/tracks/reorder', {
+    method: 'POST', origin: null, headers: adminAuth(), body: { ids: reversed }
+  });
+  equal(reordered.status, 200, 'reorder status');
+  equal(reordered.data.updated, ids.length, 'all updated');
+
+  const publicAfter = await call(env, '/tracks', { ip: nextIp() });
+  equal(publicAfter.data.tracks.map(track => track.id).join(','), reversed.join(','), 'public order reversed');
+
+  const partial = await call(env, '/admin/tracks/reorder', {
+    method: 'POST', origin: null, headers: adminAuth(), body: { ids: ids.slice(1) }
+  });
+  equal(partial.status, 409, 'partial order rejected');
+  equal(partial.data.error, 'incomplete_order', 'partial order error');
+
+  const duplicate = await call(env, '/admin/tracks/reorder', {
+    method: 'POST', origin: null, headers: adminAuth(), body: { ids: [ids[0], ids[0]] }
+  });
+  equal(duplicate.status, 400, 'duplicate ids rejected');
+
+  const unknown = await call(env, '/admin/tracks/reorder', {
+    method: 'POST', origin: null, headers: adminAuth(), body: { ids: ids.slice(0, -1).concat(['x'.repeat(32)]) }
+  });
+  equal(unknown.status, 409, 'unknown id rejected');
+});
+
+await test('admin track delete is idempotent and malformed ids never reach the database', async () => {
+  const env = createEnv();
+  const created = await call(env, '/admin/tracks', {
+    method: 'POST', origin: null, headers: adminAuth(), body: trackBody()
+  });
+  const id = created.data.track.id;
+
+  const removed = await call(env, '/admin/tracks/' + id, {
+    method: 'DELETE', origin: null, headers: adminAuth()
+  });
+  equal(removed.status, 200, 'delete status');
+  equal(removed.data.deleted, 1, 'deleted count');
+  equal(tableRows(env, 'tracks').length, SEEDED_TRACKS, 'seed playlist remains');
+
+  const again = await call(env, '/admin/tracks/' + id, {
+    method: 'DELETE', origin: null, headers: adminAuth()
+  });
+  equal(again.status, 200, 'second delete');
+  equal(again.data.deleted, 0, 'nothing left');
+
+  equal((await call(env, '/admin/tracks/Bad!', { method: 'DELETE', origin: null, headers: adminAuth() })).status, 404, 'malformed id');
+});
+
+await test('a missing tracks table fails closed with tracks_unavailable', async () => {
+  const env = createEnv();
+  env.__raw.exec('DROP TABLE tracks');
+  const publicList = await call(env, '/tracks', { ip: nextIp() });
+  equal(publicList.status, 503, 'public status');
+  equal(publicList.data.error, 'tracks_unavailable', 'public error');
+  const adminList = await call(env, '/admin/tracks', { origin: null, headers: adminAuth() });
+  equal(adminList.status, 503, 'admin status');
+  equal(adminList.data.error, 'tracks_unavailable', 'admin error');
+  const created = await call(env, '/admin/tracks', {
+    method: 'POST', origin: null, headers: adminAuth(), body: trackBody()
+  });
+  equal(created.status, 503, 'create status');
+});
+
+await test('CORS preflight advertises the admin methods and still rejects hostile origins', async () => {
+  const env = createEnv();
+  const preflight = await call(env, '/admin/tracks', { method: 'OPTIONS', origin: PROD });
+  equal(preflight.status, 204, 'preflight status');
+  const methods = preflight.headers.get('access-control-allow-methods');
+  for (const method of ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']) {
+    assert(methods.includes(method), 'missing method ' + method + ' in ' + methods);
+  }
+  equal(preflight.headers.get('access-control-allow-headers'), 'Content-Type, Authorization', 'allowed headers');
+  equal((await call(env, '/tracks', { method: 'OPTIONS', origin: 'https://evil.example' })).status, 403, 'evil preflight');
+  equal((await call(env, '/tracks', { origin: 'https://evil.example' })).status, 403, 'evil GET');
+  const adminProd = await call(env, '/admin/tracks', { origin: PROD, headers: adminAuth() });
+  equal(adminProd.headers.get('access-control-allow-origin'), PROD, 'admin ACAO');
+  equal(adminProd.headers.get('vary'), 'Origin', 'Vary: Origin');
 });
 
 // ---------------------------------------------------------------------------
