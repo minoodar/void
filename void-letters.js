@@ -69,8 +69,13 @@
   var statsOpen = false;
   var statsHoverTimer = 0;
   var pillShown = false;
+  var visitorsN = null;
+  var rowVisitors = null;
+  var rowSessions = null;
+  var rowReturned = null;
   var rowLetters = null;
   var letterTotal = null;
+  var visitorsStarted = false;
 
   var quillBtn = null;
   var galaxyLayer = null;
@@ -147,10 +152,10 @@
     return r.width > 1 && r.height > 1;
   }
 
-  /* ---- تبلتِ آمار کهکشان: تعداد نامه‌های فعال -------------------------------
-     دکمهٔ پایین‌راست تعداد نامه‌ها را از /letters/count می‌گیرد و با کلیک/هاور
-     پنلی کوچک باز می‌کند. شمارشِ بازدیدکننده‌ها با حذف ویجتِ قدیمی کنار رفت؛
-     هیچ درخواست یا endpoint دیگری ساخته نمی‌شود. */
+  /* ---- تبلتِ آمار کهکشان: بازدیدکننده‌ها و نامه‌ها -------------------------
+     هر سه عدد بازدید از همان ورکرِ نامه‌ها می‌آید (/visitors/hit و
+     /visitors/stats) و تعداد نامه‌ها از /letters/count. هیچ دامنهٔ دیگری
+     فراخوانی نمی‌شود. */
   function fmt(n) {
     return new Intl.NumberFormat('en-US').format(Math.max(0, Math.floor(Number(n) || 0)));
   }
@@ -177,11 +182,19 @@
     el.setAttribute('title', 'Galaxy statistics');
     var dot = make('span', 'vm-gs__dot');
     dot.setAttribute('aria-hidden', 'true');
+    var people = make('span', 'vm-gs__fig');
+    visitorsN = make('span', 'vm-gs__n', '\u2014');
+    people.appendChild(visitorsN);
+    people.appendChild(make('span', 'vm-gs__l', 'explorers'));
+    var sep = make('span', 'vm-gs__sep');
+    sep.setAttribute('aria-hidden', 'true');
     var letters = make('span', 'vm-gs__fig');
     num = make('span', 'vm-gs__n', '\u2014');
     letters.appendChild(num);
     letters.appendChild(make('span', 'vm-gs__l', 'letters'));
     el.appendChild(dot);
+    el.appendChild(people);
+    el.appendChild(sep);
     el.appendChild(letters);
     host.appendChild(el);
 
@@ -191,9 +204,18 @@
     statsPanel.setAttribute('role', 'dialog');
     statsPanel.setAttribute('aria-modal', 'false');
     statsPanel.setAttribute('aria-label', 'Galaxy statistics');
-    var lettersRow = statRow('letters', '\u2014');
-    rowLetters = lettersRow.value;
-    statsPanel.appendChild(lettersRow.row);
+    var r1 = statRow('explorers', '\u2014');
+    var r2 = statRow('sessions', '\u2014');
+    var r3 = statRow('returned', '\u2014');
+    var r4 = statRow('letters', '\u2014');
+    rowVisitors = r1.value;
+    rowSessions = r2.value;
+    rowReturned = r3.value;
+    rowLetters = r4.value;
+    statsPanel.appendChild(r1.row);
+    statsPanel.appendChild(r2.row);
+    statsPanel.appendChild(r3.row);
+    statsPanel.appendChild(r4.row);
     statsRead = make('button', 'void-god-btn vm-gs-read', 'No letters yet');
     statsRead.type = 'button';
     statsRead.disabled = true;
@@ -357,6 +379,58 @@
       (ok ? ': ' + n + (n === 1 ? ' letter' : ' letters') : ''));
     showPill();
     return true;
+  }
+
+  function setVisitors(s) {
+    if (!s) return;
+    var u = Number(s.u), t = Number(s.t), r = Number(s.r);
+    if (!isFinite(u) || u < 0) return;
+    if (visitorsN) visitorsN.textContent = fmt(u);
+    if (rowVisitors) rowVisitors.textContent = fmt(u);
+    if (rowSessions) rowSessions.textContent = isFinite(t) && t >= 0 ? fmt(t) : '\u2014';
+    if (rowReturned) {
+      rowReturned.textContent = isFinite(r) ? Math.round(Math.min(1, Math.max(0, r)) * 100) + '%' : '\u2014';
+    }
+    showPill();
+  }
+
+  /* یک hit در هر نشستِ مرورگر و بعد stats. احترام به DNT/GPC مثل شمارندهٔ
+     قبلی: در آن حالت فقط آمار خوانده می‌شود. اعداد هرگز به موفقیتِ نوشتن
+     وابسته نیستند. */
+  var VISIT_COUNTED = 'vgm-counted';
+  var VISIT_RETURNING = 'vgm-visitor';
+
+  function readSession(key, persistent) {
+    try {
+      var store = persistent ? window.localStorage : window.sessionStorage;
+      return store ? store.getItem(key) : null;
+    } catch (e) { return null; }
+  }
+
+  function writeSession(key, value, persistent) {
+    try {
+      var store = persistent ? window.localStorage : window.sessionStorage;
+      if (store) store.setItem(key, value);
+    } catch (e) {}
+  }
+
+  function startVisitors() {
+    if (visitorsStarted || !api || typeof api.recordVisit !== 'function' ||
+        typeof api.visitorStats !== 'function') return;
+    visitorsStarted = true;
+    var nav = window.navigator || {};
+    var skipHit = nav.doNotTrack === '1' || nav.globalPrivacyControl === true ||
+      readSession(VISIT_COUNTED, false) === '1';
+    var hit = skipHit ? Promise.resolve(false) : api.recordVisit(readSession(VISIT_RETURNING, true) === '1');
+    hit.then(function () {
+      if (!skipHit) {
+        writeSession(VISIT_COUNTED, '1', false);
+        writeSession(VISIT_RETURNING, '1', true);
+      }
+      return api.visitorStats();
+    }).then(function (s) {
+      if (s) setVisitors(s);
+    });
   }
 
   /* ---- شمارشِ نقطه‌های کد (نه واحدهای UTF-16) ---- */
@@ -812,6 +886,7 @@
     if (!feed) feed = api.createFeed();
     feed.prefetch();
     refreshCount();
+    startVisitors();
   }
 
   function layoutPanel(x, y, focus) {

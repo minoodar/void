@@ -298,6 +298,38 @@
     return SHARE_BASE + '?letter=' + id;
   }
 
+  /* Visitor counting rides the same Worker and database as the letters. A hit
+     is fire-and-forget: the stats request is what fills the pill, so a blocked
+     or failed write can never hide the numbers. `returning` is advisory; the
+     Worker decides from its own hashed row. */
+  function recordVisit(returning) {
+    return request(BASE + '/visitors/hit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returning: !!returning })
+    }).then(function (res) {
+      return res.status === 200 && !!res.data && res.data.ok === true;
+    }, function () { return false; });
+  }
+
+  /* Returns {u, t, r} — explorers, sessions, and returning share in 0..1 — or
+     null when the service cannot answer. */
+  function visitorStats() {
+    return request(BASE + '/visitors/stats', { method: 'GET' }).then(function (res) {
+      var d = res.status === 200 && res.data && res.data.ok === true ? res.data : null;
+      if (!d) return null;
+      var u = Number(d.unique_visitors);
+      var t = Number(d.total_sessions);
+      var r = Number(d.returning_ratio);
+      if (!isFinite(u) || u < 0) return null;
+      return {
+        u: Math.floor(u),
+        t: isFinite(t) && t >= 0 ? Math.floor(t) : 0,
+        r: isFinite(r) && r >= 0 ? Math.min(1, r) : 0
+      };
+    }, function () { return null; });
+  }
+
   global.VoidLettersApi = {
     base: BASE,
     pageSize: PAGE_SIZE,
@@ -310,6 +342,8 @@
     createFeed: createFeed,
     count: count,
     getLetter: getLetter,
-    letterUrl: letterUrl
+    letterUrl: letterUrl,
+    recordVisit: recordVisit,
+    visitorStats: visitorStats
   };
 })(typeof window !== 'undefined' ? window : globalThis);
