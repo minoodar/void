@@ -39,6 +39,8 @@ const DETECTION_ZERO_WIDTH_REGEX = /[\u200B-\u200D\u2060\uFEFF]/g;
 const LONE_SURROGATE_REGEX = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const LINK_DETECTOR_REGEX = /(?:https?:\/\/|ftp:\/\/|\/\/|www\.)[^\s/$.?#].[^\s]*|[a-z0-9-]+\.(?:com|org|net|edu|gov|io|co|me|info|biz|dev|app|ai|xyz)\b|\b\d{1,3}(?:\.\d{1,3}){3}\b/i;
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Public letter ids are 32 lowercase hex characters (see randomId()).
+const LETTER_ID_REGEX = /^[0-9a-f]{32}$/;
 
 export default {
   async fetch(request, env) {
@@ -54,6 +56,9 @@ export default {
       if (origin && !cors.allowed) return json({ ok: false, error: 'forbidden' }, 403, cors.headers);
       if (url.pathname === '/letters/count' && request.method === 'GET') {
         return await countLetters(env, cors);
+      }
+      if (url.pathname.startsWith('/letters/') && request.method === 'GET') {
+        return await getLetterById(url.pathname.slice('/letters/'.length), env, cors);
       }
       if (url.pathname === '/letters' && request.method === 'GET') {
         return await listLetters(url, env, cors);
@@ -470,6 +475,29 @@ async function listLetters(url, env, cors) {
   // Strictly read-only: expired rows are filtered above. Pruning happens only
   // in POST /letters.
   return json({ letters, next_before: nextBefore }, 200, headers);
+}
+
+// Public single-letter route behind share links (?letter=<id>). Read-only like
+// the feed: expired and unknown ids are the same 404, and the id must match our
+// 32-hex format so arbitrary strings never reach the database.
+async function getLetterById(rawId, env, cors) {
+  const headers = Object.assign({ 'Cache-Control': 'public, max-age=30' }, cors.headers);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+  if (!LETTER_ID_REGEX.test(rawId)) return json({ ok: false, error: 'not_found' }, 404, headers);
+
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB
+    .prepare('SELECT id, body AS text, lang, created_at, expires_at FROM letters WHERE id = ? AND expires_at > ?')
+    .bind(rawId, now)
+    .first();
+  if (!row) return json({ ok: false, error: 'not_found' }, 404, headers);
+  return json({
+    id: row.id,
+    text: row.text,
+    created_at: Number(row.created_at),
+    expires_at: Number(row.expires_at),
+    lang: row.lang || null
+  }, 200, headers);
 }
 
 async function countLetters(env, cors) {
