@@ -5,13 +5,13 @@
    ====================================================================== */
 
 /* ---- تبلتِ آمار کهکشان: بازدیدکننده‌ها و نامه‌ها در یک جا ----
-   یک دکمهٔ کوچک پایین‌راست که هر دو عدد را نشان می‌دهد؛ پنلش با جاوااسکریپت
-   نسبت به همان دکمه جای‌گذاری می‌شود تا در هیچ viewportی روی کنترل‌ها نیفتد. */
+   یک دکمهٔ کوچک بالاچپ؛ پنلش با جاوااسکریپت نسبت به همان دکمه جای‌گذاری می‌شود. */
 #void-galaxy-stats {
     position: fixed;
     z-index: 3;
-    left: 0;
-    top: 0;
+    left: max(8px, env(safe-area-inset-left, 0px));
+    --void-gs-safe-top: max(8px, env(safe-area-inset-top, 0px));
+    top: var(--void-gs-safe-top);
     display: grid;
     grid-template-columns: auto auto auto;
     grid-template-rows: auto auto;
@@ -35,11 +35,11 @@
     pointer-events: auto;
     cursor: pointer;
     user-select: none; -webkit-user-select: none;
-    opacity: 0; visibility: hidden; transform: translateX(-50%) translateY(4px) scale(.96);
+    opacity: 0; visibility: hidden; transform: translateY(4px) scale(.96);
     transition: opacity .35s ease, transform .4s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .4s;
 }
 #void-galaxy-stats[hidden] { display: none; }
-#void-galaxy-stats.is-on { opacity: 1; visibility: visible; transform: translateX(-50%); transition-delay: 0s; }
+#void-galaxy-stats.is-on { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
 #void-galaxy-stats:focus-visible { outline: 2px solid rgba(220, 230, 240, .85); outline-offset: 3px; }
 
 .vm-gs__dot {
