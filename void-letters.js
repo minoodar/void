@@ -9,10 +9,6 @@
   'use strict';
 
   var MAX_POINTS = 500;
-  var DAY_SEC = 86400;
-  var MAX_LIFETIME_SEC = 7776000;
-  var MIN_REMAINING_SEC = 3600;
-  var VOTES_KEY = 'voidLetters.votes.v1';
   var PLAYER_KEYS = { ' ': 1, k: 1, m: 1, n: 1, p: 1, f: 1, w: 1, ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1 };
 
   var api = window.VoidLettersApi || null;
@@ -89,17 +85,9 @@
   var panelText = null;
   var panelTag = null;
   var panelMeta = null;
-  var panelLifespan = null;
-  var panelVotes = null;
-  var panelLike = null;
-  var panelDislike = null;
-  var likeCount = null;
-  var dislikeCount = null;
   var panelCopy = null;
   var panelShare = null;
   var panelFeedback = null;
-  var lifespanTimer = 0;
-  var voteBusy = false;
   var panelOpen = false;
   var currentMessage = null;
   var starX = 0;
@@ -785,30 +773,6 @@
     panelMeta = make('p', 'void-god-msg-meta');
     panelMeta.id = 'void-god-panel-meta';
 
-    panelLifespan = make('time', 'void-god-msg-lifespan');
-    panelLifespan.id = 'void-god-panel-lifespan';
-    panelLifespan.hidden = true;
-
-    panelVotes = make('div', 'void-god-votes');
-    panelVotes.id = 'void-god-votes';
-    panelVotes.hidden = true;
-    panelLike = make('button', 'void-god-btn void-god-vote');
-    panelLike.type = 'button';
-    panelLike.id = 'void-god-like';
-    panelLike.setAttribute('aria-pressed', 'false');
-    panelLike.appendChild(make('span', 'void-god-vote__label', 'Like'));
-    likeCount = make('span', 'void-god-vote__count', '0');
-    panelLike.appendChild(likeCount);
-    panelDislike = make('button', 'void-god-btn void-god-vote');
-    panelDislike.type = 'button';
-    panelDislike.id = 'void-god-dislike';
-    panelDislike.setAttribute('aria-pressed', 'false');
-    panelDislike.appendChild(make('span', 'void-god-vote__label', 'Dislike'));
-    dislikeCount = make('span', 'void-god-vote__count', '0');
-    panelDislike.appendChild(dislikeCount);
-    panelVotes.appendChild(panelLike);
-    panelVotes.appendChild(panelDislike);
-
     var actions = make('div', 'void-god-panel__actions');
     panelCopy = make('button', 'void-god-btn', 'Copy');
     panelCopy.type = 'button';
@@ -827,9 +791,7 @@
 
     panel.appendChild(head);
     panel.appendChild(panelText);
-    panel.appendChild(panelLifespan);
     panel.appendChild(panelMeta);
-    panel.appendChild(panelVotes);
     panel.appendChild(actions);
     panel.appendChild(panelFeedback);
     host.appendChild(panel);
@@ -839,19 +801,16 @@
     });
     panelCopy.addEventListener('click', onCopy);
     panelShare.addEventListener('click', onShare);
-    panelLike.addEventListener('click', function () { onVote('like'); });
-    panelDislike.addEventListener('click', function () { onVote('dislike'); });
   }
 
   function renderMessage(msg) {
-    voteBusy = false;
     panelText.textContent = msg.text;
     if (msg.lang) panelText.setAttribute('lang', msg.lang);
     else panelText.removeAttribute('lang');
     panelTag.textContent = source.tag;
     panelMeta.textContent = source.kind === 'demo'
       ? 'Sample message from the local demo set \u2014 no real messages have arrived yet. Nothing is sent or stored.'
-      : 'Anonymous public letter';
+      : 'Anonymous public letter' + (msg.expires_at ? ' \u00b7 fades ' + fadeInLabel(msg.expires_at) : '');
     clearTimeout(feedbackTimer);
     panelFeedback.hidden = true;
     panelFeedback.textContent = '';
@@ -865,194 +824,6 @@
     panelShare.setAttribute('aria-label', canShare
       ? 'Share this letter on X'
       : 'Sharing unavailable \u2014 copy the message instead');
-    renderLifespan(msg.expires_at);
-    renderVotes(msg);
-  }
-
-  function clearLifespanTimer() {
-    clearInterval(lifespanTimer);
-    lifespanTimer = 0;
-  }
-
-  function lifespanLabel(expiresAt) {
-    var ms = Number(expiresAt) * 1000 - Date.now();
-    if (!isFinite(ms) || ms <= 0) return 'Fading now';
-    var mins = Math.ceil(ms / 60000);
-    if (mins < 60) return mins + (mins === 1 ? ' minute remaining' : ' minutes remaining');
-    var hours = Math.ceil(ms / 3600000);
-    if (hours < 48) return hours + ' hours remaining';
-    var days = Math.ceil(ms / 86400000);
-    return days + (days === 1 ? ' day remaining' : ' days remaining');
-  }
-
-  /* The countdown is local and quiet: it re-renders once a minute while the
-     panel is open and is always replaced by the server value after a vote. */
-  function renderLifespan(expiresAt, bump) {
-    clearLifespanTimer();
-    if (!panelLifespan) return;
-    var has = source.kind === 'api' && Number(expiresAt) > 0;
-    panelLifespan.hidden = !has;
-    if (!has) {
-      panelLifespan.textContent = '';
-      panelLifespan.removeAttribute('datetime');
-      return;
-    }
-    panelLifespan.textContent = lifespanLabel(expiresAt);
-    panelLifespan.setAttribute('datetime', new Date(Number(expiresAt) * 1000).toISOString());
-    lifespanTimer = setInterval(function () {
-      if (!panelOpen || !currentMessage) { clearLifespanTimer(); return; }
-      panelLifespan.textContent = lifespanLabel(currentMessage.expires_at);
-    }, 30000);
-    if (bump) {
-      panelLifespan.classList.remove('is-bumped', 'is-dipped');
-      void panelLifespan.offsetWidth;
-      panelLifespan.classList.add(bump === 'like' ? 'is-bumped' : 'is-dipped');
-      setTimeout(function () {
-        if (panelLifespan) panelLifespan.classList.remove('is-bumped', 'is-dipped');
-      }, 800);
-    }
-  }
-
-  function voteStore() {
-    try { return window.sessionStorage || null; } catch (e) { return null; }
-  }
-
-  function loadVotes() {
-    var s = voteStore();
-    if (!s) return {};
-    try {
-      var raw = s.getItem(VOTES_KEY);
-      var map = raw ? JSON.parse(raw) : null;
-      return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
-    } catch (e) { return {}; }
-  }
-
-  function saveVote(id, type) {
-    var s = voteStore();
-    if (!s) return;
-    var map = loadVotes();
-    if (Object.keys(map).length > 200) map = {};
-    map[id] = type;
-    try { s.setItem(VOTES_KEY, JSON.stringify(map)); } catch (e) {}
-  }
-
-  function forgetVote(id) {
-    var s = voteStore();
-    if (!s) return;
-    var map = loadVotes();
-    delete map[id];
-    try { s.setItem(VOTES_KEY, JSON.stringify(map)); } catch (e) {}
-  }
-
-  function renderVotes(msg) {
-    if (!panelVotes) return;
-    var id = msg && typeof msg.id === 'string' ? msg.id : '';
-    var canVote = source.kind === 'api' && !!id && !!api &&
-      typeof api.vote === 'function' && !msg.faded;
-    panelVotes.hidden = !canVote;
-    if (!canVote) {
-      panelLike.disabled = true;
-      panelDislike.disabled = true;
-      return;
-    }
-    var voted = loadVotes()[id] || null;
-    likeCount.textContent = String(Number(msg.votes_like) || 0);
-    dislikeCount.textContent = String(Number(msg.votes_dislike) || 0);
-    panelLike.disabled = !!voted || voteBusy;
-    panelDislike.disabled = !!voted || voteBusy;
-    panelLike.classList.toggle('is-voted', voted === 'like');
-    panelDislike.classList.toggle('is-voted', voted === 'dislike');
-    panelLike.setAttribute('aria-pressed', voted === 'like' ? 'true' : 'false');
-    panelDislike.setAttribute('aria-pressed', voted === 'dislike' ? 'true' : 'false');
-    panelLike.title = voted
-      ? 'You already voted on this letter in this session'
-      : 'Like this letter and add one day';
-    panelDislike.title = voted
-      ? 'You already voted on this letter in this session'
-      : 'Dislike this letter and remove one day';
-  }
-
-  function projectedExpiry(msg, type) {
-    var exp = Number(msg.expires_at) || 0;
-    if (!exp) return exp;
-    if (type === 'like') {
-      var cap = (Number(msg.created_at) || exp) + MAX_LIFETIME_SEC;
-      return Math.min(exp + DAY_SEC, cap);
-    }
-    return Math.min(exp, Math.max(exp - DAY_SEC, Math.floor(Date.now() / 1000) + MIN_REMAINING_SEC));
-  }
-
-  /* Optimistic: the count and the countdown move at once, then the server
-     reply replaces them. Any failure restores the previous numbers. */
-  function onVote(type) {
-    if (!currentMessage || voteBusy) return;
-    var msg = currentMessage;
-    var id = msg && typeof msg.id === 'string' ? msg.id : '';
-    if (!id || source.kind !== 'api' || !api || typeof api.vote !== 'function') return;
-    if (loadVotes()[id]) return;
-
-    var before = { expires_at: msg.expires_at, likes: msg.votes_like, dislikes: msg.votes_dislike };
-    voteBusy = true;
-    saveVote(id, type);
-    msg.expires_at = projectedExpiry(msg, type);
-    if (type === 'like') msg.votes_like = (Number(msg.votes_like) || 0) + 1;
-    else msg.votes_dislike = (Number(msg.votes_dislike) || 0) + 1;
-    renderVotes(msg);
-    renderLifespan(msg.expires_at, type);
-    feedback(type === 'like'
-      ? 'The star grows brighter\u2026'
-      : 'The star grows dimmer\u2026', false);
-
-    function restore() {
-      forgetVote(id);
-      msg.expires_at = before.expires_at;
-      msg.votes_like = before.likes;
-      msg.votes_dislike = before.dislikes;
-      renderLifespan(msg.expires_at);
-    }
-
-    api.vote(id, type).then(function (res) {
-      voteBusy = false;
-      if (res.status === 'ok') {
-        msg.expires_at = res.letter.expires_at || msg.expires_at;
-        msg.votes_like = res.letter.votes_like;
-        msg.votes_dislike = res.letter.votes_dislike;
-        renderLifespan(msg.expires_at, type);
-        feedback(res.capped
-          ? (type === 'like'
-            ? 'This star already shines at its brightest.'
-            : 'This letter is already as close to fading as it can get.')
-          : (type === 'like'
-            ? 'A day was added to this star.'
-            : 'A day was taken from this star.'), false);
-      } else if (res.status === 'already') {
-        saveVote(id, res.type);
-        msg.expires_at = res.letter.expires_at || msg.expires_at;
-        msg.votes_like = res.letter.votes_like;
-        msg.votes_dislike = res.letter.votes_dislike;
-        renderLifespan(msg.expires_at);
-        feedback('You already voted on this letter in this session.', false);
-      } else if (res.status === 'not_found') {
-        forgetVote(id);
-        msg.faded = true;
-        msg.expires_at = 0;
-        msg.votes_like = before.likes;
-        msg.votes_dislike = before.dislikes;
-        renderLifespan(0);
-        feedback('This letter has already faded.', false);
-      } else {
-        restore();
-        feedback(res.status === 'rate'
-          ? 'Too many votes for now \u2014 nothing was changed.'
-          : 'Could not reach the galaxy \u2014 nothing was changed.', false);
-      }
-      renderVotes(msg);
-    }, function () {
-      voteBusy = false;
-      restore();
-      renderVotes(msg);
-      feedback('Could not reach the galaxy \u2014 nothing was changed.', false);
-    });
   }
 
   function fadeInLabel(expiresAt) {
@@ -1069,24 +840,9 @@
      styling stay untouched while the feed loads, is empty, or fails. */
   function showPanelState(state) {
     currentMessage = null;
-    voteBusy = false;
-    clearLifespanTimer();
     panelTag.textContent = source.tag;
     panelCopy.disabled = true;
     panelShare.disabled = true;
-    if (panelLifespan) {
-      panelLifespan.hidden = true;
-      panelLifespan.textContent = '';
-      panelLifespan.removeAttribute('datetime');
-      panelLifespan.classList.remove('is-bumped', 'is-dipped');
-    }
-    if (panelVotes) panelVotes.hidden = true;
-    if (panelLike) {
-      panelLike.disabled = true;
-      panelDislike.disabled = true;
-      panelLike.classList.remove('is-voted');
-      panelDislike.classList.remove('is-voted');
-    }
     clearTimeout(feedbackTimer);
     panelFeedback.hidden = true;
     panelFeedback.textContent = '';
@@ -1209,9 +965,7 @@
       if (better(bestRank, chosenRank)) { chosen = best; chosenRank = bestRank; }
     }
     if (!chosen) chosen = { left: m, top: top, right: m + W, bottom: top + cap };
-    /* One pixel of headroom: rounding the border box down would otherwise
-       turn a content-fitting panel into a scroll container. */
-    panel.style.maxHeight = (Math.round(chosen.bottom - chosen.top) + 1) + 'px';
+    panel.style.maxHeight = Math.round(chosen.bottom - chosen.top) + 'px';
     panel.style.left = chosen.left + 'px';
     panel.style.top = chosen.top + 'px';
     panel.setAttribute('aria-hidden', 'false');
@@ -1280,8 +1034,6 @@
 
   function hidePanelNow() {
     panelOpen = false;
-    voteBusy = false;
-    clearLifespanTimer();
     if (!panel) return;
     panel.classList.remove('is-on');
     panel.setAttribute('aria-hidden', 'true');
@@ -1294,8 +1046,6 @@
     if (!panelOpen) return;
     panelOpen = false;
     currentMessage = null;
-    voteBusy = false;
-    clearLifespanTimer();
     panel.classList.remove('is-on');
     panel.setAttribute('aria-hidden', 'true');
     clearTimeout(closeTimer);
@@ -1322,10 +1072,6 @@
     hidePanelNow();
     removeAnchorNow();
     currentMessage = null;
-  }
-
-  function relayoutSoon() {
-    requestAnimationFrame(function () { relayout(); });
   }
 
   function relayout() {
@@ -1366,13 +1112,11 @@
     panelFeedback.textContent = label;
     panelFeedback.hidden = false;
     panelCopy.textContent = copied ? 'Copied' : 'Copy';
-    relayoutSoon();
     feedbackTimer = setTimeout(function () {
       if (!panelFeedback) return;
       panelFeedback.hidden = true;
       panelFeedback.textContent = '';
       panelCopy.textContent = 'Copy';
-      relayoutSoon();
     }, 2200);
   }
 

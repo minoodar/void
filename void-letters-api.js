@@ -38,11 +38,6 @@
     return isFinite(n) ? n : 0;
   }
 
-  function countOf(v) {
-    var n = Number(v);
-    return isFinite(n) && n > 0 ? Math.floor(n) : 0;
-  }
-
   function newRequestId() {
     var c = global.crypto;
     if (c && typeof c.randomUUID === 'function') {
@@ -220,9 +215,7 @@
           lang: typeof letter.lang === 'string' ? letter.lang : null,
           text: letter.body,
           created_at: num(letter.created_at),
-          expires_at: num(letter.expires_at),
-          votes_like: countOf(letter.votes_like),
-          votes_dislike: countOf(letter.votes_dislike)
+          expires_at: num(letter.expires_at)
         });
       }
     }
@@ -300,9 +293,7 @@
             lang: typeof raw.lang === 'string' ? raw.lang : null,
             text: raw.text,
             created_at: num(raw.created_at),
-            expires_at: num(raw.expires_at),
-            votes_like: countOf(raw.votes_like),
-            votes_dislike: countOf(raw.votes_dislike)
+            expires_at: num(raw.expires_at)
           }
         };
       }
@@ -317,57 +308,6 @@
     if (!HAS_PUBLIC_LETTER_ROUTE) return null;
     if (typeof id !== 'string' || !LETTER_ID_REGEX.test(id)) return null;
     return SHARE_BASE + '?letter=' + id;
-  }
-
-  function voteState(d, id) {
-    return {
-      id: id,
-      expires_at: num(d.expires_at),
-      remaining_seconds: num(d.remaining_seconds),
-      votes_like: countOf(d.votes_like),
-      votes_dislike: countOf(d.votes_dislike)
-    };
-  }
-
-  /* One immutable vote per visitor per letter. The Worker owns the ceiling and
-     the ±24h bounds; this layer only classifies the reply. Malformed ids and
-     unknown vote types never leave the browser. */
-  function vote(id, type) {
-    if (typeof id !== 'string' || !LETTER_ID_REGEX.test(id) ||
-        (type !== 'like' && type !== 'dislike')) {
-      return Promise.resolve({ status: 'invalid' });
-    }
-    return request(BASE + '/letters/' + id + '/vote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: type })
-    }).then(function (res) {
-      var d = res.data;
-      if (res.status === 200 && d && d.ok === true && d.id === id) {
-        return {
-          status: 'ok',
-          type: d.type === 'dislike' ? 'dislike' : 'like',
-          letter: voteState(d, id),
-          capped: d.capped === true
-        };
-      }
-      if (res.status === 409 && d && d.error === 'already_voted') {
-        return {
-          status: 'already',
-          type: d.type === 'dislike' ? 'dislike' : 'like',
-          letter: voteState(d, id)
-        };
-      }
-      if (res.status === 404) return { status: 'not_found' };
-      if (res.status === 429) {
-        var after = Number(d && d.retry_after);
-        return { status: 'rate', retry_after: isFinite(after) && after > 0 ? after : null };
-      }
-      if (res.status === 400) return { status: 'invalid' };
-      return { status: 'error', code: res.status };
-    }, function () {
-      return { status: 'network' };
-    });
   }
 
   /* Visitor counting rides the same Worker and database as the letters. A hit
@@ -414,7 +354,6 @@
     createFeed: createFeed,
     count: count,
     getLetter: getLetter,
-    vote: vote,
     letterUrl: letterUrl,
     recordVisit: recordVisit,
     visitorStats: visitorStats
