@@ -240,6 +240,12 @@
       quillBtn.title = 'Tools shown; activate again to write a message';
     }
     clearTimeout(toolsHideTimer);
+    // Touch users need time to choose the second action; keep the palette open
+    // until the quill or discovery control is activated again.
+    if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
+      toolsHideTimer = 0;
+      return;
+    }
     toolsHideTimer = setTimeout(function hideWhenIdle() {
       var nav = document.getElementById('void-topnav');
       var active = document.activeElement;
