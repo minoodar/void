@@ -12,9 +12,11 @@
     z-index: 3;
     right: max(14px, env(safe-area-inset-right, 0px));
     bottom: max(14px, env(safe-area-inset-bottom, 0px));
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
+    box-sizing: border-box;
+    min-width: 44px; min-height: 44px;
     margin: 0;
-    padding: 6px 11px 6px 9px;
+    padding: 0 10px;
     border: 1px solid rgba(235, 240, 245, .18);
     border-radius: 999px;
     background: rgba(8, 10, 14, .42);
@@ -39,13 +41,27 @@
     background: rgba(251, 191, 36, .85);
     box-shadow: 0 0 7px rgba(251, 191, 36, .32);
 }
-.vm-gs__fig { display: flex; align-items: baseline; gap: 4px; }
+.vm-gs__fig { display: flex; align-items: baseline; gap: 0; white-space: nowrap; transition: gap .22s ease; }
 .vm-gs__n { font-size: 11.5px; font-weight: 600; color: rgba(250, 252, 255, .92); }
 .vm-gs__l {
+    display: block;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
     font-size: 9px; letter-spacing: .09em; text-transform: uppercase;
     color: rgba(235, 240, 245, .55);
+    white-space: nowrap;
+    transition: max-width .24s ease, opacity .18s ease;
 }
-.vm-gs__sep { width: 1px; height: 11px; flex: none; background: rgba(235, 240, 245, .18); }
+.vm-gs__sep { flex: none; color: rgba(235, 240, 245, .42); font-size: 13px; line-height: 1; }
+@media (hover: hover) and (pointer: fine) {
+    #void-galaxy-stats:hover .vm-gs__fig,
+    #void-galaxy-stats:focus-visible .vm-gs__fig { gap: 4px; }
+    #void-galaxy-stats:hover .vm-gs__l,
+    #void-galaxy-stats:focus-visible .vm-gs__l { max-width: 8em; opacity: 1; }
+}
+#void-galaxy-stats:focus-visible .vm-gs__fig { gap: 4px; }
+#void-galaxy-stats:focus-visible .vm-gs__l { max-width: 8em; opacity: 1; }
 
 #void-galaxy-stats-panel {
     position: fixed;
@@ -854,6 +870,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
 
 @media (prefers-reduced-motion: reduce) {
     #void-galaxy-stats { transition: none; }
+    .vm-gs__fig, .vm-gs__l { transition: none; }
     #void-galaxy-stats-panel { transition: none; }
     #void-god-dialog[open] { animation: none; }
     #void-god-anchor,

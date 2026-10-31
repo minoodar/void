@@ -273,6 +273,7 @@
     people.appendChild(visitorsN);
     people.appendChild(make('span', 'vm-gs__l', 'explorers'));
     var sep = make('span', 'vm-gs__sep');
+    sep.textContent = '\u00b7';
     sep.setAttribute('aria-hidden', 'true');
     var letters = make('span', 'vm-gs__fig');
     num = make('span', 'vm-gs__n', '\u2014');
@@ -283,6 +284,7 @@
     el.appendChild(sep);
     el.appendChild(letters);
     host.appendChild(el);
+    updateStatsLabel();
 
     statsPanel = make('div', 'vm-gs-panel');
     statsPanel.id = 'void-galaxy-stats-panel';
@@ -312,13 +314,9 @@
       if (statsOpen) closeStats(false);
       else openStats();
     });
-    el.addEventListener('pointerenter', function (e) {
-      if (e.pointerType === 'touch') return;
-      clearTimeout(statsHoverTimer);
-      statsHoverTimer = setTimeout(openStats, 140);
-    });
     el.addEventListener('pointerleave', function (e) {
       if (e.pointerType === 'touch') return;
+      if (!statsOpen) return;
       clearTimeout(statsHoverTimer);
       statsHoverTimer = setTimeout(function () { closeStats(false); }, 1200);
     });
@@ -339,6 +337,7 @@
       if (el.contains(e.target) || statsPanel.contains(e.target)) return;
       closeStats(false);
     }, true);
+    showPill();
   }
 
   function showPill() {
@@ -461,10 +460,16 @@
       statsRead.textContent = can ? 'Read the newest letter' : 'No letters yet';
       statsRead.title = can ? 'Open the newest letter' : 'The galaxy has no letters yet';
     }
-    el.setAttribute('aria-label', 'Galaxy statistics' +
-      (ok ? ': ' + n + (n === 1 ? ' letter' : ' letters') : ''));
+    updateStatsLabel();
     showPill();
     return true;
+  }
+
+  function updateStatsLabel() {
+    if (!el) return;
+    var explorers = visitorsN ? visitorsN.textContent : '\u2014';
+    var letters = num ? num.textContent : '\u2014';
+    el.setAttribute('aria-label', 'Galaxy statistics: ' + explorers + ' explorers, ' + letters + ' letters');
   }
 
   function setVisitors(s) {
@@ -477,6 +482,7 @@
     if (rowReturned) {
       rowReturned.textContent = isFinite(r) ? Math.round(Math.min(1, Math.max(0, r)) * 100) + '%' : '\u2014';
     }
+    updateStatsLabel();
     showPill();
   }
 
