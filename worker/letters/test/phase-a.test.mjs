@@ -25,6 +25,7 @@ const migrations = await Promise.all(migrationNames.map(async name => ({
 })));
 const migrationSql = await readFile(join(root, 'migrations', '2026-10-30-daily-limit-admin.sql'), 'utf8');
 const visitorMigrationSql = await readFile(join(root, 'migrations', '2026-10-31-visitor-counter.sql'), 'utf8');
+const voteMigrationSql = await readFile(join(root, 'migrations', '2026-10-31-letter-votes.sql'), 'utf8');
 
 const workerUrl = 'data:text/javascript;base64,' + Buffer.from(workerSource, 'utf8').toString('base64');
 const worker = await import(workerUrl);
@@ -211,6 +212,29 @@ function visitorHit(env, opts = {}) {
   });
 }
 
+function insertLetter(env, id, overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const row = Object.assign({
+    id,
+    body: 'vote target',
+    lang: null,
+    created_at: now,
+    expires_at: now + 7 * DAY_SEC
+  }, overrides);
+  env.__raw.prepare(
+    'INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(row.id, row.body, row.lang, row.created_at, row.expires_at);
+  return row;
+}
+
+function voteRequest(env, id, type, opts = {}) {
+  return call(env, '/letters/' + id + '/vote', Object.assign({
+    method: 'POST',
+    body: { type },
+    ip: nextIp()
+  }, opts));
+}
+
 // ---------------------------------------------------------------------------
 // Static and schema checks
 // ---------------------------------------------------------------------------
@@ -223,6 +247,23 @@ await test('schema plus migrations create the isolated tables and the visitor ta
   }
   for (const counterTable of ['visitors', 'daily', 'rate']) {
     assert(names.includes(counterTable), 'visitor migration did not create ' + counterTable);
+  }
+  for (const voteTable of ['letter_votes', 'letter_vote_rate']) {
+    assert(names.includes(voteTable), 'vote migration did not create ' + voteTable);
+  }
+});
+
+await test('the vote migration applies to an existing schema and is idempotent', async () => {
+  const env = createEnv();
+  env.__raw.exec(voteMigrationSql);
+  env.__raw.exec(voteMigrationSql);
+  const voteCols = env.__raw.prepare('PRAGMA table_info(letter_votes)').all().map(c => c.name);
+  for (const col of ['letter_id', 'voter_hash', 'vote_type', 'created_at']) {
+    assert(voteCols.includes(col), 'missing letter_votes column ' + col);
+  }
+  const rateCols = env.__raw.prepare('PRAGMA table_info(letter_vote_rate)').all().map(c => c.name);
+  for (const col of ['voter_hash', 'bucket', 'count']) {
+    assert(rateCols.includes(col), 'missing letter_vote_rate column ' + col);
   }
 });
 
@@ -1388,6 +1429,312 @@ await test('CORS preflight advertises the admin methods and still rejects hostil
   const adminProd = await call(env, '/admin/tracks', { origin: PROD, headers: adminAuth() });
   equal(adminProd.headers.get('access-control-allow-origin'), PROD, 'admin ACAO');
   equal(adminProd.headers.get('vary'), 'Origin', 'Vary: Origin');
+});
+
+// ---------------------------------------------------------------------------
+// Votes and dynamic lifespan
+// ---------------------------------------------------------------------------
+
+await test('a like adds 24h and reports fresh counts', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const id = 'a1'.repeat(16);
+  const letter = insertLetter(env, id, { created_at: now - 100, expires_at: now + 7 * DAY_SEC });
+
+  const res = await voteRequest(env, id, 'like', { ip: '203.0.113.201' });
+  equal(res.status, 200, 'status');
+  equal(res.data.ok, true, 'ok');
+  equal(res.data.type, 'like', 'type');
+  equal(res.data.votes_like, 1, 'like count');
+  equal(res.data.votes_dislike, 0, 'dislike count');
+  equal(Number(res.data.expires_at), letter.expires_at + DAY_SEC, 'expiry +24h');
+  assert(res.data.remaining_seconds > 7 * DAY_SEC, 'remaining time grew');
+  equal(res.data.capped, false, 'not capped');
+  equal(res.headers.get('cache-control'), 'no-store', 'cache header');
+  equal(res.headers.get('access-control-allow-origin'), PROD, 'ACAO');
+
+  const row = env.__raw.prepare('SELECT * FROM letter_votes WHERE letter_id = ?').get(id);
+  equal(row.vote_type, 'like', 'stored vote type');
+  equal(row.voter_hash.length, 64, 'voter hash is sha-256 hex');
+});
+
+await test('a dislike removes 24h', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const id = 'b1'.repeat(16);
+  const letter = insertLetter(env, id, { created_at: now - 100, expires_at: now + 7 * DAY_SEC });
+
+  const res = await voteRequest(env, id, 'dislike', { ip: '203.0.113.204' });
+  equal(res.status, 200, 'status');
+  equal(res.data.type, 'dislike', 'type');
+  equal(res.data.votes_dislike, 1, 'dislike count');
+  equal(res.data.votes_like, 0, 'like count');
+  equal(Number(res.data.expires_at), letter.expires_at - DAY_SEC, 'expiry -24h');
+});
+
+await test('lifespan is capped at 90 days and keeps an hour before fading', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+
+  const capId = 'c1'.repeat(16);
+  const capExpiry = now - 100 + 90 * DAY_SEC;
+  insertLetter(env, capId, { created_at: now - 100, expires_at: capExpiry });
+  const atCap = await voteRequest(env, capId, 'like');
+  equal(atCap.status, 200, 'cap vote status');
+  equal(atCap.data.capped, true, 'cap flagged');
+  equal(Number(atCap.data.expires_at), capExpiry, 'stays at the 90d ceiling');
+
+  const floorId = 'f1'.repeat(16);
+  insertLetter(env, floorId, { created_at: now - 1000, expires_at: now + 1800 });
+  const below = await voteRequest(env, floorId, 'dislike');
+  equal(below.status, 200, 'floor vote status');
+  equal(Number(below.data.expires_at), now + 1800, 'below the floor is unchanged');
+  equal(below.data.capped, true, 'floor flagged');
+
+  const edgeId = 'e1'.repeat(16);
+  insertLetter(env, edgeId, { created_at: now - 1000, expires_at: now + 7200 });
+  const edge = await voteRequest(env, edgeId, 'dislike');
+  assert(Number(edge.data.expires_at) >= now + 3600 && Number(edge.data.expires_at) <= now + 3602,
+    'clamped to one hour: ' + edge.data.expires_at);
+});
+
+await test('one immutable vote per visitor per letter', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const id = 'd1'.repeat(16);
+  const letter = insertLetter(env, id, { created_at: now - 50, expires_at: now + 7 * DAY_SEC });
+  const ip = '203.0.113.202';
+
+  equal((await voteRequest(env, id, 'like', { ip })).status, 200, 'first vote');
+  const second = await voteRequest(env, id, 'dislike', { ip });
+  equal(second.status, 409, 'second vote rejected');
+  equal(second.data.error, 'already_voted', 'error');
+  equal(second.data.type, 'like', 'original choice kept');
+  equal(second.data.votes_like, 1, 'count unchanged');
+  equal(second.data.votes_dislike, 0, 'no dislike recorded');
+  equal(Number(second.data.expires_at), letter.expires_at + DAY_SEC, 'expiry moved only once');
+
+  const other = await voteRequest(env, id, 'like', { ip: '203.0.113.203' });
+  equal(other.status, 200, 'another visitor can vote');
+  equal(other.data.votes_like, 2, 'count grew');
+  equal(Number(other.data.expires_at), letter.expires_at + 2 * DAY_SEC, 'expiry moved twice');
+  equal(tableRows(env, 'letter_votes').length, 2, 'two ledger rows');
+});
+
+await test('votes on faded, unknown or malformed ids fail closed', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const expiredId = 'ee'.repeat(16);
+  insertLetter(env, expiredId, { created_at: now - 1000, expires_at: now - 500 });
+
+  env.DB.writes = 0;
+  const expired = await voteRequest(env, expiredId, 'like');
+  equal(expired.status, 404, 'expired status');
+  equal(expired.data.error, 'not_found', 'expired error');
+  equal(env.DB.writes, 0, 'expired vote wrote to the database');
+
+  equal((await voteRequest(env, 'ab'.repeat(16), 'like')).status, 404, 'unknown id');
+  equal((await voteRequest(env, 'not-an-id', 'like')).status, 404, 'malformed id');
+  equal((await voteRequest(env, 'a'.repeat(31), 'like')).status, 404, 'short id');
+  equal(env.DB.writes, 0, 'rejected ids wrote to the database');
+  equal((await call(env, '/letters/' + expiredId + '/vote', { origin: null })).status, 404, 'GET vote is 404');
+});
+
+await test('invalid vote bodies never reach the database', async () => {
+  const env = createEnv();
+  const id = '11'.repeat(16);
+  insertLetter(env, id);
+  env.DB.writes = 0;
+
+  const badType = await voteRequest(env, id, 'upvote');
+  equal(badType.status, 400, 'unknown type status');
+  equal(badType.data.error, 'invalid_vote', 'unknown type error');
+
+  const badJson = await call(env, '/letters/' + id + '/vote', {
+    method: 'POST', ip: nextIp(), body: '{oops'
+  });
+  equal(badJson.status, 400, 'bad json status');
+  equal(badJson.data.error, 'invalid_json', 'bad json error');
+
+  const noType = await call(env, '/letters/' + id + '/vote', {
+    method: 'POST', ip: nextIp(), body: {}
+  });
+  equal(noType.status, 400, 'missing type');
+
+  const huge = await call(env, '/letters/' + id + '/vote', {
+    method: 'POST', ip: nextIp(), body: { type: 'like', pad: 'x'.repeat(400) }
+  });
+  equal(huge.status, 413, 'oversized body');
+  equal(env.DB.writes, 0, 'rejected bodies wrote to the database');
+});
+
+await test('vote counts appear in the feed and the single-letter route', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const a = 'aa'.repeat(16);
+  const b = 'bb'.repeat(16);
+  insertLetter(env, a, { body: 'alpha', expires_at: now + DAY_SEC });
+  insertLetter(env, b, { body: 'beta', expires_at: now + DAY_SEC });
+
+  await voteRequest(env, a, 'like', { ip: '203.0.113.211' });
+  await voteRequest(env, a, 'like', { ip: '203.0.113.212' });
+  await voteRequest(env, a, 'dislike', { ip: '203.0.113.213' });
+  await voteRequest(env, b, 'dislike', { ip: '203.0.113.214' });
+
+  const list = await call(env, '/letters', { origin: null });
+  const rowA = list.data.letters.find(letter => letter.id === a);
+  const rowB = list.data.letters.find(letter => letter.id === b);
+  equal(rowA.votes_like, 2, 'feed like count');
+  equal(rowA.votes_dislike, 1, 'feed dislike count');
+  equal(rowB.votes_like, 0, 'feed zero likes');
+  equal(rowB.votes_dislike, 1, 'feed dislike count');
+
+  const single = await call(env, '/letters/' + a, { origin: null });
+  equal(single.data.votes_like, 2, 'single like count');
+  equal(single.data.votes_dislike, 1, 'single dislike count');
+});
+
+await test('the hourly vote ceiling is per hashed visitor', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const ip = '203.0.113.220';
+
+  for (let i = 0; i < 30; i++) {
+    const id = (i + 1).toString(16).padStart(32, '0');
+    insertLetter(env, id, { expires_at: now + DAY_SEC });
+    const res = await voteRequest(env, id, 'like', { ip });
+    equal(res.status, 200, 'vote within the ceiling #' + i);
+  }
+
+  const extraId = 'ff'.repeat(16);
+  insertLetter(env, extraId, { expires_at: now + DAY_SEC });
+  const limited = await voteRequest(env, extraId, 'like', { ip });
+  equal(limited.status, 429, 'ceiling status');
+  equal(limited.data.error, 'rate_limited', 'ceiling error');
+  equal(Number(env.__raw.prepare('SELECT count FROM letter_vote_rate').get().count), 30, 'rate row stops at 30');
+  equal(tableRows(env, 'letter_votes').length, 30, 'no vote past the ceiling');
+
+  const other = await voteRequest(env, extraId, 'like', { ip: '203.0.113.221' });
+  equal(other.status, 200, 'another visitor is unaffected');
+});
+
+await test('vote hashes are domain separated and no raw IP is stored', async () => {
+  const env = createEnv();
+  const ip = '198.51.100.99';
+  const created = await call(env, '/letters', { method: 'POST', ip, body: validBody() });
+  equal(created.status, 201, 'created letter');
+  equal((await voteRequest(env, created.data.id, 'like', { ip })).status, 200, 'vote');
+  equal((await visitorHit(env, { ip })).status, 200, 'visitor hit');
+
+  const sender = tableRows(env, 'letter_submissions')[0].sender_hash;
+  const voter = tableRows(env, 'letter_votes')[0].voter_hash;
+  const visitor = tableRows(env, 'visitors')[0].ip_hash;
+  for (const hash of [sender, voter, visitor]) {
+    assert(/^[0-9a-f]{64}$/.test(hash), 'unexpected hash format: ' + hash);
+  }
+  assert(sender !== voter && sender !== visitor && voter !== visitor, 'hash domains overlap');
+
+  const dump = JSON.stringify([
+    tableRows(env, 'letters'),
+    tableRows(env, 'letter_submissions'),
+    tableRows(env, 'letter_votes'),
+    tableRows(env, 'letter_vote_rate'),
+    tableRows(env, 'visitors')
+  ]);
+  assert(!dump.includes(ip), 'raw IP found in the database');
+  assert(!dump.includes('198.51.100'), 'IP prefix found in the database');
+});
+
+await test('admin delete and the nuclear reset remove votes too', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+
+  const id = 'cc'.repeat(16);
+  insertLetter(env, id, { expires_at: now + DAY_SEC });
+  equal((await voteRequest(env, id, 'like', { ip: '203.0.113.230' })).status, 200, 'vote before delete');
+  const deleted = await call(env, '/admin/letters/' + id, {
+    method: 'DELETE', origin: null, headers: adminAuth()
+  });
+  equal(deleted.status, 200, 'delete status');
+  equal(deleted.data.deleted, 1, 'letter deleted');
+  equal(deleted.data.votes_cleared, 1, 'votes deleted');
+  equal(tableRows(env, 'letter_votes').length, 0, 'no orphan votes');
+
+  const id2 = 'dd'.repeat(16);
+  insertLetter(env, id2, { expires_at: now + DAY_SEC });
+  equal((await voteRequest(env, id2, 'dislike', { ip: '203.0.113.231' })).status, 200, 'vote before reset');
+  const reset = await call(env, '/admin/letters/clear', {
+    method: 'POST',
+    origin: null,
+    headers: adminAuth(),
+    body: { all: true, confirm: 'RESET GALAXY' }
+  });
+  equal(reset.status, 200, 'reset status');
+  equal(reset.data.votes_cleared, 1, 'reset votes');
+  equal(reset.data.vote_limits_cleared, 2, 'reset vote limits');
+  equal(tableRows(env, 'letter_votes').length, 0, 'votes gone after reset');
+  equal(tableRows(env, 'letter_vote_rate').length, 0, 'vote limits gone after reset');
+});
+
+await test('expired votes are pruned with their letter on the next post', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const id = '99'.repeat(16);
+  insertLetter(env, id, { created_at: now - 1000, expires_at: now + 500 });
+  env.__raw.prepare(
+    'INSERT INTO letter_votes (letter_id, voter_hash, vote_type, created_at) VALUES (?, ?, ?, ?)'
+  ).run(id, 'f'.repeat(64), 'like', now - 600);
+  env.__raw.prepare('UPDATE letters SET expires_at = ? WHERE id = ?').run(now - 500, id);
+
+  const posted = await call(env, '/letters', { method: 'POST', ip: nextIp(), body: validBody() });
+  equal(posted.status, 201, 'post status');
+  equal(tableRows(env, 'letter_votes').length, 0, 'expired votes were pruned');
+});
+
+await test('the lifespan trigger applies once per ledger row and skips faded letters', async () => {
+  const env = createEnv();
+  const triggers = env.__raw.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+  ).all().map(r => r.name);
+  assert(triggers.includes('letter_votes_apply_lifespan'), 'missing lifespan trigger');
+
+  const now = Math.floor(Date.now() / 1000);
+  const id = '77'.repeat(16);
+  const row = insertLetter(env, id, { created_at: now, expires_at: now + DAY_SEC });
+  const insertVote = 'INSERT INTO letter_votes (letter_id, voter_hash, vote_type, created_at) ' +
+    'VALUES (?, ?, ?, ?) ON CONFLICT(letter_id, voter_hash) DO NOTHING';
+  const expiryOf = target => env.__raw.prepare('SELECT expires_at FROM letters WHERE id = ?')
+    .get(target).expires_at;
+
+  env.__raw.prepare(insertVote).run(id, 'a'.repeat(64), 'like', now);
+  equal(expiryOf(id), row.expires_at + DAY_SEC, 'first insert shifts expiry');
+
+  env.__raw.prepare(insertVote).run(id, 'a'.repeat(64), 'like', now);
+  equal(expiryOf(id), row.expires_at + DAY_SEC, 'a conflicting insert shifts nothing');
+  equal(tableRows(env, 'letter_votes').length, 1, 'still a single ledger row');
+
+  const faded = '78'.repeat(16);
+  insertLetter(env, faded, { created_at: now - 10 * DAY_SEC, expires_at: now - 5 * DAY_SEC });
+  env.__raw.prepare(insertVote).run(faded, 'b'.repeat(64), 'like', now);
+  equal(expiryOf(faded), now - 5 * DAY_SEC, 'faded letters keep their expiry');
+});
+
+await test('the vote route keeps its CORS and failure contract', async () => {
+  const env = createEnv();
+  const id = '22'.repeat(16);
+  insertLetter(env, id);
+
+  const preflight = await call(env, '/letters/' + id + '/vote', { method: 'OPTIONS', origin: PROD });
+  equal(preflight.status, 204, 'preflight status');
+
+  const evil = await voteRequest(env, id, 'like', { origin: 'https://evil.example', ip: '203.0.113.240' });
+  equal(evil.status, 403, 'hostile origin');
+
+  const noDb = createEnv({ DB: undefined });
+  equal((await voteRequest(noDb, id, 'like')).status, 503, 'missing DB');
+
+  const noSalt = createEnv({ LETTER_SALT: undefined, ENVIRONMENT: 'production' });
+  equal((await voteRequest(noSalt, id, 'like')).status, 503, 'missing salt');
 });
 
 // ---------------------------------------------------------------------------
