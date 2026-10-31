@@ -547,7 +547,14 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     padding: 7px 10px;
     opacity: .82;
 }
-.void-god-vote__icon { width: 14px; height: 14px; flex: none; fill: currentColor; }
+.void-god-vote__icon {
+    display: block;
+    width: 14px; height: 14px; flex: 0 0 14px;
+    fill: currentColor;
+    transform-box: fill-box;
+    transform-origin: center;
+}
+.void-god-vote__icon--down { transform: rotate(180deg); }
 .void-god-vote:hover, .void-god-vote:focus-visible { opacity: 1; }
 .void-god-vote__label { font-size: 11px; }
 .void-god-vote__count {
@@ -893,6 +900,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     /* The site rail keeps its 44px column at the middle-right on these widths;
        ending the panel before it keeps every action button clear of the icons. */
     #void-god-panel { width: calc(100vw - 84px); padding: 14px 14px 12px; }
+    body.is-letter-reading #void-god-panel { width: min(380px, calc(100vw - 24px)); }
     .void-god-panel__actions {
         grid-template-columns: minmax(88px, auto) minmax(0, 1fr) minmax(0, 1.25fr);
         gap: 4px;

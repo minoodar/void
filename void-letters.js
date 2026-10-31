@@ -726,7 +726,9 @@
   /* کفِ ناحیهٔ آزاد: بالای داک (نه روی کنترل‌های پخش). */
   function safeBottom() {
     var limit = window.innerHeight - 10 - insets().b;
-    var dockEl = document.querySelector('#void-music-root .vm-dock');
+    var dockEl = document.body.classList.contains('is-letter-reading')
+      ? null
+      : document.querySelector('#void-music-root .vm-dock');
     if (dockEl) {
       var r = dockEl.getBoundingClientRect();
       if (r.height > 1 && r.top < limit) limit = r.top - 10;
@@ -985,7 +987,7 @@
     panelDislike.id = 'void-god-dislike';
     panelDislike.setAttribute('aria-pressed', 'false');
     panelDislike.setAttribute('aria-label', 'Dislike this letter');
-    var dislikeIcon = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-vote__icon', 'aria-hidden': 'true', focusable: 'false', transform: 'rotate(180 12 12)' });
+    var dislikeIcon = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-vote__icon void-god-vote__icon--down', 'aria-hidden': 'true', focusable: 'false' });
     dislikeIcon.appendChild(svgNode('path', { d: voteIconPath }));
     panelDislike.appendChild(dislikeIcon);
     panelDislike.appendChild(make('span', 'void-god-vote__label', 'Dislike'));
@@ -1332,7 +1334,8 @@
     panel.classList.remove('is-on');
     panel.style.left = '0px';
     panel.style.top = '0px';
-    var cap = Math.min(380, window.innerHeight * 0.56, Math.max(120, bottom - top));
+    var mobileCap = window.matchMedia && window.matchMedia('(max-width: 520px)').matches ? 0.76 : 0.56;
+    var cap = Math.min(380, window.innerHeight * mobileCap, Math.max(120, bottom - top));
     var W = panel.offsetWidth;
     var R = 24, m = 12, gap = 26;
     var starRect = { left: x - R, top: y - R, right: x + R, bottom: y + R };
