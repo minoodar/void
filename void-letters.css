@@ -169,6 +169,38 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
 #void-music-root.is-quiet #void-god-discover { opacity: .48; }
 #void-music-root.is-quiet #void-god-quill { opacity: .38; }
 
+/* Reading dims selected chrome only; playback, metadata, and the galaxy canvas
+   remain untouched. Quiet Mode keeps its own opacity and interaction rules. */
+#void-topnav { transition: opacity .6s ease; }
+body.is-reading #void-topnav { opacity: .22; }
+body.is-reading #void-topnav:hover,
+body.is-reading #void-topnav:focus-within { opacity: 1; }
+body.is-reading:not(.vm-quiet) #void-galaxy-stats,
+body.is-reading:not(.vm-quiet) #void-god-quill,
+body.is-reading:not(.vm-quiet) #void-god-discover {
+    opacity: .22;
+    transition: opacity .6s ease;
+}
+body.is-reading:not(.vm-quiet) #void-galaxy-stats:hover,
+body.is-reading:not(.vm-quiet) #void-galaxy-stats:focus-visible,
+body.is-reading:not(.vm-quiet) #void-god-quill:hover,
+body.is-reading:not(.vm-quiet) #void-god-quill:focus-visible,
+body.is-reading:not(.vm-quiet) #void-god-discover:hover,
+body.is-reading:not(.vm-quiet) #void-god-discover:focus-visible { opacity: 1; }
+body.is-reading #void-golden-status:not(.is-action) {
+    opacity: .22;
+    transition: opacity .6s ease;
+}
+body.is-reading #void-golden-status:not(.is-action):hover,
+body.is-reading #void-golden-status:not(.is-action):focus-within { opacity: 1; }
+@media (hover: none) {
+    body.is-reading #void-topnav,
+    body.is-reading:not(.vm-quiet) #void-galaxy-stats,
+    body.is-reading:not(.vm-quiet) #void-god-quill,
+    body.is-reading:not(.vm-quiet) #void-god-discover,
+    body.is-reading #void-golden-status:not(.is-action) { opacity: .36; }
+}
+
 /* On phones the demo star sits at 22%, not 30%; the column follows the same
    formula as #void-topnav in index.html. */
 @media (max-width: 520px) {
@@ -298,14 +330,28 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     pointer-events: auto;
     user-select: text; -webkit-user-select: text;
     overscroll-behavior: contain;
+    min-height: 0;
     overflow: auto;
     opacity: 0;
     transform: translateY(6px) scale(.99);
     transition: opacity .2s ease, transform .26s cubic-bezier(.22, 1, .36, 1);
 }
 #void-god-panel.is-on { opacity: 1; transform: none; }
+#void-god-panel.is-closing {
+    opacity: 0;
+    transform: translateY(-7px) scale(.985);
+    filter: blur(1.5px);
+    pointer-events: none;
+    transition: opacity .36s ease, transform .36s ease, filter .36s ease;
+}
 #void-god-panel[hidden] { display: none; }
 #void-god-panel:focus { outline: none; }
+.void-god-head,
+.void-god-msg-lifespan,
+.void-god-msg-meta,
+.void-god-votes,
+.void-god-panel__actions,
+.void-god-panel__status { flex: 0 0 auto; }
 
 .void-god-msg-title {
     margin: 0;
@@ -315,10 +361,11 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     letter-spacing: .02em;
     color: rgba(250, 252, 255, .96);
 }
-.void-god-nav { display: flex; align-items: center; gap: 3px; flex: none; }
+.void-god-nav { display: flex; align-items: center; gap: 4px; flex: none; }
 .void-god-nav__button {
     display: grid; place-items: center;
-    width: 30px; height: 30px; padding: 0;
+    flex: none;
+    width: 44px; height: 44px; padding: 0;
     border: 1px solid rgba(235, 240, 245, .10);
     border-radius: 50%;
     background: rgba(255, 255, 255, .025);
@@ -344,6 +391,12 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     color: rgba(251, 191, 36, .78);
 }
 .void-god-msg-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(235, 240, 245, .24) transparent;
     margin: 0;
     color: rgba(250, 252, 255, .94);
     font-size: 14.5px;
@@ -385,18 +438,24 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
 .void-god-votes {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    gap: 7px;
 }
 .void-god-votes[hidden] { display: none; }
 .void-god-vote {
-    flex: 1;
+    flex: 0 1 auto;
     display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 34px;
-    padding: 8px 13px;
+    justify-content: center;
+    gap: 7px;
+    min-width: 82px;
+    min-height: 44px;
+    padding: 7px 10px;
+    opacity: .82;
 }
+.void-god-vote__icon { width: 14px; height: 14px; flex: none; fill: currentColor; }
+.void-god-vote:hover, .void-god-vote:focus-visible { opacity: 1; }
+.void-god-vote__label { font-size: 11px; }
 .void-god-vote__count {
     font-variant-numeric: tabular-nums;
     opacity: .65;
@@ -409,10 +468,17 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
 .void-god-vote.is-voted .void-god-vote__count { opacity: .9; }
 .void-god-vote.is-voted:disabled { opacity: 1; }
 .void-god-panel__actions {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.25fr);
     align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
+    gap: 6px;
+}
+.void-god-panel__actions .void-god-nav { justify-content: flex-start; }
+.void-god-panel__actions > .void-god-btn {
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 10px;
+    white-space: nowrap;
 }
 .void-god-panel__status {
     margin: 0;
@@ -494,8 +560,8 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
 }
 .void-god-x {
     flex: none;
-    width: 34px; height: 34px;
-    margin: -3px -3px 0 0;
+    width: 44px; height: 44px;
+    margin: -6px -6px 0 0;
     display: grid; place-items: center;
     padding: 0;
     border: 0; border-radius: 50%;
@@ -731,11 +797,21 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     /* The site rail keeps its 44px column at the middle-right on these widths;
        ending the panel before it keeps every action button clear of the icons. */
     #void-god-panel { width: calc(100vw - 84px); padding: 14px 14px 12px; }
-    .void-god-nav__button { width: 26px; height: 26px; }
+    .void-god-panel__actions {
+        grid-template-columns: minmax(88px, auto) minmax(0, 1fr) minmax(0, 1.25fr);
+        gap: 4px;
+    }
+    .void-god-panel__actions > .void-god-btn { padding: 8px 5px; font-size: 11.5px; }
     .void-god-form { padding: 16px 15px 14px; gap: 10px; }
     .void-god-text { min-height: 110px; }
     .void-god-foot .void-god-btn { flex: 1; }
-    .void-god-panel__actions .void-god-btn { flex: 1; }
+}
+
+@media (max-width: 340px) {
+    .void-god-panel__actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .void-god-panel__actions > .void-god-nav { grid-column: 1 / -1; }
+    .void-god-votes { gap: 4px; }
+    .void-god-vote { min-width: 78px; gap: 5px; padding-inline: 6px; }
 }
 
 @media (max-height: 560px) {
@@ -783,6 +859,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     #void-god-anchor,
     #void-god-anchor.is-closing,
     #void-god-panel,
+    #void-god-panel.is-closing,
     #void-god-quill,
     #void-god-discover,
     .void-god-x,
@@ -795,4 +872,10 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     .void-god-anchor__core { animation: none; }
     .void-god-discover__core { animation: none; }
     .void-god-ash span { animation: none; }
+    #void-god-panel.is-closing {
+        opacity: 0;
+        transform: none;
+        filter: none;
+        transition: opacity .08s linear;
+    }
 }

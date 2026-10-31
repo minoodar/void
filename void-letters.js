@@ -103,6 +103,8 @@
   var lifespanTimer = 0;
   var voteBusy = false;
   var panelOpen = false;
+  var panelClosing = false;
+  var panelRequestToken = 0;
   var currentMessage = null;
   var starX = 0;
   var starY = 0;
@@ -157,6 +159,10 @@
     if (className) n.className = className;
     if (text != null) n.textContent = text;
     return n;
+  }
+
+  function setReadingMode(active) {
+    if (document.body) document.body.classList.toggle('is-reading', !!active);
   }
 
   function clamp(v, lo, hi) {
@@ -792,12 +798,13 @@
     panelNext.title = 'Next letter';
     nav.appendChild(panelPrevious);
     nav.appendChild(panelNext);
+    nav.setAttribute('role', 'group');
+    nav.setAttribute('aria-label', 'Letter navigation');
     var x = make('button', 'void-god-x', '\u00D7');
     x.type = 'button';
     x.id = 'void-god-panel-close';
     x.setAttribute('aria-label', 'Close message');
     head.appendChild(titles);
-    head.appendChild(nav);
     head.appendChild(x);
 
     panelText = make('p', 'void-god-msg-text');
@@ -818,6 +825,11 @@
     panelLike.type = 'button';
     panelLike.id = 'void-god-like';
     panelLike.setAttribute('aria-pressed', 'false');
+    panelLike.setAttribute('aria-label', 'Like this letter');
+    var voteIconPath = 'M14 9V5a3 3 0 0 0-3-3L7 9v12h11.28a2 2 0 0 0 1.97-1.65l1.38-8A2 2 0 0 0 19.66 9H14zM7 21H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3';
+    var likeIcon = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-vote__icon', 'aria-hidden': 'true', focusable: 'false' });
+    likeIcon.appendChild(svgNode('path', { d: voteIconPath }));
+    panelLike.appendChild(likeIcon);
     panelLike.appendChild(make('span', 'void-god-vote__label', 'Like'));
     likeCount = make('span', 'void-god-vote__count', '0');
     panelLike.appendChild(likeCount);
@@ -825,6 +837,10 @@
     panelDislike.type = 'button';
     panelDislike.id = 'void-god-dislike';
     panelDislike.setAttribute('aria-pressed', 'false');
+    panelDislike.setAttribute('aria-label', 'Dislike this letter');
+    var dislikeIcon = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-vote__icon', 'aria-hidden': 'true', focusable: 'false', transform: 'rotate(180 12 12)' });
+    dislikeIcon.appendChild(svgNode('path', { d: voteIconPath }));
+    panelDislike.appendChild(dislikeIcon);
     panelDislike.appendChild(make('span', 'void-god-vote__label', 'Dislike'));
     dislikeCount = make('span', 'void-god-vote__count', '0');
     panelDislike.appendChild(dislikeCount);
@@ -838,6 +854,7 @@
     panelShare = make('button', 'void-god-btn', 'Share on X');
     panelShare.type = 'button';
     panelShare.id = 'void-god-share';
+    actions.appendChild(nav);
     actions.appendChild(panelCopy);
     actions.appendChild(panelShare);
 
@@ -1160,6 +1177,10 @@
   function layoutPanel(x, y, focus) {
     var top = safeTop();
     var bottom = safeBottom();
+    clearTimeout(closeTimer);
+    panelClosing = false;
+    panel.classList.remove('is-closing');
+    panel.removeAttribute('inert');
     panel.hidden = false;
     panel.classList.remove('is-on');
     panel.style.left = '0px';
@@ -1246,8 +1267,14 @@
   }
 
   function openMessageAt(x, y, load) {
-    if (!ensureMounted()) return;
+    if (!ensureMounted()) {
+      hidePanelNow();
+      return;
+    }
     clearScene();
+    var requestToken = ++panelRequestToken;
+    panelClosing = false;
+    setReadingMode(true);
     panelOpen = true;
     var p = anchorPoint(x, y);
     starX = p.x;
@@ -1259,7 +1286,7 @@
     if (panelPrevious) panelPrevious.disabled = true;
     if (panelNext) panelNext.disabled = true;
     Promise.resolve().then(function () { return load ? load() : source.next(); }).then(function (msg) {
-      if (!panelOpen) return;
+      if (!panelOpen || requestToken !== panelRequestToken) return;
       panel.classList.remove('is-loading-letter');
       if (msg && msg.state) { showPanelState(msg.state); layoutPanel(starX, starY, false); return; }
       if (!msg) { showPanelState('empty'); layoutPanel(starX, starY, false); return; }
@@ -1270,7 +1297,7 @@
       updateNavigation();
       layoutPanel(starX, starY, false);
     }, function () {
-      if (!panelOpen) return;
+      if (!panelOpen || requestToken !== panelRequestToken) return;
       panel.classList.remove('is-loading-letter');
       showPanelState('error');
       layoutPanel(starX, starY, false);
@@ -1295,10 +1322,11 @@
       return;
     }
     if (direction < 0 || source.kind !== 'api') return;
+    var requestToken = ++panelRequestToken;
     panel.classList.add('is-loading-letter');
     showPanelState('loading');
     source.next().then(function (msg) {
-      if (!panelOpen) return;
+      if (!panelOpen || requestToken !== panelRequestToken) return;
       panel.classList.remove('is-loading-letter');
       if (!msg || msg.state) {
         showPanelState(msg && msg.state ? msg.state : 'empty');
@@ -1314,7 +1342,7 @@
       updateNavigation();
       layoutPanel(starX, starY, false);
     }, function () {
-      if (!panelOpen) return;
+      if (!panelOpen || requestToken !== panelRequestToken) return;
       panel.classList.remove('is-loading-letter');
       showPanelState('error');
       updateNavigation();
@@ -1357,28 +1385,41 @@
 
   function hidePanelNow() {
     panelOpen = false;
+    panelClosing = false;
+    panelRequestToken++;
+    setReadingMode(false);
     voteBusy = false;
     clearLifespanTimer();
+    clearTimeout(closeTimer);
     if (!panel) return;
-    panel.classList.remove('is-on');
+    panel.classList.remove('is-on', 'is-closing', 'is-loading-letter');
+    panel.setAttribute('inert', '');
     panel.setAttribute('aria-hidden', 'true');
     panel.hidden = true;
-    clearTimeout(closeTimer);
   }
 
   function closePanel(opts) {
     opts = opts || {};
-    if (!panelOpen) return;
+    if (!panelOpen) { setReadingMode(false); return; }
     panelOpen = false;
+    panelClosing = true;
+    panelRequestToken++;
+    setReadingMode(false);
     currentMessage = null;
     voteBusy = false;
     clearLifespanTimer();
-    panel.classList.remove('is-on');
+    panel.classList.remove('is-on', 'is-loading-letter');
+    panel.classList.add('is-closing');
+    panel.setAttribute('inert', '');
     panel.setAttribute('aria-hidden', 'true');
     clearTimeout(closeTimer);
     closeTimer = setTimeout(function () {
-      if (!panelOpen && panel) panel.hidden = true;
-    }, 280);
+      if (!panelOpen && panel) {
+        panel.hidden = true;
+        panel.classList.remove('is-closing');
+        panelClosing = false;
+      }
+    }, 360);
     if (opts.dissolve && anchor) {
       var ax = starX, ay = starY;
       var dying = anchor;
@@ -1502,6 +1543,8 @@
 
   function openCompose() {
     closePanel({ dissolve: false, focus: false });
+    setReadingMode(false);
+    if (panelClosing) hidePanelNow();
     try {
       if (window.VoidMusic && typeof window.VoidMusic.enter === 'function' &&
           (!window.VoidMusic.isOpen || !window.VoidMusic.isOpen())) window.VoidMusic.enter();
