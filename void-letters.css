@@ -304,6 +304,53 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     line-height: 1.5;
     color: rgba(235, 240, 245, .5);
 }
+.void-god-msg-lifespan {
+    margin: -2px 0 0;
+    font-size: 11.5px;
+    line-height: 1.4;
+    letter-spacing: .05em;
+    color: rgba(251, 216, 140, .78);
+    font-variant-numeric: tabular-nums;
+}
+.void-god-msg-lifespan[hidden] { display: none; }
+.void-god-msg-lifespan.is-bumped { animation: void-lifespan-bump .8s ease; }
+.void-god-msg-lifespan.is-dipped { animation: void-lifespan-dip .8s ease; }
+@keyframes void-lifespan-bump {
+    0% { color: rgba(251, 191, 36, .35); transform: translateY(2px); }
+    35% { color: rgba(255, 226, 150, 1); transform: translateY(-1px); }
+    100% { color: rgba(251, 216, 140, .78); transform: none; }
+}
+@keyframes void-lifespan-dip {
+    0% { color: rgba(170, 190, 220, .35); transform: translateY(-2px); }
+    35% { color: rgba(190, 205, 230, .95); transform: translateY(1px); }
+    100% { color: rgba(251, 216, 140, .78); transform: none; }
+}
+.void-god-votes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.void-god-votes[hidden] { display: none; }
+.void-god-vote {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 34px;
+    padding: 8px 13px;
+}
+.void-god-vote__count {
+    font-variant-numeric: tabular-nums;
+    opacity: .65;
+}
+.void-god-vote.is-voted {
+    border-color: rgba(251, 191, 36, .5);
+    background: rgba(251, 191, 36, .1);
+    color: rgba(251, 222, 150, .98);
+}
+.void-god-vote.is-voted .void-god-vote__count { opacity: .9; }
+.void-god-vote.is-voted:disabled { opacity: 1; }
 .void-god-panel__actions {
     display: flex;
     align-items: center;
@@ -677,7 +724,8 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     .void-god-x,
     .void-god-btn,
     .void-god-exp-opt span,
-    .void-god-text { transition: none; }
+    .void-god-msg-lifespan,
+    .void-god-text { transition: none; animation: none; }
     .void-god-anchor__glow,
     .void-god-anchor__core { animation: none; }
     .void-god-ash span { animation: none; }
