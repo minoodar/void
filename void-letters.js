@@ -286,13 +286,15 @@
     if (!el) return;
     var width = el.offsetWidth || 56;
     var height = el.offsetHeight || 48;
-    var point = document.getElementById('void-god-discover');
+    var corner = document.querySelector('#void-music-root .vm-corner');
+    var point = corner && corner.querySelector('.vm-fs');
     var rect = point && point.getBoundingClientRect();
+    var cornerRect = corner && corner.getBoundingClientRect();
     var left;
     var top;
     if (rect && rect.width > 0 && rect.height > 0) {
       left = rect.left + rect.width / 2;
-      top = rect.bottom + 6;
+      top = Math.max(rect.bottom, cornerRect && cornerRect.height > 0 ? cornerRect.bottom : rect.bottom) + 6;
     } else {
       left = window.innerWidth - width / 2 - 14;
       top = window.innerHeight - height - 14;
