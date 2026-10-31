@@ -220,6 +220,10 @@
       discoveryBtn.setAttribute('aria-label', 'Show tools; activate again to discover a letter');
       discoveryBtn.title = 'Show tools; activate again to discover a letter';
     }
+    if (quillBtn) {
+      quillBtn.setAttribute('aria-label', 'Message to Galaxy');
+      quillBtn.title = 'Message to Galaxy';
+    }
   }
 
   function showToolPalette() {
@@ -230,6 +234,10 @@
       discoveryBtn.setAttribute('aria-expanded', 'true');
       discoveryBtn.setAttribute('aria-label', 'Tools shown; activate again to discover a letter');
       discoveryBtn.title = 'Tools shown; activate again to discover a letter';
+    }
+    if (quillBtn) {
+      quillBtn.setAttribute('aria-label', 'Tools shown; activate again to write a message');
+      quillBtn.title = 'Tools shown; activate again to write a message';
     }
     clearTimeout(toolsHideTimer);
     toolsHideTimer = setTimeout(function hideWhenIdle() {
@@ -2070,7 +2078,14 @@
     svg.appendChild(svgNode('path', { d: 'M12.4 4.9c-.4 2.9-1.5 5-3.6 6.9' }));
     quillBtn.appendChild(svg);
     host.appendChild(quillBtn);
-    quillBtn.addEventListener('click', openCompose);
+    quillBtn.addEventListener('click', function () {
+      if (!toolsRevealed) {
+        showToolPalette();
+        return;
+      }
+      hideToolPalette();
+      openCompose();
+    });
     discoveryBtn = make('button', 'void-god-discover');
     discoveryBtn.id = 'void-god-discover';
     discoveryBtn.type = 'button';
