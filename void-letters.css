@@ -5,11 +5,11 @@
    ====================================================================== */
 
 /* ---- تبلتِ آمار کهکشان: بازدیدکننده‌ها و نامه‌ها در یک جا ----
-   یک دکمهٔ کوچک بالاچپ؛ پنلش با جاوااسکریپت نسبت به همان دکمه جای‌گذاری می‌شود. */
+   یک دکمهٔ کوچک بالای وسط؛ پنلش با جاوااسکریپت نسبت به همان دکمه جای‌گذاری می‌شود. */
 #void-galaxy-stats {
     position: fixed;
     z-index: 3;
-    left: max(8px, env(safe-area-inset-left, 0px));
+    left: 50%;
     --void-gs-safe-top: max(8px, env(safe-area-inset-top, 0px));
     top: var(--void-gs-safe-top);
     display: grid;
@@ -35,21 +35,13 @@
     pointer-events: auto;
     cursor: pointer;
     user-select: none; -webkit-user-select: none;
-    opacity: 0; visibility: hidden; transform: translateY(4px) scale(.96);
+    opacity: 0; visibility: hidden; transform: translateX(-50%) translateY(4px) scale(.96);
     transition: opacity .35s ease, transform .4s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .4s;
 }
 #void-galaxy-stats[hidden] { display: none; }
-#void-galaxy-stats.is-on { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+#void-galaxy-stats.is-on { opacity: 1; visibility: visible; transform: translateX(-50%); transition-delay: 0s; }
 #void-galaxy-stats:focus-visible { outline: 2px solid rgba(220, 230, 240, .85); outline-offset: 3px; }
 
-.vm-gs__dot {
-    width: 6px; height: 6px; flex: none; border-radius: 50%;
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-self: center;
-    background: rgba(251, 191, 36, .85);
-    box-shadow: 0 0 7px rgba(251, 191, 36, .32);
-}
 .vm-gs__fig { display: flex; align-items: baseline; gap: 0; white-space: nowrap; transition: gap .22s ease; }
 #void-galaxy-stats > .vm-gs__fig:nth-of-type(2) { grid-column: 1; grid-row: 1; }
 #void-galaxy-stats > .vm-gs__sep { display: block; grid-column: 2; grid-row: 1; }

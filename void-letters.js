@@ -308,8 +308,6 @@
     el.setAttribute('aria-controls', 'void-galaxy-stats-panel');
     el.setAttribute('aria-label', 'Galaxy statistics');
     el.setAttribute('title', 'Galaxy statistics');
-    var dot = make('span', 'vm-gs__dot');
-    dot.setAttribute('aria-hidden', 'true');
     var people = make('span', 'vm-gs__fig');
     visitorsN = make('span', 'vm-gs__n', '\u2014');
     people.appendChild(visitorsN);
@@ -321,7 +319,6 @@
     num = make('span', 'vm-gs__n', '\u2014');
     letters.appendChild(num);
     letters.appendChild(make('span', 'vm-gs__l', 'letters'));
-    el.appendChild(dot);
     el.appendChild(people);
     el.appendChild(sep);
     el.appendChild(letters);
