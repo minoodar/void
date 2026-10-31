@@ -139,10 +139,22 @@ export default {
       }
       return json({ ok: false, error: 'not_found' }, 404, cors.headers);
     } catch (e) {
+      logUnhandled(request, url, e);
       return json({ ok: false, error: 'unavailable' }, 503, cors.headers);
     }
   }
 };
+
+// Logs only the method, a route label, and the error name/message. Never the
+// request body, letter text, IP, hashes, or secrets; ids are masked.
+function logUnhandled(request, url, e) {
+  try {
+    const route = url.pathname.replace(/[0-9a-f]{32}/gi, ':id').slice(0, 80);
+    const name = e && e.name ? String(e.name) : 'Error';
+    const message = e && e.message ? String(e.message).slice(0, 300) : '';
+    console.error('unhandled_error', request.method, route, name, message);
+  } catch (_) { /* logging must never break the response */ }
+}
 
 function isLocalEnv(env) {
   return env.ENVIRONMENT === 'local-dev' || env.ALLOW_LOCAL === '1';
@@ -442,7 +454,7 @@ async function createLetter(request, env, cors) {
 
   const pruneBuckets = env.DB.prepare('DELETE FROM letter_limits WHERE bucket < ?').bind(hour - 2);
 
-  const pruneVoteRate = env.DB.prepare('DELETE FROM letter_vote_rate WHERE bucket < ?').bind(hour - 2);
+  const pruneVoteRate = env.DB.prepare('DELETE FROM letter_vote_rate_v2 WHERE bucket < ?').bind(hour - 2);
 
   const pruneSubmissions = env.DB.prepare(
     'DELETE FROM letter_submissions WHERE request_id IN ' +
@@ -477,6 +489,7 @@ async function createLetter(request, env, cors) {
   }
 
   if (letterChanges === 0) {
+    console.error('letter_insert_no_rows');
     return json({ ok: false, error: 'unavailable' }, 503, headers);
   }
 
@@ -585,14 +598,14 @@ async function voteLetter(request, rawId, env, cors) {
   if (existing) return alreadyVotedResponse(letter, existing.vote_type, now, headers);
 
   const rate = await env.DB
-    .prepare('SELECT count FROM letter_vote_rate WHERE voter_hash = ? AND bucket = ?')
+    .prepare('SELECT count FROM letter_vote_rate_v2 WHERE voter_hash = ? AND bucket = ?')
     .bind(voterHash, hour)
     .first();
   if (Number(rate && rate.count) >= VOTE_HOURLY_LIMIT) return voteRateLimited(now, headers);
 
   // The guarded increment is the hard ceiling if two requests race.
   const bumpRate = await env.DB.prepare(
-    'INSERT INTO letter_vote_rate (voter_hash, bucket, count) VALUES (?, ?, 1) ' +
+    'INSERT INTO letter_vote_rate_v2 (voter_hash, bucket, count) VALUES (?, ?, 1) ' +
     'ON CONFLICT(voter_hash, bucket) DO UPDATE SET count = count + 1 WHERE count < ?'
   ).bind(voterHash, hour, VOTE_HOURLY_LIMIT).run();
   if (changesOf(bumpRate) === 0) return voteRateLimited(now, headers);
@@ -610,7 +623,7 @@ async function voteLetter(request, rawId, env, cors) {
     env.DB.prepare(
       'DELETE FROM letter_votes WHERE letter_id IN (SELECT id FROM letters WHERE expires_at < ?)'
     ).bind(now),
-    env.DB.prepare('DELETE FROM letter_vote_rate WHERE bucket < ?').bind(hour - 2)
+    env.DB.prepare('DELETE FROM letter_vote_rate_v2 WHERE bucket < ?').bind(hour - 2)
   ]);
 
   if (changesOf(results[0]) === 0) {
@@ -966,7 +979,8 @@ async function adminClearLetters(request, env, cors) {
       env.DB.prepare('DELETE FROM letter_senders'),
       env.DB.prepare("DELETE FROM letter_limits WHERE scope <> 'global'"),
       env.DB.prepare('DELETE FROM letter_votes'),
-      env.DB.prepare('DELETE FROM letter_vote_rate')
+      env.DB.prepare('DELETE FROM letter_vote_rate'),
+      env.DB.prepare('DELETE FROM letter_vote_rate_v2')
     ]);
     return json({
       ok: true,
