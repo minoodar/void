@@ -1,0 +1,44 @@
+name: Deploy letters Worker (manual)
+
+# Workers Builds already deploys this Worker on every push to main. This workflow
+# is the manual GitHub Actions fallback: run it by hand only after the Workers
+# Builds connection is disabled, otherwise one push deploys the Worker twice.
+# It never applies D1 migrations; those stay a deliberate manual step.
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: Why this manual deploy is running
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-letters-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy with Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4"
+          workingDirectory: worker/letters
+          command: deploy
+
+      - name: Probe the live worker
+        run: curl -fsS -o /dev/null -w 'letters/count -> %{http_code}\n' https://void-galaxy-letters.minoodar.workers.dev/letters/count
