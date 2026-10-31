@@ -1,4 +1,4 @@
-/* Void Galaxy — unified admin dashboard.
+/* Void — unified admin dashboard.
    Hidden route: ?admin=true (or ?admin=1). The secret is verified against the
    letters worker's ADMIN_SECRET and kept in sessionStorage only. Every request
    carries `Authorization: Bearer <secret>`; nothing here runs for visitors. */
@@ -282,7 +282,7 @@
     dom.login.hidden = true;
     dom.app.hidden = false;
     setView(state.view);
-    document.title = 'Control Room · Void Galaxy';
+    document.title = 'Control Room · Void';
     setTimeout(function () {
       try { dom.tabMusic.focus({ preventScroll: true }); } catch (e) {}
     }, 30);
@@ -1077,7 +1077,7 @@
     '  <header class="va-top">',
     '    <div class="va-brand">',
     '      <span class="va-brand__orb" aria-hidden="true"></span>',
-    '      <span class="va-brand__text"><strong>Void Galaxy</strong><span>Control Room</span></span>',
+    '      <span class="va-brand__text"><strong>Void</strong><span>Control Room</span></span>',
     '    </div>',
     '    <div class="va-top__right">',
     '      <span class="va-conn" id="va-conn" title="Worker connection"><i></i><span>Not connected</span></span>',

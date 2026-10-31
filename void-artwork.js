@@ -1,4 +1,4 @@
-/* Void Galaxy Music — album artwork resolution.
+/* Void — album artwork resolution.
    Order: explicit artwork URL > embedded ID3 APIC/MP4 covr (remote, CORS
    permitting) > deterministic cosmic SVG from a title hash. Pure DOM/Blob
    APIs only; no network writes and no third-party code. */

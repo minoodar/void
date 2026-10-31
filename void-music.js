@@ -980,7 +980,7 @@
          skipped instead of flooding the OS metadata with an inline document. */
       const safe = typeof coverUrl === 'string' && /^(https?:|blob:)/.test(coverUrl) ? coverUrl : null;
       const art = safe ? [{ src: safe, sizes: '300x300' }] : [];
-      navigator.mediaSession.metadata = new MediaMetadata({ title: tr.title || '', artist: tr.artist || '', album: 'Void Galaxy', artwork: art });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: tr.title || '', artist: tr.artist || '', album: 'Void', artwork: art });
     } catch (e) {}
   }
   function posState() {

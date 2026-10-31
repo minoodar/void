@@ -1,4 +1,4 @@
-/* Void Galaxy Music — data layer for the "Message to God" Worker.
+/* Void — data layer for the "Message to God" Worker.
    Transport and request state only: no DOM access beyond sessionStorage.
    The panel and composer keep their existing UI; this file decides what is
    sent, which request_id is reused, and how a response is classified. */
@@ -12,7 +12,19 @@
   var EXPIRY_VALUES = { '24h': true, '7d': true, '30d': true, '90d': true };
   var UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   var LETTER_ID_REGEX = /^[0-9a-f]{32}$/;
-  var SHARE_BASE = 'https://minoodar.github.io/void-galaxy-music/';
+  var SHARE_FALLBACK = 'https://minoodar.github.io/void-galaxy-music/';
+  /* Share links follow the page's own directory so a repo rename does not
+     leave tweet links pointing at the old GitHub Pages path. */
+  function shareBase() {
+    try {
+      var loc = global.location;
+      if (!loc || typeof loc.href !== 'string') return SHARE_FALLBACK;
+      var url = new URL('./', loc.href);
+      if (url.protocol === 'https:' || url.protocol === 'http:') return url.href;
+    } catch (e) {}
+    return SHARE_FALLBACK;
+  }
+  var SHARE_BASE = shareBase();
   /* The Worker serves GET /letters/:id, so a shared link can be built from an
      id. Only ids that match the Worker's own format are ever turned into URLs. */
   var HAS_PUBLIC_LETTER_ROUTE = true;

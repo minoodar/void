@@ -1,6 +1,6 @@
-# Void Galaxy Music
+# Void
 
-**Void Galaxy Music** is a lightweight web demo of the music experience from **[Void Galaxy](https://github.com/minoodar/Void-Galaxy)**, an open-source browser extension that transforms music playback into a calm, immersive galactic visual journey.
+**Void** is a lightweight web demo of the music experience from **[Void Galaxy](https://github.com/minoodar/Void-Galaxy)**, an open-source browser extension that transforms music playback into a calm, immersive galactic visual journey.
 
 Our goal is to connect sound, light, and space—turning music into a visual experience while keeping the interface minimal and atmospheric. This standalone page makes the core music experience easy to explore on the web.
 
