@@ -47,6 +47,67 @@
   var X_PANEL_TEXT = 'A star is burning in the Void. \u2726 Read it before it fades:';
   var X_PANEL_TEXT_FA = '\u0633\u062a\u0627\u0631\u0647\u200c\u0627\u06cc \u062f\u0631 \u06a9\u0647\u06a9\u0634\u0627\u0646 \u0645\u06cc\u200c\u062f\u0631\u062e\u0634\u062f. \u2726 \u067e\u06cc\u0634 \u0627\u0632 \u0622\u0646\u06a9\u0647 \u0645\u062d\u0648 \u0634\u0648\u062f \u0628\u062e\u0648\u0627\u0646\u06cc\u062f\u0634:';
   var X_INTENT = 'https://twitter.com/intent/tweet?text=';
+  var X_SHARE_COPY = {
+    en: { panel: X_PANEL_TEXT, letter: X_LETTER_TEXT, likes: "Every like adds 24 hours to this message's life. Help keep it alive in the galaxy." },
+    fa: { panel: X_PANEL_TEXT_FA, letter: X_LETTER_TEXT_FA, likes: 'هر لایک ۲۴ ساعت به عمر این پیام اضافه می‌کند. کمک کنید در کهکشان زنده بماند.' },
+    ar: { panel: 'نجم يضيء في الفراغ. ✦ اقرأ الرسالة قبل أن تتلاشى:', letter: 'تركت نجمة في المجرة. ✦ اقرأها قبل أن تتلاشى:', likes: 'كل إعجاب يضيف ٢٤ ساعة إلى عمر هذه الرسالة. ساعد في إبقائها حية في المجرة.' },
+    es: { panel: 'Una estrella brilla en el Vacío. ✦ Lee el mensaje antes de que se desvanezca:', letter: 'Dejé una estrella en la galaxia. ✦ Léela antes de que se desvanezca:', likes: 'Cada Me gusta añade 24 horas a la vida de este mensaje. Ayuda a mantenerlo vivo en la galaxia.' },
+    fr: { panel: 'Une étoile brille dans le Vide. ✦ Lisez le message avant qu’il ne s’efface :', letter: 'J’ai laissé une étoile dans la galaxie. ✦ Lisez-la avant qu’elle ne s’efface :', likes: 'Chaque J’aime ajoute 24 heures à la vie de ce message. Aidez à le garder vivant dans la galaxie.' },
+    de: { panel: 'Ein Stern leuchtet im Void. ✦ Lies die Nachricht, bevor sie verblasst:', letter: 'Ich habe einen Stern in der Galaxie hinterlassen. ✦ Lies ihn, bevor er verblasst:', likes: 'Jedes Like schenkt dieser Nachricht 24 Stunden mehr. Hilf, sie in der Galaxie am Leben zu halten.' },
+    it: { panel: 'Una stella brilla nel Vuoto. ✦ Leggi il messaggio prima che svanisca:', letter: 'Ho lasciato una stella nella galassia. ✦ Leggila prima che svanisca:', likes: 'Ogni Mi piace aggiunge 24 ore alla vita di questo messaggio. Aiuta a mantenerlo vivo nella galassia.' },
+    pt: { panel: 'Uma estrela brilha no Vazio. ✦ Leia a mensagem antes que desapareça:', letter: 'Deixei uma estrela na galáxia. ✦ Leia antes que desapareça:', likes: 'Cada curtida acrescenta 24 horas à vida desta mensagem. Ajude a mantê-la viva na galáxia.' },
+    ru: { panel: 'В Пустоте горит звезда. ✦ Прочитайте послание, пока оно не исчезло:', letter: 'Я оставил звезду в галактике. ✦ Прочитайте её, пока она не исчезла:', likes: 'Каждый лайк добавляет этому сообщению 24 часа жизни. Помогите ему жить в галактике.' },
+    ja: { panel: 'ヴォイドで星が輝いています。✦ 消える前にこのメッセージを読んでください：', letter: '銀河に星を残しました。✦ 消える前に読んでください：', likes: 'いいね1つにつき、このメッセージの寿命が24時間延びます。銀河で生き続けられるよう、力を貸してください。' },
+    zh: { panel: '虚空中有一颗星星正在燃烧。✦ 趁它消逝前读读这条消息：', letter: '我在银河中留下一颗星。✦ 趁它消逝前读读它：', likes: '每个点赞都会为这条消息增加24小时寿命。帮它在银河中延续下去。' },
+    ko: { panel: '공허 속에서 별이 빛나고 있어요. ✦ 사라지기 전에 이 메시지를 읽어 보세요:', letter: '은하에 별 하나를 남겼어요. ✦ 사라지기 전에 읽어 보세요:', likes: '좋아요 하나마다 이 메시지의 수명이 24시간 늘어납니다. 은하에서 계속 살아남도록 도와주세요.' }
+  };
+  var SHARE_WORDS = {
+    ar: ['مرحبا', 'السلام', 'عليكم', 'هذا', 'هذه', 'في', 'على', 'كل', 'الرسالة', 'المجرة', 'رسالة', 'النجوم', 'انا', 'انت'],
+    es: ['hola', 'mensaje', 'estrella', 'galaxia', 'ayuda', 'cada', 'vida', 'leer', 'antes', 'que', 'una', 'para'],
+    fr: ['bonjour', 'message', 'etoile', 'galaxie', 'aidez', 'chaque', 'vie', 'lire', 'avant', 'une', 'pour'],
+    de: ['hallo', 'nachricht', 'stern', 'galaxie', 'hilf', 'jedes', 'leben', 'lies', 'bevor', 'eine', 'und'],
+    it: ['ciao', 'messaggio', 'stella', 'galassia', 'aiuta', 'ogni', 'vita', 'leggi', 'prima', 'una', 'che'],
+    pt: ['ola', 'mensagem', 'estrela', 'galaxia', 'ajude', 'cada', 'vida', 'leia', 'antes', 'uma', 'que'],
+    ru: ['привет', 'сообщение', 'звезда', 'галактике', 'помогите', 'каждый', 'жизни', 'прочитайте', 'пока', 'это']
+  };
+
+  function detectShareLang(text) {
+    if (typeof text !== 'string' || !text.trim()) return null;
+    var value = text.toLowerCase();
+    var scriptWords = value.replace(/[،؛؟.!:;()«»"'…]/g, ' ').split(/\s+/);
+    if (/[\u3040-\u30ff]/.test(value)) return 'ja';
+    if (/[\uac00-\ud7af]/.test(value)) return 'ko';
+    if (/[\u3400-\u9fff]/.test(value)) return 'zh';
+    var faScore = 0;
+    for (var f = 0; f < scriptWords.length; f++) if (['به', 'برای', 'این', 'است', 'که', 'را', 'یک', 'پیام', 'ستاره', 'کهکشان'].indexOf(scriptWords[f]) >= 0) faScore++;
+    if (/[\u067e\u0686\u0698\u06af\u06a9\u06cc]/.test(value) || faScore >= 2) return 'fa';
+    if (/[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]/.test(value)) {
+      var arScore = 0;
+      for (var a = 0; a < scriptWords.length; a++) if (SHARE_WORDS.ar.indexOf(scriptWords[a]) >= 0) arScore++;
+      return arScore >= 2 || (arScore === 1 && scriptWords.length <= 4) ? 'ar' : null;
+    }
+    if (/[\u0400-\u04ff]/.test(value)) {
+      var cyrillic = scriptWords.filter(function (word) { return /[\u0400-\u04ff]/.test(word); });
+      var ruScore = 0;
+      for (var c = 0; c < cyrillic.length; c++) if (SHARE_WORDS.ru.indexOf(cyrillic[c]) >= 0) ruScore++;
+      return ruScore >= 2 || (ruScore === 1 && cyrillic.length <= 4) ? 'ru' : null;
+    }
+    var normalized = value.normalize ? value.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : value;
+    var words = normalized.match(/[a-z]+/g) || [];
+    var best = null, bestScore = 0, nextScore = 0;
+    Object.keys(SHARE_WORDS).filter(function (lang) { return lang !== 'ru'; }).forEach(function (lang) {
+      var score = 0;
+      for (var i = 0; i < words.length; i++) if (SHARE_WORDS[lang].indexOf(words[i]) >= 0) score++;
+      if (score > bestScore) { nextScore = bestScore; bestScore = score; best = lang; }
+      else if (score > nextScore) nextScore = score;
+    });
+    return best && bestScore >= 2 && bestScore > nextScore ? best : null;
+  }
+
+  function xShareText(text, kind) {
+    var copy = X_SHARE_COPY[detectShareLang(text)] || X_SHARE_COPY.en;
+    return (kind === 'letter' ? copy.letter : copy.panel) + ' ' + copy.likes;
+  }
 
   /* لایهٔ داده. مسیر production از API واقعی می‌خواند؛ مجموعهٔ آزمایشی فقط با
      فلگ صریح توسعه فعال است و هرگز با دادهٔ production مخلوط نمی‌شود. */
@@ -1516,7 +1577,7 @@
     if (!currentMessage) return;
     var link = messageLink(currentMessage);
     if (!link) { shareFallback(); return; }
-    var text = currentMessage.lang === 'fa' ? X_PANEL_TEXT_FA : X_PANEL_TEXT;
+    var text = xShareText(currentMessage.text, 'panel');
     var url = X_INTENT + encodeURIComponent(text) + '&url=' + encodeURIComponent(link);
     try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e) {}
   }
@@ -1827,7 +1888,7 @@
     setUncertainSubmission(null);
     published = true;
     shareUrl = null;
-    publishedLang = detectLang(composer.value);
+    publishedLang = detectShareLang(composer.value);
     xShareBtn.disabled = true;
     xShareBtn.title = 'Sharing unlocks once the letter has its public page';
     xShareBtn.setAttribute('aria-label', 'Sharing is not available yet');
@@ -1878,7 +1939,8 @@
      و هرگز متن نامه را در بر نمی‌گیرد؛ فقط زبانِ نامه انتخابش می‌کند. */
   function onShareX() {
     if (!published || !shareUrl) return;
-    var text = publishedLang === 'fa' ? X_LETTER_TEXT_FA : X_LETTER_TEXT;
+    var copy = X_SHARE_COPY[publishedLang] || X_SHARE_COPY.en;
+    var text = copy.letter + ' ' + copy.likes;
     var url = X_INTENT + encodeURIComponent(text) + '&url=' + encodeURIComponent(shareUrl);
     try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e) {}
   }
