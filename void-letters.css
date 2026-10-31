@@ -550,11 +550,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-vote__icon {
     display: block;
     width: 14px; height: 14px; flex: 0 0 14px;
+    align-self: center;
     fill: currentColor;
-    transform-box: fill-box;
-    transform-origin: center;
 }
-.void-god-vote__icon--down { transform: rotate(180deg); }
 .void-god-vote:hover, .void-god-vote:focus-visible { opacity: 1; }
 .void-god-vote__label { font-size: 11px; }
 .void-god-vote__count {

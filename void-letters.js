@@ -988,7 +988,9 @@
     panelDislike.setAttribute('aria-pressed', 'false');
     panelDislike.setAttribute('aria-label', 'Dislike this letter');
     var dislikeIcon = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-vote__icon void-god-vote__icon--down', 'aria-hidden': 'true', focusable: 'false' });
-    dislikeIcon.appendChild(svgNode('path', { d: voteIconPath }));
+    var dislikeShape = svgNode('g', { transform: 'rotate(180 12 12)' });
+    dislikeShape.appendChild(svgNode('path', { d: voteIconPath }));
+    dislikeIcon.appendChild(dislikeShape);
     panelDislike.appendChild(dislikeIcon);
     panelDislike.appendChild(make('span', 'void-god-vote__label', 'Dislike'));
     dislikeCount = make('span', 'void-god-vote__count', '0');
