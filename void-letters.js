@@ -320,7 +320,9 @@
 
   function positionStatsIndicator() {
     if (!el) return;
+    var safeLeft = Math.max(8, insets().l);
     var safeTop = parseFloat(window.getComputedStyle(el).getPropertyValue('--void-gs-safe-top')) || 8;
+    el.style.left = Math.round(safeLeft) + 'px';
     el.style.top = Math.round(safeTop) + 'px';
   }
 
