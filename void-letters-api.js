@@ -12,7 +12,7 @@
   var EXPIRY_VALUES = { '24h': true, '7d': true, '30d': true, '90d': true };
   var UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   var LETTER_ID_REGEX = /^[0-9a-f]{32}$/;
-  var SHARE_FALLBACK = 'https://minoodar.github.io/void-galaxy-music/';
+  var SHARE_FALLBACK = 'https://minoodar.github.io/void/';
   /* Share links follow the page's own directory so a repo rename does not
      leave tweet links pointing at the old GitHub Pages path. */
   function shareBase() {
