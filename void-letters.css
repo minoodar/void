@@ -145,6 +145,7 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     box-shadow: 0 0 13px rgba(251, 191, 36, .12);
     display: grid; place-items: center;
     cursor: pointer;
+    pointer-events: auto;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     transition: background .25s ease, box-shadow .25s ease, transform .25s ease;
