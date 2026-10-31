@@ -1336,8 +1336,10 @@
     panel.classList.remove('is-on');
     panel.style.left = '0px';
     panel.style.top = '0px';
-    var mobileCap = window.matchMedia && window.matchMedia('(max-width: 520px)').matches ? 0.76 : 0.56;
-    var cap = Math.min(380, window.innerHeight * mobileCap, Math.max(120, bottom - top));
+    var isMobileViewport = window.matchMedia && window.matchMedia('(max-width: 520px)').matches;
+    var cap = isMobileViewport
+      ? Math.min(window.innerHeight * 0.9, Math.max(120, bottom - top))
+      : Math.min(380, window.innerHeight * 0.56, Math.max(120, bottom - top));
     var W = panel.offsetWidth;
     var R = 24, m = 12, gap = 26;
     var starRect = { left: x - R, top: y - R, right: x + R, bottom: y + R };
