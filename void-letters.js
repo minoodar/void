@@ -203,10 +203,46 @@
   var cooldownTimer = 0;
   var cooldownUntil = 0;
   var discoveryBtn = null;
+  var toolsHideTimer = 0;
+  var toolsRevealed = false;
   var letterHistory = [];
   var historyIndex = -1;
   var uncertainSubmission = null;
   var connectionTimer = 0;
+
+  function hideToolPalette() {
+    clearTimeout(toolsHideTimer);
+    toolsHideTimer = 0;
+    toolsRevealed = false;
+    if (document.body) document.body.classList.remove('is-tools-revealed');
+    if (discoveryBtn) {
+      discoveryBtn.setAttribute('aria-expanded', 'false');
+      discoveryBtn.setAttribute('aria-label', 'Show tools; activate again to discover a letter');
+      discoveryBtn.title = 'Show tools; activate again to discover a letter';
+    }
+  }
+
+  function showToolPalette() {
+    if (panelOpen || (compose && compose.open)) return;
+    toolsRevealed = true;
+    if (document.body) document.body.classList.add('is-tools-revealed');
+    if (discoveryBtn) {
+      discoveryBtn.setAttribute('aria-expanded', 'true');
+      discoveryBtn.setAttribute('aria-label', 'Tools shown; activate again to discover a letter');
+      discoveryBtn.title = 'Tools shown; activate again to discover a letter';
+    }
+    clearTimeout(toolsHideTimer);
+    toolsHideTimer = setTimeout(function hideWhenIdle() {
+      var nav = document.getElementById('void-topnav');
+      var active = document.activeElement;
+      if ((nav && active && nav.contains(active)) ||
+          (discoveryBtn && active === discoveryBtn && discoveryBtn.matches(':focus-visible'))) {
+        toolsHideTimer = setTimeout(hideWhenIdle, 1200);
+        return;
+      }
+      hideToolPalette();
+    }, 4200);
+  }
 
   function findRoot() {
     try {
@@ -1376,6 +1412,7 @@
   }
 
   function openMessageAt(x, y, load) {
+    hideToolPalette();
     if (!ensureMounted()) {
       hidePanelNow();
       return;
@@ -1659,6 +1696,7 @@
   }
 
   function openCompose() {
+    hideToolPalette();
     closePanel({ dissolve: false, focus: false });
     setReadingMode(false);
     if (panelClosing) hidePanelNow();
@@ -2029,9 +2067,16 @@
     discoveryBtn.type = 'button';
     discoveryBtn.setAttribute('aria-label', 'Discover a letter');
     discoveryBtn.title = 'Discover a letter';
+    discoveryBtn.setAttribute('aria-expanded', 'false');
+    discoveryBtn.setAttribute('aria-controls', 'void-topnav');
     discoveryBtn.appendChild(make('span', 'void-god-discover__core'));
     host.appendChild(discoveryBtn);
     discoveryBtn.addEventListener('click', function () {
+      if (!toolsRevealed) {
+        showToolPalette();
+        return;
+      }
+      hideToolPalette();
       var c = holeCenter();
       openMessageAt(c.x, c.y);
     });
@@ -2080,6 +2125,10 @@
     window.addEventListener('pointerdown', rememberMusicPresentation, true);
     window.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ') rememberMusicPresentation();
+      if (e.key === 'Tab' && !panelOpen && !(compose && compose.open) &&
+          (e.target === document.body || (e.target && e.target.closest && e.target.closest('#void-topnav, #void-god-discover, #void-god-quill')))) {
+        showToolPalette();
+      }
     }, true);
     window.addEventListener('click', function () {
       setTimeout(function () {
@@ -2094,7 +2143,7 @@
       relayoutTimer = setTimeout(relayout, 90);
     });
     window.addEventListener('voidmusic:mode', function (e) {
-      if (e && e.detail && e.detail.open === false) clearScene();
+      if (e && e.detail && e.detail.open === false) { hideToolPalette(); clearScene(); }
     });
   }
 

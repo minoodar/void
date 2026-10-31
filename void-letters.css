@@ -5,11 +5,11 @@
    ====================================================================== */
 
 /* ---- تبلتِ آمار کهکشان: بازدیدکننده‌ها و نامه‌ها در یک جا ----
-   یک دکمهٔ کوچک بالای وسط؛ پنلش با جاوااسکریپت نسبت به همان دکمه جای‌گذاری می‌شود. */
+   یک دکمهٔ کوچک در گوشهٔ بالاچپ؛ پنلش با جاوااسکریپت نسبت به همان دکمه جای‌گذاری می‌شود. */
 #void-galaxy-stats {
     position: fixed;
     z-index: 3;
-    left: 50%;
+    left: max(8px, env(safe-area-inset-left, 0px));
     --void-gs-safe-top: max(8px, env(safe-area-inset-top, 0px));
     top: var(--void-gs-safe-top);
     display: grid;
@@ -35,11 +35,11 @@
     pointer-events: auto;
     cursor: pointer;
     user-select: none; -webkit-user-select: none;
-    opacity: 0; visibility: hidden; transform: translateX(-50%) translateY(4px) scale(.96);
+    opacity: 0; visibility: hidden; transform: translateY(4px) scale(.96);
     transition: opacity .35s ease, transform .4s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .4s;
 }
 #void-galaxy-stats[hidden] { display: none; }
-#void-galaxy-stats.is-on { opacity: 1; visibility: visible; transform: translateX(-50%); transition-delay: 0s; }
+#void-galaxy-stats.is-on { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
 #void-galaxy-stats:focus-visible { outline: 2px solid rgba(220, 230, 240, .85); outline-offset: 3px; }
 
 .vm-gs__fig { display: flex; align-items: baseline; gap: 0; white-space: nowrap; transition: gap .22s ease; }
@@ -188,6 +188,26 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
 }
 #void-music-root.is-quiet #void-god-discover { opacity: .48; }
 #void-music-root.is-quiet #void-god-quill { opacity: .38; }
+
+/* Keep the three secondary site tools tucked away until the discovery control
+   is activated. This presentation state is independent of Music Quiet Mode. */
+body:not(.is-tools-revealed) #void-topnav .void-topnav__link {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: scale(.94);
+    transition: opacity .22s ease, transform .22s ease, visibility 0s linear .22s;
+}
+body.is-tools-revealed #void-topnav .void-topnav__link {
+    opacity: .78;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    transition-delay: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+    #void-topnav .void-topnav__link { transition: none !important; transform: none !important; }
+}
 
 /* Reading dims selected chrome only; playback, metadata, and the galaxy canvas
    remain untouched. Quiet Mode keeps its own opacity and interaction rules. */
