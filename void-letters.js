@@ -282,6 +282,29 @@
     return new Intl.NumberFormat('en-US').format(Math.max(0, Math.floor(Number(n) || 0)));
   }
 
+  function positionStatsIndicator() {
+    if (!el) return;
+    var width = el.offsetWidth || 56;
+    var height = el.offsetHeight || 48;
+    var point = document.getElementById('void-god-discover');
+    var rect = point && point.getBoundingClientRect();
+    var left;
+    var top;
+    if (rect && rect.width > 0 && rect.height > 0) {
+      left = rect.left + rect.width / 2;
+      top = rect.bottom + 6;
+    } else {
+      left = window.innerWidth - width / 2 - 14;
+      top = window.innerHeight - height - 14;
+    }
+    var minCenter = Math.min(width / 2 + 8, window.innerWidth / 2);
+    var maxCenter = Math.max(minCenter, window.innerWidth - width / 2 - 8);
+    left = clamp(left, minCenter, maxCenter);
+    top = clamp(top, 8, Math.max(8, window.innerHeight - height - 8));
+    el.style.left = Math.round(left) + 'px';
+    el.style.top = Math.round(top) + 'px';
+  }
+
   function statRow(label, value) {
     var row = make('div', 'vm-gs-row');
     var b = make('b', null, value);
@@ -366,6 +389,7 @@
     });
     statsRead.addEventListener('click', readNewest);
     window.addEventListener('resize', function () {
+      positionStatsIndicator();
       if (statsOpen) placeStats();
     });
     document.addEventListener('pointerdown', function (e) {
@@ -380,6 +404,7 @@
     if (!el || pillShown) return;
     pillShown = true;
     el.hidden = false;
+    positionStatsIndicator();
     if (showFrame) cancelAnimationFrame(showFrame);
     showFrame = requestAnimationFrame(function () {
       showFrame = 0;
@@ -754,6 +779,7 @@
     add('#void-god-quill', 10, 10);
     add('#void-god-discover', 8, 10);
     add('.vm-corner', 10, 10);
+    add('#void-music-root .vm-btn', 10, 10);
     add('#void-golden-status', 10, 10);
     add('#void-music-root .vm-meta', 8, 1);
     return out;
@@ -2029,6 +2055,7 @@
       var c = holeCenter();
       openMessageAt(c.x, c.y);
     });
+    positionStatsIndicator();
   }
 
   function buildUi(host) {
