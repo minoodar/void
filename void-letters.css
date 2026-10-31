@@ -132,6 +132,40 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     outline-offset: 4px;
     opacity: 1;
 }
+#void-god-discover {
+    position: absolute;
+    top: calc(max(50% - 103px, 30vh + 52px) + 216px);
+    right: max(33px, calc(env(safe-area-inset-right, 0px) + 15px));
+    z-index: 4;
+    width: 14px; height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(251, 191, 36, .14);
+    box-shadow: 0 0 13px rgba(251, 191, 36, .12);
+    display: grid; place-items: center;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .25s ease, box-shadow .25s ease, transform .25s ease;
+}
+.void-god-discover__core {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: rgba(255, 218, 113, .88);
+    box-shadow: 0 0 7px rgba(251, 191, 36, .62);
+    animation: void-discover-pulse 3.8s ease-in-out infinite;
+}
+#void-god-discover:hover, #void-god-discover:focus-visible {
+    background: rgba(251, 191, 36, .24);
+    box-shadow: 0 0 19px rgba(251, 191, 36, .27);
+    transform: scale(1.12);
+}
+#void-god-discover:focus-visible { outline: 1px solid rgba(255, 218, 113, .75); outline-offset: 4px; }
+@keyframes void-discover-pulse {
+    0%, 100% { opacity: .66; transform: scale(.88); }
+    50% { opacity: 1; transform: scale(1.12); }
+}
+#void-music-root.is-quiet #void-god-discover { opacity: .48; }
 #void-music-root.is-quiet #void-god-quill { opacity: .38; }
 
 /* On phones the demo star sits at 22%, not 30%; the column follows the same
@@ -140,6 +174,7 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     #void-god-quill {
         top: calc(max(50% - 103px, 22vh + 52px) + 162px);
     }
+    #void-god-discover { top: calc(max(50% - 103px, 22vh + 52px) + 216px); }
 }
 
 /* ---- سطحِ کلیکِ کهکشان ----
@@ -250,10 +285,10 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     width: min(380px, calc(100vw - 24px));
     padding: 16px 16px 14px;
     border: 1px solid rgba(235, 240, 245, .16);
-    border-radius: 16px;
+    border-radius: 20px 34px 20px 34px;
     background:
         radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .07), transparent 62%),
-        rgba(9, 12, 18, .93);
+        rgba(9, 12, 18, .78);
     -webkit-backdrop-filter: blur(14px) saturate(115%);
             backdrop-filter: blur(14px) saturate(115%);
     box-shadow: 0 20px 60px rgba(0, 0, 0, .62), 0 0 0 1px rgba(0, 0, 0, .35);
@@ -279,6 +314,27 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     letter-spacing: .02em;
     color: rgba(250, 252, 255, .96);
 }
+.void-god-nav { display: flex; align-items: center; gap: 3px; flex: none; }
+.void-god-nav__button {
+    display: grid; place-items: center;
+    width: 30px; height: 30px; padding: 0;
+    border: 1px solid rgba(235, 240, 245, .10);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .025);
+    color: rgba(235, 240, 245, .66);
+    font: inherit;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color .18s ease, border-color .18s ease, background .18s ease;
+}
+.void-god-nav__button:hover:not(:disabled), .void-god-nav__button:focus-visible {
+    color: rgba(250, 252, 255, .95);
+    border-color: rgba(235, 240, 245, .32);
+    background: rgba(255, 255, 255, .07);
+}
+.void-god-nav__button:focus-visible { outline: 1px solid rgba(235, 240, 245, .65); outline-offset: 2px; }
+.void-god-nav__button:disabled { opacity: .28; cursor: default; }
 .void-god-msg-tag {
     font-size: 10.5px;
     line-height: 1.4;
@@ -302,7 +358,7 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     margin: 0;
     font-size: 11px;
     line-height: 1.5;
-    color: rgba(235, 240, 245, .5);
+    color: rgba(235, 240, 245, .36);
 }
 .void-god-msg-lifespan {
     margin: -2px 0 0;
@@ -674,6 +730,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     /* The site rail keeps its 44px column at the middle-right on these widths;
        ending the panel before it keeps every action button clear of the icons. */
     #void-god-panel { width: calc(100vw - 84px); padding: 14px 14px 12px; }
+    .void-god-nav__button { width: 26px; height: 26px; }
     .void-god-form { padding: 16px 15px 14px; gap: 10px; }
     .void-god-text { min-height: 110px; }
     .void-god-foot .void-god-btn { flex: 1; }
@@ -699,6 +756,10 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
         transform: none;
         width: 30px; height: 30px;
     }
+    #void-god-discover {
+        left: 72px; right: auto;
+        top: calc(106px + env(safe-area-inset-top, 0px) + 38px);
+    }
     #void-god-quill svg { width: 16px; height: 16px; }
     /* In this tier the rail lives top-left, so the panel can use the full width. */
     #void-god-panel { width: min(380px, calc(100vw - 24px)); }
@@ -710,6 +771,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
         top: calc(76px + env(safe-area-inset-top, 0px));
         width: 22px; height: 22px;
     }
+    #void-god-discover { top: calc(76px + env(safe-area-inset-top, 0px) + 28px); left: 68px; right: auto; }
     #void-god-quill svg { width: 12px; height: 12px; }
 }
 
@@ -721,12 +783,15 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     #void-god-anchor.is-closing,
     #void-god-panel,
     #void-god-quill,
+    #void-god-discover,
     .void-god-x,
+    .void-god-nav__button,
     .void-god-btn,
     .void-god-exp-opt span,
     .void-god-msg-lifespan,
     .void-god-text { transition: none; animation: none; }
     .void-god-anchor__glow,
     .void-god-anchor__core { animation: none; }
+    .void-god-discover__core { animation: none; }
     .void-god-ash span { animation: none; }
 }

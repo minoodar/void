@@ -98,6 +98,8 @@
   var panelCopy = null;
   var panelShare = null;
   var panelFeedback = null;
+  var panelPrevious = null;
+  var panelNext = null;
   var lifespanTimer = 0;
   var voteBusy = false;
   var panelOpen = false;
@@ -134,6 +136,11 @@
   var successNote = null;
   var cooldownTimer = 0;
   var cooldownUntil = 0;
+  var discoveryBtn = null;
+  var letterHistory = [];
+  var historyIndex = -1;
+  var uncertainSubmission = null;
+  var connectionTimer = 0;
 
   function findRoot() {
     try {
@@ -503,7 +510,7 @@
       submitBtn.disabled = true;
       return;
     }
-    submitBtn.textContent = 'Submit letter';
+    submitBtn.textContent = uncertainSubmission ? 'Check submission' : 'Submit letter';
     if (published) { submitBtn.disabled = true; return; }
     var text = composer.value;
     var ok = codePoints(text) <= MAX_POINTS && !BAD_CHARS.test(text) &&
@@ -636,6 +643,7 @@
     }
     add('#void-topnav .void-topnav__link', 10, 10);
     add('#void-god-quill', 10, 10);
+    add('#void-god-discover', 8, 10);
     add('.vm-corner', 10, 10);
     add('#void-golden-status', 10, 10);
     add('#void-music-root .vm-meta', 8, 1);
@@ -771,11 +779,25 @@
     panelTag.id = 'void-god-panel-tag';
     titles.appendChild(h);
     titles.appendChild(panelTag);
+    var nav = make('div', 'void-god-nav');
+    panelPrevious = make('button', 'void-god-nav__button', '\u2190');
+    panelPrevious.type = 'button';
+    panelPrevious.disabled = true;
+    panelPrevious.setAttribute('aria-label', 'Previous letter');
+    panelPrevious.title = 'Previous letter';
+    panelNext = make('button', 'void-god-nav__button', '\u2192');
+    panelNext.type = 'button';
+    panelNext.disabled = source.kind !== 'api';
+    panelNext.setAttribute('aria-label', 'Next letter');
+    panelNext.title = 'Next letter';
+    nav.appendChild(panelPrevious);
+    nav.appendChild(panelNext);
     var x = make('button', 'void-god-x', '\u00D7');
     x.type = 'button';
     x.id = 'void-god-panel-close';
     x.setAttribute('aria-label', 'Close message');
     head.appendChild(titles);
+    head.appendChild(nav);
     head.appendChild(x);
 
     panelText = make('p', 'void-god-msg-text');
@@ -841,6 +863,8 @@
     panelShare.addEventListener('click', onShare);
     panelLike.addEventListener('click', function () { onVote('like'); });
     panelDislike.addEventListener('click', function () { onVote('dislike'); });
+    panelPrevious.addEventListener('click', function () { navigateLetter(-1); });
+    panelNext.addEventListener('click', function () { navigateLetter(1); });
   }
 
   function renderMessage(msg) {
@@ -1231,16 +1255,69 @@
     buildAnchorAt(starX, starY);
     layoutPanel(starX, starY, true);
     showPanelState('loading');
+    panel.classList.add('is-loading-letter');
+    if (panelPrevious) panelPrevious.disabled = true;
+    if (panelNext) panelNext.disabled = true;
     Promise.resolve().then(function () { return load ? load() : source.next(); }).then(function (msg) {
       if (!panelOpen) return;
+      panel.classList.remove('is-loading-letter');
       if (msg && msg.state) { showPanelState(msg.state); layoutPanel(starX, starY, false); return; }
       if (!msg) { showPanelState('empty'); layoutPanel(starX, starY, false); return; }
+      letterHistory = [msg];
+      historyIndex = 0;
       currentMessage = msg;
       renderMessage(msg);
+      updateNavigation();
       layoutPanel(starX, starY, false);
     }, function () {
       if (!panelOpen) return;
+      panel.classList.remove('is-loading-letter');
       showPanelState('error');
+      layoutPanel(starX, starY, false);
+    });
+  }
+
+  function updateNavigation() {
+    if (!panelPrevious || !panelNext) return;
+    panelPrevious.disabled = historyIndex <= 0;
+    panelNext.disabled = !currentMessage || (historyIndex >= letterHistory.length - 1 && source.kind !== 'api');
+  }
+
+  function navigateLetter(direction) {
+    if (!panelOpen || !panel || panel.classList.contains('is-loading-letter')) return;
+    var target = historyIndex + direction;
+    if (target >= 0 && target < letterHistory.length) {
+      historyIndex = target;
+      currentMessage = letterHistory[historyIndex];
+      renderMessage(currentMessage);
+      updateNavigation();
+      layoutPanel(starX, starY, false);
+      return;
+    }
+    if (direction < 0 || source.kind !== 'api') return;
+    panel.classList.add('is-loading-letter');
+    showPanelState('loading');
+    source.next().then(function (msg) {
+      if (!panelOpen) return;
+      panel.classList.remove('is-loading-letter');
+      if (!msg || msg.state) {
+        showPanelState(msg && msg.state ? msg.state : 'empty');
+        updateNavigation();
+        layoutPanel(starX, starY, false);
+        return;
+      }
+      letterHistory = letterHistory.slice(0, historyIndex + 1);
+      letterHistory.push(msg);
+      historyIndex = letterHistory.length - 1;
+      currentMessage = msg;
+      renderMessage(msg);
+      updateNavigation();
+      layoutPanel(starX, starY, false);
+    }, function () {
+      if (!panelOpen) return;
+      panel.classList.remove('is-loading-letter');
+      showPanelState('error');
+      updateNavigation();
       layoutPanel(starX, starY, false);
     });
   }
@@ -1301,7 +1378,7 @@
     clearTimeout(closeTimer);
     closeTimer = setTimeout(function () {
       if (!panelOpen && panel) panel.hidden = true;
-    }, 180);
+    }, 280);
     if (opts.dissolve && anchor) {
       var ax = starX, ay = starY;
       var dying = anchor;
@@ -1431,6 +1508,16 @@
     } catch (e) {}
     if (!ensureMounted()) return;
     if (compose.open) return;
+    if (!uncertainSubmission && api && typeof api.loadPending === 'function') {
+      var saved = api.loadPending();
+      if (saved && (saved.state === 'ambiguous' || saved.state === 'in_flight')) {
+        composer.value = saved.text;
+        var savedExpiry = composeForm.querySelectorAll('input[name="void-god-expiry"]');
+        for (var si = 0; si < savedExpiry.length; si++) savedExpiry[si].checked = savedExpiry[si].value === saved.expiry;
+        ackEl.checked = true;
+        setUncertainSubmission(saved);
+      }
+    }
     composeForm.classList.remove('is-published');
     successEl.hidden = true;
     xShareBtn.disabled = true;
@@ -1439,9 +1526,10 @@
     publishedBase = '';
     publishedLang = null;
     sending = false;
-    ackEl.checked = false;
-    noticeEl.hidden = true;
+    if (!uncertainSubmission) ackEl.checked = false;
+    noticeEl.hidden = !uncertainSubmission;
     noticeEl.textContent = '';
+    if (uncertainSubmission) notice('We could not confirm whether your letter arrived. Press Check submission to safely try again.');
     updateState();
     try { compose.showModal(); }
     catch (e) { compose.setAttribute('open', ''); }
@@ -1606,8 +1694,19 @@
 
   function submitRemote(payload) {
     if (!api) return Promise.resolve({ kind: 'network' });
-    var pending = api.begin(payload.text, payload.expiry, detectLang(payload.text));
+    var pending = uncertainSubmission || api.begin(payload.text, payload.expiry, detectLang(payload.text));
     return api.submit(pending);
+  }
+
+  function setUncertainSubmission(pending) {
+    uncertainSubmission = pending || null;
+    if (composer) composer.readOnly = !!uncertainSubmission;
+    if (composeForm) {
+      var options = composeForm.querySelectorAll('input[name="void-god-expiry"]');
+      for (var i = 0; i < options.length; i++) options[i].disabled = !!uncertainSubmission;
+    }
+    if (ackEl) ackEl.disabled = !!uncertainSubmission;
+    updateState();
   }
 
   function submitLetter() {
@@ -1615,13 +1714,22 @@
     sending = true;
     updateState();
     noticeEl.hidden = true;
+    clearTimeout(connectionTimer);
+    connectionTimer = setTimeout(function () {
+      if (sending) notice('Connecting to the galaxy\u2026 Please wait.');
+    }, 900);
     var payload = { text: composer.value, expiry: currentExpiry() };
     source.submit(payload).then(function (result) {
+      clearTimeout(connectionTimer);
       sending = false;
+      if (result && result.ambiguous) setUncertainSubmission(result.pending || (api && api.loadPending ? api.loadPending() : null));
+      else if (result && result.kind !== 'busy') setUncertainSubmission(null);
       handleSubmitResult(result || { kind: 'error' });
     }, function () {
+      clearTimeout(connectionTimer);
       sending = false;
-      handleSubmitResult({ kind: 'network' });
+      setUncertainSubmission(api && api.loadPending ? api.loadPending() : null);
+      handleSubmitResult({ kind: 'network', ambiguous: true });
     });
   }
 
@@ -1642,7 +1750,11 @@
       return;
     }
     if (result.kind === 'busy') return;
-    if (result.kind === 'already') {
+    if (result.kind === 'storage_unavailable') {
+      notice('Your browser could not safely save this submission. Nothing was sent. Please enable session storage and try again.');
+    } else if (result.kind === 'unresolved_submission') {
+      notice('A previous submission could not be checked safely. Keep this letter unchanged and restore browser storage before trying again.');
+    } else if (result.kind === 'already') {
       var when = result.next_allowed_at
         ? new Date(result.next_allowed_at * 1000).toLocaleString()
         : '';
@@ -1651,9 +1763,17 @@
       notice('The previous letter has expired. Press Submit again to send this one as a new letter.');
     } else if (result.kind === 'rate') {
       startCooldown(result.retry_after);
-      notice('Too many attempts. Please try again shortly \u2014 your letter has not been lost.');
+      notice('The galaxy is limiting submissions for now. Your draft is saved; the same request will be checked safely when you try again.');
     } else if (result.kind === 'invalid') {
       notice(REASON_TEXT[result.reason] || 'The letter or its settings are not valid. Please check it and try again.');
+    } else if (result.kind === 'timeout') {
+      notice('The galaxy is taking longer than expected. Your letter may have arrived; press Check submission to safely confirm.');
+    } else if (result.kind === 'network' || result.kind === 'response' || result.ambiguous) {
+      notice('We could not confirm whether your letter arrived. Press Check submission to safely try again.');
+    } else if (result.kind === 'server' || result.kind === 'unavailable') {
+      notice('The galaxy could not save your letter right now. Your draft is still here; please try again.');
+    } else if (result.kind === 'http') {
+      notice('The galaxy returned an unexpected response (' + result.status + '). Your draft is still here.');
     } else {
       notice('The service is temporarily unavailable. Your letter is still here \u2014 try again in a moment.');
     }
@@ -1661,6 +1781,7 @@
   }
 
   function onPublished(result) {
+    setUncertainSubmission(null);
     published = true;
     shareUrl = null;
     publishedLang = detectLang(composer.value);
@@ -1742,6 +1863,17 @@
     quillBtn.appendChild(svg);
     host.appendChild(quillBtn);
     quillBtn.addEventListener('click', openCompose);
+    discoveryBtn = make('button', 'void-god-discover');
+    discoveryBtn.id = 'void-god-discover';
+    discoveryBtn.type = 'button';
+    discoveryBtn.setAttribute('aria-label', 'Discover a letter');
+    discoveryBtn.title = 'Discover a letter';
+    discoveryBtn.appendChild(make('span', 'void-god-discover__core'));
+    host.appendChild(discoveryBtn);
+    discoveryBtn.addEventListener('click', function () {
+      var c = holeCenter();
+      openMessageAt(c.x, c.y);
+    });
   }
 
   function buildUi(host) {
@@ -1754,6 +1886,17 @@
   }
 
   function onGuardKey(e) {
+    if (panelOpen && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      var target = e.target;
+      var belongsToReader = !!(panel && target && panel.contains(target));
+      var interactive = false;
+      if (belongsToReader && target && typeof target.closest === 'function') {
+        interactive = !!target.closest('input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"]), [role="button"], [role="link"], [role="textbox"], [tabindex]:not([tabindex="-1"])');
+      }
+      if (belongsToReader && !interactive && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault(); e.stopPropagation(); navigateLetter(e.key === 'ArrowRight' ? 1 : -1); return;
+      }
+    }
     var open = (compose && compose.open) || panelOpen || statsOpen;
     if (!open) return;
     if (e.key === 'Escape') {

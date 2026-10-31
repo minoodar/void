@@ -60,8 +60,8 @@
       hex.slice(16, 20) + '-' + hex.slice(20);
   }
 
-  /* One request = one attempt. Timeouts and network errors are rejected with a
-     plain {network:true} marker so callers never need to inspect raw errors. */
+  /* One request = one attempt. Errors carry a small transport classification;
+     POST failures remain ambiguous because the Worker may already have saved. */
   function request(url, options) {
     var init = {};
     if (options) for (var k in options) if (Object.prototype.hasOwnProperty.call(options, k)) init[k] = options[k];
@@ -72,25 +72,31 @@
       timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, TIMEOUT_MS);
     }
     var started;
+    var beganAt = Date.now();
     try {
       started = global.fetch(url, init);
     } catch (e) {
       clearTimeout(timer);
-      return Promise.reject({ network: true });
+      return Promise.reject({ kind: 'network', duration_ms: Date.now() - beganAt, ambiguous: init.method === 'POST' });
     }
     return started.then(function (res) {
       return res.text().then(function (raw) {
         clearTimeout(timer);
         var data = null;
         try { data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
-        return { status: res.status, data: data };
-      }, function () {
+        return { status: res.status, data: data, duration_ms: Date.now() - beganAt, malformed: !!raw && data === null };
+      }, function (err) {
         clearTimeout(timer);
-        throw { network: true };
+        throw {
+          kind: err && err.name === 'AbortError' ? 'timeout' : 'response',
+          duration_ms: Date.now() - beganAt,
+          ambiguous: init.method === 'POST'
+        };
       });
     }, function (err) {
       clearTimeout(timer);
-      throw { network: true, aborted: !!(err && err.name === 'AbortError') };
+      var timedOut = !!(err && err.name === 'AbortError');
+      throw { kind: timedOut ? 'timeout' : 'network', duration_ms: Date.now() - beganAt, ambiguous: init.method === 'POST' };
     });
   }
 
@@ -120,9 +126,10 @@
 
   function classify(status, data) {
     var ok = !!(data && data.ok === true);
-    if ((status === 201 || status === 200) && ok && typeof data.id === 'string') {
+    if ((status === 201 || (status === 200 && data && data.recovered === true)) && ok && typeof data.id === 'string' && LETTER_ID_REGEX.test(data.id) &&
+        num(data.created_at) > 0 && num(data.expires_at) > num(data.created_at)) {
       return {
-        kind: status === 200 && data.recovered === true ? 'recovered' : 'created',
+        kind: status === 200 ? 'recovered' : 'created',
         id: data.id,
         created_at: num(data.created_at),
         expires_at: num(data.expires_at)
@@ -137,21 +144,41 @@
       return { kind: 'rate', retry_after: isFinite(after) && after > 0 ? after : null };
     }
     if (status === 400) return { kind: 'invalid', reason: reasonOf(data) };
-    if (status >= 500) return { kind: 'unavailable' };
-    return { kind: 'error', status: status };
+    if (status >= 500) return { kind: 'unavailable', status: status };
+    return { kind: 'http', status: status };
+  }
+
+  function readPending() {
+    var s = storage();
+    if (!s) return { available: false, pending: null };
+    try {
+      var raw = s.getItem(PENDING_KEY);
+      if (!raw) return { available: true, pending: null };
+      var p = JSON.parse(raw);
+      if (!p || typeof p.text !== 'string' || !EXPIRY_VALUES[p.expiry]) return { available: false, pending: null };
+      if (typeof p.request_id !== 'string' || !UUID_V4_REGEX.test(p.request_id)) return { available: false, pending: null };
+      return { available: true, pending: {
+        request_id: p.request_id,
+        text: p.text,
+        expiry: p.expiry,
+        lang: typeof p.lang === 'string' ? p.lang : null,
+        state: typeof p.state === 'string' ? p.state : 'prepared'
+      } };
+    } catch (e) { return { available: false, pending: null }; }
   }
 
   function loadPending() {
+    return readPending().pending;
+  }
+
+  function pendingStorageReady(pending) {
     var s = storage();
-    if (!s) return null;
+    if (!s) return false;
     try {
-      var raw = s.getItem(PENDING_KEY);
-      if (!raw) return null;
-      var p = JSON.parse(raw);
-      if (!p || typeof p.text !== 'string' || !EXPIRY_VALUES[p.expiry]) return null;
-      if (typeof p.request_id !== 'string' || !UUID_V4_REGEX.test(p.request_id)) return null;
-      return { request_id: p.request_id, text: p.text, expiry: p.expiry, lang: typeof p.lang === 'string' ? p.lang : null };
-    } catch (e) { return null; }
+      var serialized = JSON.stringify(pending);
+      s.setItem(PENDING_KEY, serialized);
+      return s.getItem(PENDING_KEY) === serialized;
+    } catch (e) { return false; }
   }
 
   function savePending(p) {
@@ -166,15 +193,28 @@
     try { s.removeItem(PENDING_KEY); } catch (e) {}
   }
 
+  function setPendingState(pending, state) {
+    savePending({
+      request_id: pending.request_id,
+      text: pending.text,
+      expiry: pending.expiry,
+      lang: pending.lang || null,
+      state: state
+    });
+  }
+
   /* Reuses the stored UUID only for the exact same payload; any edit is a new
      letter and gets a new id. The record is written before the request starts
      so a reload in the same tab can still retry safely. */
   function begin(text, expiry, lang) {
     var normalizedLang = typeof lang === 'string' && lang ? lang : null;
-    var stored = loadPending();
+    var read = readPending();
+    if (!read.available) return { kind: 'storage_unavailable' };
+    var stored = read.pending;
     if (stored && stored.text === text && stored.expiry === expiry && stored.lang === normalizedLang) return stored;
-    var pending = { request_id: newRequestId(), text: text, expiry: expiry, lang: normalizedLang };
-    savePending(pending);
+    if (stored && (stored.state === 'ambiguous' || stored.state === 'in_flight')) return { kind: 'unresolved_submission' };
+    var pending = { request_id: newRequestId(), text: text, expiry: expiry, lang: normalizedLang, state: 'prepared' };
+    if (!pendingStorageReady(pending)) return { kind: 'storage_unavailable' };
     return pending;
   }
 
@@ -182,7 +222,13 @@
 
   function submit(pending) {
     if (inFlight) return Promise.resolve({ kind: 'busy' });
+    if (pending && pending.kind) return Promise.resolve({ kind: pending.kind });
+    if (!pending || !UUID_V4_REGEX.test(pending.request_id || '') || !pendingStorageReady({
+      request_id: pending.request_id, text: pending.text, expiry: pending.expiry,
+      lang: pending.lang || null, state: 'in_flight'
+    })) return Promise.resolve({ kind: 'storage_unavailable' });
     inFlight = true;
+    setPendingState(pending, 'in_flight');
     var payload = { text: pending.text, expiry: pending.expiry, request_id: pending.request_id };
     if (pending.lang) payload.lang = pending.lang;
     return request(BASE + '/letters', {
@@ -191,12 +237,29 @@
       body: JSON.stringify(payload)
     }).then(function (res) {
       inFlight = false;
-      var out = classify(res.status, res.data);
+      var out = res.malformed && (res.status === 200 || res.status === 201)
+        ? { kind: 'response', ambiguous: true }
+        : classify(res.status, res.data);
+      out.duration_ms = res.duration_ms;
+      if ((res.status === 200 || res.status === 201) && !isDefinitive(out.kind)) {
+        out = { kind: 'response', ambiguous: true, duration_ms: res.duration_ms };
+      }
+      if (res.status === 429 || res.status >= 500) out.ambiguous = true;
+      if (out.kind === 'response') out.ambiguous = true;
+      if (out.ambiguous) out.pending = pending;
       if (isDefinitive(out.kind)) clearPending();
+      else setPendingState(pending, out.ambiguous ? 'ambiguous' : 'retryable');
+      if (out.ambiguous) out.pending = loadPending() || pending;
       return out;
-    }, function () {
+    }, function (err) {
       inFlight = false;
-      return { kind: 'network' };
+      setPendingState(pending, 'ambiguous');
+      return {
+        kind: err && err.kind || 'network',
+        duration_ms: err && err.duration_ms || 0,
+        ambiguous: true,
+        pending: loadPending() || pending
+      };
     });
   }
 
