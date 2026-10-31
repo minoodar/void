@@ -217,6 +217,60 @@ body.is-reading #void-golden-status:not(.is-action):focus-within { opacity: 1; }
     body.is-reading #void-golden-status:not(.is-action) { opacity: .36; }
 }
 
+/* Letter Reading View masks the existing interface without changing its
+   state. The galaxy, temporary selected star, reader, and visualizer stay live. */
+body.is-letter-reading #void-topnav,
+body.is-letter-reading #void-counter,
+body.is-letter-reading #void-galaxy-stats,
+body.is-letter-reading #void-galaxy-stats-panel,
+body.is-letter-reading #void-god-quill,
+body.is-letter-reading #void-god-discover,
+body.is-letter-reading #void-golden-status,
+body.is-letter-reading #void-reopen,
+body.is-letter-reading #ai-orbit-root,
+body.is-letter-reading #void-music-remote-host,
+body.is-letter-reading #void-music-mini-wrap,
+body.is-letter-reading #void-music-mini,
+body.is-letter-reading #void-music-root .vm-meta,
+body.is-letter-reading #void-music-root .vm-dock,
+body.is-letter-reading #void-music-root .vm-corner,
+body.is-letter-reading #void-music-root .vm-pop,
+body.is-letter-reading #void-music-root .vm-toast,
+body.is-letter-reading #void-music-root .vm-hud {
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity .22s ease, visibility 0s linear .22s !important;
+}
+
+/* Native dialogs paint a top-layer backdrop, so suppress their boxes entirely
+   during the reading view; their open state is left untouched for restoration. */
+body.is-letter-reading #void-golden-modal,
+body.is-letter-reading #void-god-dialog { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+    body.is-letter-reading #void-topnav,
+    body.is-letter-reading #void-counter,
+    body.is-letter-reading #void-galaxy-stats,
+    body.is-letter-reading #void-galaxy-stats-panel,
+    body.is-letter-reading #void-god-quill,
+    body.is-letter-reading #void-god-discover,
+    body.is-letter-reading #void-golden-status,
+    body.is-letter-reading #void-reopen,
+    body.is-letter-reading #ai-orbit-root,
+    body.is-letter-reading #void-music-remote-host,
+    body.is-letter-reading #void-music-mini-wrap,
+    body.is-letter-reading #void-music-mini,
+    body.is-letter-reading #void-music-root .vm-meta,
+    body.is-letter-reading #void-music-root .vm-dock,
+    body.is-letter-reading #void-music-root .vm-corner,
+    body.is-letter-reading #void-music-root .vm-pop,
+    body.is-letter-reading #void-music-root .vm-toast,
+    body.is-letter-reading #void-music-root .vm-hud {
+        transition: none !important;
+    }
+}
+
 /* On phones the demo star sits at 22%, not 30%; the column follows the same
    formula as #void-topnav in index.html. */
 @media (max-width: 520px) {

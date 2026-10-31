@@ -165,6 +165,9 @@
   var voteBusy = false;
   var panelOpen = false;
   var panelClosing = false;
+  var readerMusicSnapshot = null;
+  var pendingMusicSnapshot = null;
+  var pendingMusicSnapshotTimer = 0;
   var panelRequestToken = 0;
   var currentMessage = null;
   var starX = 0;
@@ -223,7 +226,40 @@
   }
 
   function setReadingMode(active) {
-    if (document.body) document.body.classList.toggle('is-reading', !!active);
+    if (document.body) {
+      document.body.classList.toggle('is-reading', !!active);
+      document.body.classList.toggle('is-letter-reading', !!active);
+    }
+  }
+
+  function readMusicPresentation() {
+    var root = document.getElementById('void-music-root');
+    return {
+      quiet: !!(root && root.classList.contains('is-quiet')),
+      bodyQuiet: !!(document.body && document.body.classList.contains('vm-quiet')),
+      clockLive: !!(root && root.classList.contains('vm-clock-live'))
+    };
+  }
+
+  function rememberMusicPresentation() {
+    if (panelOpen) return;
+    pendingMusicSnapshot = readMusicPresentation();
+    clearTimeout(pendingMusicSnapshotTimer);
+    pendingMusicSnapshotTimer = setTimeout(function () {
+      pendingMusicSnapshot = null;
+      pendingMusicSnapshotTimer = 0;
+    }, 1500);
+  }
+
+  function restoreMusicPresentation() {
+    if (!readerMusicSnapshot) return;
+    var root = document.getElementById('void-music-root');
+    if (root) {
+      root.classList.toggle('is-quiet', readerMusicSnapshot.quiet);
+      root.classList.toggle('vm-clock-live', readerMusicSnapshot.clockLive);
+    }
+    if (document.body) document.body.classList.toggle('vm-quiet', readerMusicSnapshot.bodyQuiet);
+    readerMusicSnapshot = null;
   }
 
   function clamp(v, lo, hi) {
@@ -1338,7 +1374,13 @@
       hidePanelNow();
       return;
     }
-    clearScene();
+    if (!panelOpen && !readerMusicSnapshot) {
+      readerMusicSnapshot = pendingMusicSnapshot || readMusicPresentation();
+      pendingMusicSnapshot = null;
+      clearTimeout(pendingMusicSnapshotTimer);
+      pendingMusicSnapshotTimer = 0;
+    }
+    clearScene(true);
     var requestToken = ++panelRequestToken;
     panelClosing = false;
     setReadingMode(true);
@@ -1450,11 +1492,12 @@
     });
   }
 
-  function hidePanelNow() {
+  function hidePanelNow(preserveReaderState) {
     panelOpen = false;
     panelClosing = false;
     panelRequestToken++;
     setReadingMode(false);
+    if (!preserveReaderState) restoreMusicPresentation();
     voteBusy = false;
     clearLifespanTimer();
     clearTimeout(closeTimer);
@@ -1467,11 +1510,12 @@
 
   function closePanel(opts) {
     opts = opts || {};
-    if (!panelOpen) { setReadingMode(false); return; }
+    if (!panelOpen) { setReadingMode(false); restoreMusicPresentation(); return; }
     panelOpen = false;
     panelClosing = true;
     panelRequestToken++;
     setReadingMode(false);
+    restoreMusicPresentation();
     currentMessage = null;
     voteBusy = false;
     clearLifespanTimer();
@@ -1503,8 +1547,8 @@
     if (opts.focus) restoreFocus(quillBtn);
   }
 
-  function clearScene() {
-    hidePanelNow();
+  function clearScene(preserveReaderState) {
+    hidePanelNow(!!preserveReaderState);
     removeAnchorNow();
     currentMessage = null;
   }
@@ -2026,6 +2070,17 @@
   function bindKeys() {
     if (guardOn) return;
     guardOn = true;
+    window.addEventListener('pointerdown', rememberMusicPresentation, true);
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') rememberMusicPresentation();
+    }, true);
+    window.addEventListener('click', function () {
+      setTimeout(function () {
+        pendingMusicSnapshot = null;
+        clearTimeout(pendingMusicSnapshotTimer);
+        pendingMusicSnapshotTimer = 0;
+      }, 0);
+    }, true);
     window.addEventListener('keydown', onGuardKey, true);
     window.addEventListener('resize', function () {
       clearTimeout(relayoutTimer);
