@@ -3635,7 +3635,6 @@ void main(){
     V.opening.elapsed = 0; V.opening.progress = 0; V.opening.cam = 0;
     V.opening.evAt = -1; V.opening.evLen = 0; V.opening.nextAt = 0;
     V.dive = 0;
-    V.breath.pitch = BREATH.startPitch; V.breath.zoom = BREATH.startZoom; V.breath.mix = 1;
   }
   /* آهنگِ تازه در میانهٔ سفر: طولِ نو فقط بازه‌ها را عوض می‌کند؛ فاز، زمانِ سپری‌شده و
      عمقِ فعلی دست‌نخورده می‌مانند (بی‌هیچ پرشِ دوربین). */
