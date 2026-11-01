@@ -81,9 +81,11 @@ export default {
         return await countLetters(env, cors);
       }
       if (url.pathname.startsWith('/letters/') && url.pathname.endsWith('/vote') &&
-          request.method === 'POST') {
+          ['POST', 'PUT', 'DELETE'].indexOf(request.method) !== -1) {
         const id = url.pathname.slice('/letters/'.length, -'/vote'.length);
-        return await voteLetter(request, id, env, cors);
+        if (request.method === 'POST') return await voteLetter(request, id, env, cors);
+        if (request.method === 'PUT') return await putVote(request, id, env, cors);
+        return await deleteVote(request, id, env, cors);
       }
       if (url.pathname.startsWith('/letters/') && request.method === 'GET') {
         return await getLetterById(url.pathname.slice('/letters/'.length), env, cors);
@@ -429,11 +431,11 @@ async function createLetter(request, env, cors) {
   ).bind(requestId, senderHash, id, now, senderHash, now - DAY_SEC, DAILY_SENDER_LIMIT);
 
   const insertStmt = env.DB.prepare(
-    'INSERT INTO letters (id, body, lang, created_at, expires_at) ' +
-    'SELECT ?, ?, ?, ?, ? ' +
+    'INSERT INTO letters (id, body, lang, created_at, expires_at, base_expires_at, base_votes_net) ' +
+    'SELECT ?, ?, ?, ?, ?, ?, 0 ' +
     'WHERE EXISTS (SELECT 1 FROM letter_submissions WHERE sender_hash = ? AND request_id = ? AND letter_id = ?) ' +
     'ON CONFLICT(id) DO NOTHING'
-  ).bind(id, text, lang, now, expiresAt, senderHash, requestId, id);
+  ).bind(id, text, lang, now, expiresAt, expiresAt, senderHash, requestId, id);
 
   const bumpGlobal = env.DB.prepare(
     'INSERT INTO letter_limits (scope, bucket, count) VALUES (?, ?, 1) ' +
@@ -566,6 +568,123 @@ function voteRateLimited(now, headers) {
   }, 429, headers);
 }
 
+const PRUNE_VOTES_SQL =
+  'DELETE FROM letter_votes WHERE letter_id IN (SELECT id FROM letters WHERE expires_at < ?)';
+
+function lifespanStmt(env, id, now) {
+  return env.DB.prepare(
+    'UPDATE letters SET expires_at = MIN(created_at + ?, ' +
+    'MAX(? + ?, COALESCE(base_expires_at, expires_at) + ? * (' +
+    "(SELECT COUNT(*) FROM letter_votes WHERE letter_id = ? AND vote_type = 'like') - " +
+    "(SELECT COUNT(*) FROM letter_votes WHERE letter_id = ? AND vote_type = 'dislike') - " +
+    'COALESCE(base_votes_net, 0)))) ' +
+    'WHERE id = ? AND expires_at > ?'
+  ).bind(MAX_LIFETIME_SEC, now, MIN_REMAINING_SEC, DAY_SEC, id, id, id, now);
+}
+
+async function voteContext(request, rawId, env, cors, needsBody) {
+  const headers = Object.assign({ 'Cache-Control': 'no-store' }, cors.headers);
+  if (!env || !env.DB) return { err: json({ ok: false, error: 'unavailable' }, 503, headers) };
+  if (!LETTER_ID_REGEX.test(rawId)) return { err: json({ ok: false, error: 'not_found' }, 404, headers) };
+  const salt = resolveSalt(env);
+  if (!salt) return { err: json({ ok: false, error: 'unavailable' }, 503, headers) };
+  let type = null;
+  if (needsBody) {
+    const body = await readJsonBody(request, 256);
+    if (!body.ok) return { err: json({ ok: false, error: body.error }, body.status, headers) };
+    type = body.value && body.value.type;
+    if (!Object.prototype.hasOwnProperty.call(VOTE_TYPES, type)) {
+      return { err: json({ ok: false, error: 'invalid_vote' }, 400, headers) };
+    }
+  }
+  const voterHash = await hashIp(clientIp(request), salt, 'votes');
+  const now = Math.floor(Date.now() / 1000);
+  return { headers, type, voterHash, now, hour: Math.floor(now / 3600) };
+}
+
+async function bumpVoteRate(env, voterHash, hour) {
+  const result = await env.DB.prepare(
+    'INSERT INTO letter_vote_rate_v2 (voter_hash, bucket, count) VALUES (?, ?, 1) ' +
+    'ON CONFLICT(voter_hash, bucket) DO UPDATE SET count = count + 1 WHERE count < ?'
+  ).bind(voterHash, hour, VOTE_HOURLY_LIMIT).run();
+  return changesOf(result) > 0;
+}
+
+async function storedVote(env, id, voterHash) {
+  const row = await env.DB.prepare(
+    'SELECT vote_type FROM letter_votes WHERE letter_id = ? AND voter_hash = ?'
+  ).bind(id, voterHash).first();
+  return row && (row.vote_type === 'like' || row.vote_type === 'dislike') ? row.vote_type : null;
+}
+
+function voteSuccess(id, type, changed, capped, letter, now, headers) {
+  return json(Object.assign({
+    ok: true,
+    id,
+    type,
+    changed: !!changed,
+    capped: !!capped
+  }, votePayload(letter, now)), 200, headers);
+}
+
+async function putVote(request, rawId, env, cors) {
+  const context = await voteContext(request, rawId, env, cors, true);
+  if (context.err) return context.err;
+  const { headers, type, voterHash, now, hour } = context;
+  const letter = await letterVoteState(env, rawId, now);
+  if (!letter) return json({ ok: false, error: 'not_found' }, 404, headers);
+
+  const existing = await storedVote(env, rawId, voterHash);
+  if (existing === type) return voteSuccess(rawId, type, false, false, letter, now, headers);
+  if (!(await bumpVoteRate(env, voterHash, hour))) return voteRateLimited(now, headers);
+
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      'INSERT INTO letter_votes (letter_id, voter_hash, vote_type, created_at) ' +
+      'SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM letters WHERE id = ? AND expires_at > ?) ' +
+      'ON CONFLICT(letter_id, voter_hash) DO UPDATE SET ' +
+      'vote_type = excluded.vote_type, created_at = excluded.created_at'
+    ).bind(rawId, voterHash, type, now, rawId, now),
+    lifespanStmt(env, rawId, now),
+    env.DB.prepare(PRUNE_VOTES_SQL).bind(now),
+    env.DB.prepare('DELETE FROM letter_vote_rate_v2 WHERE bucket < ?').bind(hour - 2)
+  ]);
+  const final = await letterVoteState(env, rawId, now);
+  if (!final) return json({ ok: false, error: 'not_found' }, 404, headers);
+  const finalType = await storedVote(env, rawId, voterHash);
+  const capped = finalType === 'like'
+    ? Number(final.expires_at) >= Number(final.created_at) + MAX_LIFETIME_SEC
+    : finalType === 'dislike' && Number(final.expires_at) <= now + MIN_REMAINING_SEC;
+  return voteSuccess(rawId, finalType, changesOf(results[0]) > 0, capped, final, now, headers);
+}
+
+async function deleteVote(request, rawId, env, cors) {
+  const context = await voteContext(request, rawId, env, cors, false);
+  if (context.err) return context.err;
+  const { headers, voterHash, now, hour } = context;
+  const letter = await letterVoteState(env, rawId, now);
+  if (!letter) return json({ ok: false, error: 'not_found' }, 404, headers);
+
+  const existing = await storedVote(env, rawId, voterHash);
+  if (!existing) return voteSuccess(rawId, null, false, false, letter, now, headers);
+  if (!(await bumpVoteRate(env, voterHash, hour))) return voteRateLimited(now, headers);
+
+  const results = await env.DB.batch([
+    env.DB.prepare('DELETE FROM letter_votes WHERE letter_id = ? AND voter_hash = ?')
+      .bind(rawId, voterHash),
+    lifespanStmt(env, rawId, now),
+    env.DB.prepare(PRUNE_VOTES_SQL).bind(now),
+    env.DB.prepare('DELETE FROM letter_vote_rate_v2 WHERE bucket < ?').bind(hour - 2)
+  ]);
+  const final = await letterVoteState(env, rawId, now);
+  if (!final) return json({ ok: false, error: 'not_found' }, 404, headers);
+  const finalType = await storedVote(env, rawId, voterHash);
+  const capped = finalType === 'like'
+    ? Number(final.expires_at) >= Number(final.created_at) + MAX_LIFETIME_SEC
+    : finalType === 'dislike' && Number(final.expires_at) <= now + MIN_REMAINING_SEC;
+  return voteSuccess(rawId, finalType, changesOf(results[0]) > 0, capped, final, now, headers);
+}
+
 // POST /letters/:id/vote  { "type": "like" | "dislike" }
 // A like adds 24h, a dislike removes 24h. One immutable vote per hashed
 // visitor per letter; the update and the vote row commit in one batch.
@@ -617,9 +736,11 @@ async function voteLetter(request, rawId, env, cors) {
   ).bind(rawId, voterHash, type, now, rawId, now);
 
   // The ±24h shift is applied by letter_votes_apply_lifespan (see the
-  // migration), so it is atomic with the insert and skipped on a conflict.
+  // original schema trigger for old deployments. The explicit recomputation
+  // keeps the legacy POST endpoint correct after that trigger is removed.
   const results = await env.DB.batch([
     insertVote,
+    lifespanStmt(env, rawId, now),
     env.DB.prepare(
       'DELETE FROM letter_votes WHERE letter_id IN (SELECT id FROM letters WHERE expires_at < ?)'
     ).bind(now),
@@ -990,7 +1111,7 @@ async function adminClearLetters(request, env, cors) {
       legacy_claims_cleared: changesOf(results[2]),
       sender_limits_cleared: changesOf(results[3]),
       votes_cleared: changesOf(results[4]),
-      vote_limits_cleared: changesOf(results[5])
+      vote_limits_cleared: changesOf(results[5]) + changesOf(results[6])
     }, 200, headers);
   }
 
