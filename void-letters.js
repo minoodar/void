@@ -205,6 +205,7 @@
   var discoveryBtn = null;
   var toolsHideTimer = 0;
   var toolsRevealed = false;
+  var toolsIntro = false;
   var letterHistory = [];
   var historyIndex = -1;
   var uncertainSubmission = null;
@@ -214,6 +215,7 @@
     clearTimeout(toolsHideTimer);
     toolsHideTimer = 0;
     toolsRevealed = false;
+    toolsIntro = false;
     if (document.body) document.body.classList.remove('is-tools-revealed');
     if (discoveryBtn) {
       discoveryBtn.setAttribute('aria-expanded', 'false');
@@ -226,9 +228,11 @@
     }
   }
 
-  function showToolPalette() {
+  function showToolPalette(initialIntro) {
     if (panelOpen || (compose && compose.open)) return;
     toolsRevealed = true;
+    if (initialIntro === true) toolsIntro = true;
+    else if (initialIntro === false) toolsIntro = false;
     if (document.body) document.body.classList.add('is-tools-revealed');
     if (discoveryBtn) {
       discoveryBtn.setAttribute('aria-expanded', 'true');
@@ -242,14 +246,20 @@
     clearTimeout(toolsHideTimer);
     // Touch users need time to choose the second action; keep the palette open
     // until the quill or discovery control is activated again.
-    if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
+    if (!initialIntro && window.matchMedia && window.matchMedia('(hover: none)').matches) {
       toolsHideTimer = 0;
       return;
     }
     toolsHideTimer = setTimeout(function hideWhenIdle() {
       var nav = document.getElementById('void-topnav');
       var active = document.activeElement;
-      if ((nav && active && nav.contains(active)) ||
+      var hovered = false;
+      try {
+        hovered = !!((nav && nav.matches(':hover')) || (quillBtn && quillBtn.matches(':hover')) ||
+          (discoveryBtn && discoveryBtn.matches(':hover')));
+      } catch (e) {}
+      if (hovered || (nav && active && nav.contains(active)) ||
+          (quillBtn && active === quillBtn && quillBtn.matches(':focus-visible')) ||
           (discoveryBtn && active === discoveryBtn && discoveryBtn.matches(':focus-visible'))) {
         toolsHideTimer = setTimeout(hideWhenIdle, 1200);
         return;
@@ -973,6 +983,21 @@
     panelText = make('p', 'void-god-msg-text');
     panelText.id = 'void-god-panel-text';
     panelText.setAttribute('dir', 'auto');
+    var messageBody = make('div', 'void-god-msg-wrap');
+    messageBody.appendChild(panelText);
+    panelCopy = make('button', 'void-god-reader-icon void-god-copy-icon');
+    panelCopy.type = 'button';
+    panelCopy.id = 'void-god-copy';
+    panelCopy.setAttribute('aria-label', 'Copy letter');
+    panelCopy.title = 'Copy letter';
+    var copySvg = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    copySvg.appendChild(svgNode('rect', { x: '8', y: '8', width: '12', height: '12', rx: '2' }));
+    copySvg.appendChild(svgNode('path', { d: 'M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3' }));
+    panelCopy.appendChild(copySvg);
+    var copiedSvg = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-copy-icon__check', 'aria-hidden': 'true', focusable: 'false' });
+    copiedSvg.appendChild(svgNode('path', { d: 'm5 12 4 4L19 6' }));
+    panelCopy.appendChild(copiedSvg);
+    messageBody.appendChild(panelCopy);
 
     panelMeta = make('p', 'void-god-msg-meta');
     panelMeta.id = 'void-god-panel-meta';
@@ -984,7 +1009,7 @@
     panelVotes = make('div', 'void-god-votes');
     panelVotes.id = 'void-god-votes';
     panelVotes.hidden = true;
-    panelLike = make('button', 'void-god-btn void-god-vote');
+    panelLike = make('button', 'void-god-vote');
     panelLike.type = 'button';
     panelLike.id = 'void-god-like';
     panelLike.setAttribute('aria-pressed', 'false');
@@ -993,10 +1018,9 @@
     var likeIcon = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-vote__icon', 'aria-hidden': 'true', focusable: 'false' });
     likeIcon.appendChild(svgNode('path', { d: voteIconPath }));
     panelLike.appendChild(likeIcon);
-    panelLike.appendChild(make('span', 'void-god-vote__label', 'Like'));
     likeCount = make('span', 'void-god-vote__count', '0');
     panelLike.appendChild(likeCount);
-    panelDislike = make('button', 'void-god-btn void-god-vote');
+    panelDislike = make('button', 'void-god-vote');
     panelDislike.type = 'button';
     panelDislike.id = 'void-god-dislike';
     panelDislike.setAttribute('aria-pressed', 'false');
@@ -1006,21 +1030,21 @@
     dislikeShape.appendChild(svgNode('path', { d: voteIconPath }));
     dislikeIcon.appendChild(dislikeShape);
     panelDislike.appendChild(dislikeIcon);
-    panelDislike.appendChild(make('span', 'void-god-vote__label', 'Dislike'));
     dislikeCount = make('span', 'void-god-vote__count', '0');
     panelDislike.appendChild(dislikeCount);
     panelVotes.appendChild(panelLike);
     panelVotes.appendChild(panelDislike);
 
     var actions = make('div', 'void-god-panel__actions');
-    panelCopy = make('button', 'void-god-btn', 'Copy');
-    panelCopy.type = 'button';
-    panelCopy.id = 'void-god-copy';
-    panelShare = make('button', 'void-god-btn', 'Share on X');
+    panelShare = make('button', 'void-god-reader-icon void-god-share-icon');
     panelShare.type = 'button';
     panelShare.id = 'void-god-share';
-    actions.appendChild(nav);
-    actions.appendChild(panelCopy);
+    panelShare.setAttribute('aria-label', 'Share on X');
+    panelShare.title = 'Share on X';
+    var xIcon = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    xIcon.appendChild(svgNode('path', { d: 'M18.901 1.153h3.68L14.54 10.356 24 22.846h-7.406l-5.8-7.584-6.636 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932Zm-1.29 19.495h2.039L6.486 3.235H4.298z' }));
+    panelShare.appendChild(xIcon);
+    actions.appendChild(panelVotes);
     actions.appendChild(panelShare);
 
     panelFeedback = make('p', 'void-god-panel__status');
@@ -1030,11 +1054,11 @@
     panelFeedback.hidden = true;
 
     panel.appendChild(head);
-    panel.appendChild(panelText);
+    panel.appendChild(messageBody);
     panel.appendChild(panelLifespan);
     panel.appendChild(panelMeta);
-    panel.appendChild(panelVotes);
     panel.appendChild(actions);
+    panel.appendChild(nav);
     panel.appendChild(panelFeedback);
     host.appendChild(panel);
 
@@ -1061,7 +1085,9 @@
     clearTimeout(feedbackTimer);
     panelFeedback.hidden = true;
     panelFeedback.textContent = '';
-    panelCopy.textContent = 'Copy';
+    panelCopy.classList.remove('is-copied');
+    panelCopy.setAttribute('aria-label', 'Copy letter');
+    panelCopy.title = 'Copy letter';
     panelCopy.disabled = false;
     var canShare = !!messageLink(msg);
     panelShare.disabled = !canShare;
@@ -1164,6 +1190,8 @@
     var voted = loadVotes()[id] || null;
     likeCount.textContent = String(Number(msg.votes_like) || 0);
     dislikeCount.textContent = String(Number(msg.votes_dislike) || 0);
+    panelLike.setAttribute('aria-label', 'Like this letter, ' + likeCount.textContent + ' votes');
+    panelDislike.setAttribute('aria-label', 'Dislike this letter, ' + dislikeCount.textContent + ' votes');
     panelLike.disabled = !!voted || voteBusy;
     panelDislike.disabled = !!voted || voteBusy;
     panelLike.classList.toggle('is-voted', voted === 'like');
@@ -1660,13 +1688,17 @@
     clearTimeout(feedbackTimer);
     panelFeedback.textContent = label;
     panelFeedback.hidden = false;
-    panelCopy.textContent = copied ? 'Copied' : 'Copy';
+    panelCopy.classList.toggle('is-copied', !!copied);
+    panelCopy.setAttribute('aria-label', copied ? 'Letter copied' : 'Copy letter');
+    panelCopy.title = copied ? 'Copied' : 'Copy letter';
     relayoutSoon();
     feedbackTimer = setTimeout(function () {
       if (!panelFeedback) return;
       panelFeedback.hidden = true;
       panelFeedback.textContent = '';
-      panelCopy.textContent = 'Copy';
+      panelCopy.classList.remove('is-copied');
+      panelCopy.setAttribute('aria-label', 'Copy letter');
+      panelCopy.title = 'Copy letter';
       relayoutSoon();
     }, 2200);
   }
@@ -2085,7 +2117,8 @@
     quillBtn.appendChild(svg);
     host.appendChild(quillBtn);
     quillBtn.addEventListener('click', function () {
-      if (!toolsRevealed) {
+      if (!toolsRevealed || toolsIntro) {
+        toolsIntro = false;
         showToolPalette();
         return;
       }
@@ -2102,7 +2135,8 @@
     discoveryBtn.appendChild(make('span', 'void-god-discover__core'));
     host.appendChild(discoveryBtn);
     discoveryBtn.addEventListener('click', function () {
-      if (!toolsRevealed) {
+      if (!toolsRevealed || toolsIntro) {
+        toolsIntro = false;
         showToolPalette();
         return;
       }
@@ -2152,7 +2186,13 @@
   function bindKeys() {
     if (guardOn) return;
     guardOn = true;
-    window.addEventListener('pointerdown', rememberMusicPresentation, true);
+    window.addEventListener('pointerdown', function (e) {
+      rememberMusicPresentation();
+      if (toolsIntro && e && e.target && e.target.closest &&
+          e.target.closest('#void-topnav, #void-god-quill, #void-god-discover, #void-music-root')) {
+        showToolPalette(true);
+      }
+    }, true);
     window.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ') rememberMusicPresentation();
       if (e.key === 'Tab' && !panelOpen && !(compose && compose.open) &&
@@ -2197,10 +2237,10 @@
 
   function start() {
     bindKeys();
-    if (mount()) { openDeepLink(); return; }
+    if (mount()) { showToolPalette(true); openDeepLink(); return; }
     var tries = 0;
     (function retry() {
-      if (mount()) { openDeepLink(); return; }
+      if (mount()) { showToolPalette(true); openDeepLink(); return; }
       if (++tries > 120) return;            // ~۲ ثانیه صبر برای ساختِ ریشهٔ پلیر
       setTimeout(retry, 16);
     })();
