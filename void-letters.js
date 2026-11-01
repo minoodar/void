@@ -1027,6 +1027,7 @@
     likeIcon.appendChild(svgNode('path', { d: voteIconPath }));
     panelLike.appendChild(likeIcon);
     likeCount = make('span', 'void-god-vote__count', '0');
+    likeCount.setAttribute('aria-hidden', 'true');
     panelLike.appendChild(likeCount);
     panelDislike = make('button', 'void-god-vote');
     panelDislike.type = 'button';
@@ -1039,6 +1040,7 @@
     dislikeIcon.appendChild(dislikeShape);
     panelDislike.appendChild(dislikeIcon);
     dislikeCount = make('span', 'void-god-vote__count', '0');
+    dislikeCount.setAttribute('aria-hidden', 'true');
     panelDislike.appendChild(dislikeCount);
     panelVotes.appendChild(panelLike);
     panelVotes.appendChild(panelDislike);
