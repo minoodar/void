@@ -958,7 +958,7 @@
     panelTag.id = 'void-god-panel-tag';
     titles.appendChild(h);
     titles.appendChild(panelTag);
-    var nav = make('div', 'void-god-nav');
+    var nav = make('div', 'void-god-panel__actions');
     panelPrevious = make('button', 'void-god-nav__button');
     panelPrevious.type = 'button';
     panelPrevious.disabled = true;
@@ -975,10 +975,6 @@
     var nextArrow = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
     nextArrow.appendChild(svgNode('path', { d: 'M9.5 5.5 16 12l-6.5 6.5' }));
     panelNext.appendChild(nextArrow);
-    nav.appendChild(panelPrevious);
-    nav.appendChild(panelNext);
-    nav.setAttribute('role', 'group');
-    nav.setAttribute('aria-label', 'Letter navigation');
     var x = make('button', 'void-god-x', '\u00D7');
     x.type = 'button';
     x.id = 'void-god-panel-close';
@@ -1042,7 +1038,6 @@
     panelVotes.appendChild(panelLike);
     panelVotes.appendChild(panelDislike);
 
-    var actions = make('div', 'void-god-panel__actions');
     panelShare = make('button', 'void-god-reader-icon void-god-share-icon');
     panelShare.type = 'button';
     panelShare.id = 'void-god-share';
@@ -1051,9 +1046,13 @@
     var xIcon = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
     xIcon.appendChild(svgNode('path', { d: 'M18.901 1.153h3.68L14.54 10.356 24 22.846h-7.406l-5.8-7.584-6.636 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932Zm-1.29 19.495h2.039L6.486 3.235H4.298z' }));
     panelShare.appendChild(xIcon);
-    actions.appendChild(panelShare);
-    actions.appendChild(panelVotes);
-    actions.appendChild(panelCopy);
+    nav.setAttribute('role', 'group');
+    nav.setAttribute('aria-label', 'Letter navigation and actions');
+    nav.appendChild(panelPrevious);
+    nav.appendChild(panelShare);
+    nav.appendChild(panelVotes);
+    nav.appendChild(panelCopy);
+    nav.appendChild(panelNext);
 
     panelFeedback = make('p', 'void-god-panel__status');
     panelFeedback.id = 'void-god-copy-status';
@@ -1065,7 +1064,6 @@
     panel.appendChild(messageBody);
     panel.appendChild(panelLifespan);
     panel.appendChild(panelMeta);
-    panel.appendChild(actions);
     panel.appendChild(nav);
     panel.appendChild(panelFeedback);
     host.appendChild(panel);

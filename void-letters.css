@@ -492,7 +492,6 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     letter-spacing: .02em;
     color: rgba(250, 252, 255, .96);
 }
-.void-god-nav { display: flex; align-items: center; gap: 4px; flex: none; }
 .void-god-nav__button {
     display: grid; place-items: center;
     flex: none;
@@ -679,13 +678,6 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     color: rgba(235, 238, 243, .88);
 }
 .void-god-share-icon svg { width: 17px; height: 17px; fill: currentColor; }
-.void-god-nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    flex: 0 0 auto;
-}
 .void-god-panel__status {
     margin: 0;
     font-size: 11.5px;
@@ -1013,7 +1005,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
 }
 
 @media (max-width: 340px) {
-    .void-god-panel__actions { gap: 2px; }
+    .void-god-panel__actions { gap: 1px; }
     .void-god-votes { gap: 0; }
 }
 
