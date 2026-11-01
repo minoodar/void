@@ -172,10 +172,30 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
 }
 .void-god-discover__core {
     position: relative;
+    isolation: isolate;
     width: 5px; height: 5px; border-radius: 50%;
-    background: rgba(255, 218, 113, .88);
-    box-shadow: 0 0 7px rgba(251, 191, 36, .62);
-    animation: void-discover-pulse 3.8s ease-in-out infinite;
+    background: rgba(255, 218, 113, .96);
+    box-shadow: 0 0 4px 1px rgba(251, 191, 36, .42);
+}
+.void-god-discover__core::before,
+.void-god-discover__core::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+}
+.void-god-discover__core::before {
+    z-index: -1;
+    inset: -6px;
+    background: radial-gradient(circle, rgba(251, 191, 36, .28) 0%, rgba(251, 191, 36, .12) 48%, transparent 76%);
+    opacity: .68;
+    transform: scale(.94);
+    animation: void-discover-glow-pulse 3.8s ease-in-out infinite;
+}
+.void-god-discover__core::after {
+    inset: -2px;
+    border: 1px solid rgba(255, 236, 180, .26);
+    opacity: .72;
 }
 #void-god-discover:hover, #void-god-discover:focus-visible {
     background: radial-gradient(circle, rgba(251, 191, 36, .10), transparent 72%);
@@ -185,9 +205,9 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     box-shadow: 0 0 10px rgba(251, 191, 36, .82);
 }
 #void-god-discover:focus-visible { outline: 1px solid rgba(255, 218, 113, .65); outline-offset: 1px; }
-@keyframes void-discover-pulse {
-    0%, 100% { opacity: .66; transform: scale(.88); }
-    50% { opacity: 1; transform: scale(1.12); }
+@keyframes void-discover-glow-pulse {
+    0%, 100% { opacity: .56; transform: scale(.94); }
+    50% { opacity: .84; transform: scale(1.06); }
 }
 #void-music-root.is-quiet #void-god-discover { opacity: .48; }
 #void-music-root.is-quiet #void-god-quill { opacity: .38; }
@@ -1040,6 +1060,15 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     #void-god-quill svg { width: 12px; height: 12px; }
 }
 
+/* Lift the complete right-side tool group on touch devices in landscape,
+   where the discovery control otherwise reaches the bottom edge. */
+@media (orientation: landscape) and (hover: none) and (pointer: coarse)
+       and (min-width: 704px) and (min-height: 380px) and (max-height: 520px) {
+    #void-topnav.void-topnav--rail,
+    #void-god-quill,
+    #void-god-discover { translate: 0 -60px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     #void-galaxy-stats { transition: none; }
     .vm-gs__fig, .vm-gs__l { transition: none; }
@@ -1060,6 +1089,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     .void-god-anchor__glow,
     .void-god-anchor__core { animation: none; }
     .void-god-discover__core { animation: none; }
+    .void-god-discover__core::before { animation: none; opacity: .7; transform: none; }
     .void-god-ash span { animation: none; }
     #void-god-panel.is-closing {
         opacity: 0;
