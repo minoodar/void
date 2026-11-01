@@ -1418,7 +1418,9 @@
     panel.classList.remove('is-on');
     panel.style.left = '0px';
     panel.style.top = '0px';
-    var isMobileViewport = window.matchMedia && window.matchMedia('(max-width: 520px)').matches;
+    var isMobileViewport = window.matchMedia && window.matchMedia(
+      '(max-width: 520px), (orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 520px)'
+    ).matches;
     var cap = isMobileViewport
       ? Math.min(window.innerHeight * 0.9, Math.max(120, bottom - top))
       : Math.min(380, window.innerHeight * 0.56, Math.max(120, bottom - top));
