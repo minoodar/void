@@ -990,7 +990,6 @@
     panelText.id = 'void-god-panel-text';
     panelText.setAttribute('dir', 'auto');
     var messageBody = make('div', 'void-god-msg-wrap');
-    var messageTools = make('div', 'void-god-msg-tools');
     panelCopy = make('button', 'void-god-reader-icon void-god-copy-icon');
     panelCopy.type = 'button';
     panelCopy.id = 'void-god-copy';
@@ -1003,8 +1002,6 @@
     var copiedSvg = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-copy-icon__check', 'aria-hidden': 'true', focusable: 'false' });
     copiedSvg.appendChild(svgNode('path', { d: 'm5 12 4 4L19 6' }));
     panelCopy.appendChild(copiedSvg);
-    messageTools.appendChild(panelCopy);
-    messageBody.appendChild(messageTools);
     messageBody.appendChild(panelText);
 
     panelMeta = make('p', 'void-god-msg-meta');
@@ -1054,8 +1051,9 @@
     var xIcon = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
     xIcon.appendChild(svgNode('path', { d: 'M18.901 1.153h3.68L14.54 10.356 24 22.846h-7.406l-5.8-7.584-6.636 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932Zm-1.29 19.495h2.039L6.486 3.235H4.298z' }));
     panelShare.appendChild(xIcon);
-    actions.appendChild(panelVotes);
     actions.appendChild(panelShare);
+    actions.appendChild(panelVotes);
+    actions.appendChild(panelCopy);
 
     panelFeedback = make('p', 'void-god-panel__status');
     panelFeedback.id = 'void-god-copy-status';
@@ -1418,11 +1416,15 @@
     panel.classList.remove('is-on');
     panel.style.left = '0px';
     panel.style.top = '0px';
-    var isMobileViewport = window.matchMedia && window.matchMedia(
-      '(max-width: 520px), (orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 520px)'
+    var isCompactTouchLandscape = window.matchMedia && window.matchMedia(
+      '(orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 520px)'
     ).matches;
-    var cap = isMobileViewport
-      ? Math.min(window.innerHeight * 0.9, Math.max(120, bottom - top))
+    var isMobileViewport = window.matchMedia && window.matchMedia('(max-width: 520px)').matches;
+    var availableHeight = Math.max(120, bottom - top);
+    var cap = isCompactTouchLandscape
+      ? Math.min(window.innerHeight * 0.94, availableHeight)
+      : isMobileViewport
+        ? Math.min(window.innerHeight * 0.9, availableHeight)
       : Math.min(380, window.innerHeight * 0.56, Math.max(120, bottom - top));
     var W = panel.offsetWidth;
     var R = 24, m = 12, gap = 26;

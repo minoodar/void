@@ -559,13 +559,6 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     min-width: 0;
     min-height: 0;
 }
-.void-god-msg-tools {
-    display: flex;
-    flex: 0 0 44px;
-    align-items: center;
-    justify-content: flex-end;
-    min-height: 44px;
-}
 .void-god-msg-wrap .void-god-msg-text { height: auto; padding: 4px 4px 6px; }
 .void-god-reader-icon {
     display: grid;
@@ -626,6 +619,7 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 }
 .void-god-votes {
     display: flex;
+    flex-direction: row-reverse;
     align-items: center;
     justify-content: center;
     gap: 2px;
@@ -674,6 +668,7 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-vote.is-voted:disabled { opacity: 1; }
 .void-god-panel__actions {
     display: flex;
+    direction: ltr;
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
@@ -1067,6 +1062,12 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     #void-topnav.void-topnav--rail,
     #void-god-quill,
     #void-god-discover { translate: 0 -60px; }
+}
+
+@media (orientation: landscape) and (hover: none) and (pointer: coarse)
+       and (min-width: 521px) and (max-height: 520px) {
+    #void-god-panel { gap: 6px; padding: 12px; }
+    .void-god-msg-wrap { min-height: 72px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
