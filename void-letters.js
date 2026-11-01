@@ -141,6 +141,8 @@
   var rowLetters = null;
   var letterTotal = null;
   var visitorsStarted = false;
+  var siteStatsTimer = 0;
+  var siteStatsRefreshPromise = null;
 
   var quillBtn = null;
   var galaxyLayer = null;
@@ -622,9 +624,15 @@
         writeSession(VISIT_COUNTED, '1', false);
         writeSession(VISIT_RETURNING, '1', true);
       }
-      return api.visitorStats();
-    }).then(function (s) {
+      return refreshVisitorStats();
+    });
+  }
+
+  function refreshVisitorStats() {
+    if (!api || typeof api.visitorStats !== 'function') return Promise.resolve(null);
+    return api.visitorStats().then(function (s) {
       if (s) setVisitors(s);
+      return s;
     });
   }
 
@@ -1394,6 +1402,31 @@
     });
   }
 
+  function refreshSiteStats() {
+    if (!api || document.visibilityState === 'hidden' ||
+        (window.navigator && window.navigator.onLine === false)) return;
+    if (siteStatsRefreshPromise) return siteStatsRefreshPromise;
+    siteStatsRefreshPromise = Promise.all([api.count(), api.visitorStats()]).then(function (values) {
+      if (values[0] !== null) setCount(values[0]);
+      if (values[1]) setVisitors(values[1]);
+    }).then(function () {
+      siteStatsRefreshPromise = null;
+    }, function () {
+      siteStatsRefreshPromise = null;
+    });
+    return siteStatsRefreshPromise;
+  }
+
+  function scheduleSiteStatsRefresh() {
+    if (siteStatsTimer) return;
+    siteStatsTimer = setInterval(refreshSiteStats, 5 * 60 * 1000);
+    window.addEventListener('pageshow', refreshSiteStats);
+    window.addEventListener('online', refreshSiteStats);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') refreshSiteStats();
+    });
+  }
+
   function startRemote() {
     if (remoteStarted || source.kind !== 'api' || !api) return;
     remoteStarted = true;
@@ -1401,6 +1434,7 @@
     feed.prefetch();
     refreshCount();
     startVisitors();
+    scheduleSiteStatsRefresh();
   }
 
   function layoutPanel(x, y, focus) {

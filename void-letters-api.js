@@ -293,7 +293,7 @@
     function fetchPage() {
       var url = BASE + '/letters?limit=' + PAGE_SIZE +
         (nextBefore === null ? '' : '&before=' + encodeURIComponent(String(nextBefore)));
-      loading = request(url, { method: 'GET' }).then(function (res) {
+      loading = request(url, { method: 'GET', cache: 'no-store' }).then(function (res) {
         loading = null;
         if (res.status !== 200 || !res.data || !Array.isArray(res.data.letters)) return { status: 'error' };
         appendPage(res.data.letters);
@@ -341,7 +341,7 @@
   }
 
   function count() {
-    return request(BASE + '/letters/count', { method: 'GET' }).then(function (res) {
+    return request(BASE + '/letters/count', { method: 'GET', cache: 'no-store' }).then(function (res) {
       var n = res.status === 200 && res.data ? Number(res.data.active) : NaN;
       return isFinite(n) && n >= 0 ? n : null;
     }, function () { return null; });
@@ -353,7 +353,7 @@
     if (typeof id !== 'string' || !LETTER_ID_REGEX.test(id)) {
       return Promise.resolve({ status: 'not_found' });
     }
-    return request(BASE + '/letters/' + id, { method: 'GET' }).then(function (res) {
+    return request(BASE + '/letters/' + id, { method: 'GET', cache: 'no-store' }).then(function (res) {
       var raw = res.status === 200 && res.data ? res.data : null;
       if (raw && raw.id === id && typeof raw.text === 'string') {
         return {
@@ -462,7 +462,7 @@
   /* Returns {u, t, r} — explorers, sessions, and returning share in 0..1 — or
      null when the service cannot answer. */
   function visitorStats() {
-    return request(BASE + '/visitors/stats', { method: 'GET' }).then(function (res) {
+    return request(BASE + '/visitors/stats', { method: 'GET', cache: 'no-store' }).then(function (res) {
       var d = res.status === 200 && res.data && res.data.ok === true ? res.data : null;
       if (!d) return null;
       var u = Number(d.unique_visitors);
