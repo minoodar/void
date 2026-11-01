@@ -511,7 +511,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     color: rgba(251, 191, 36, .78);
 }
 .void-god-msg-text {
-    flex: 1 1 auto;
+    box-sizing: border-box;
+    width: 100%;
+    flex: 1 1 0%;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -528,8 +530,23 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     text-align: start;
     user-select: text; -webkit-user-select: text;
 }
-.void-god-msg-wrap { position: relative; flex: 1 1 auto; min-height: 0; }
-.void-god-msg-wrap .void-god-msg-text { height: 100%; padding: 38px 42px 8px 4px; }
+.void-god-msg-wrap {
+    display: flex;
+    flex: 1 1 0%;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+.void-god-msg-tools {
+    display: flex;
+    flex: 0 0 44px;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 44px;
+}
+.void-god-msg-wrap .void-god-msg-text { height: auto; padding: 4px 4px 6px; }
 .void-god-reader-icon {
     display: grid;
     place-items: center;
@@ -554,7 +571,7 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-reader-icon:focus-visible { outline: 1px solid rgba(235, 240, 245, .7); outline-offset: 1px; }
 .void-god-reader-icon:disabled { opacity: .34; cursor: not-allowed; }
 .void-god-reader-icon svg { display: block; width: 18px; height: 18px; }
-.void-god-copy-icon { position: absolute; z-index: 1; top: 0; right: 0; }
+.void-god-copy-icon { position: static; }
 .void-god-copy-icon svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .void-god-copy-icon .void-god-copy-icon__check { display: none; }
 .void-god-copy-icon.is-copied { color: rgba(180, 220, 195, .96); }
@@ -634,7 +651,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-wrap: wrap;
     gap: 6px;
+    max-width: 100%;
 }
 .void-god-share-icon {
     color: rgba(235, 238, 243, .88);

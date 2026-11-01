@@ -990,7 +990,7 @@
     panelText.id = 'void-god-panel-text';
     panelText.setAttribute('dir', 'auto');
     var messageBody = make('div', 'void-god-msg-wrap');
-    messageBody.appendChild(panelText);
+    var messageTools = make('div', 'void-god-msg-tools');
     panelCopy = make('button', 'void-god-reader-icon void-god-copy-icon');
     panelCopy.type = 'button';
     panelCopy.id = 'void-god-copy';
@@ -1003,7 +1003,9 @@
     var copiedSvg = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-copy-icon__check', 'aria-hidden': 'true', focusable: 'false' });
     copiedSvg.appendChild(svgNode('path', { d: 'm5 12 4 4L19 6' }));
     panelCopy.appendChild(copiedSvg);
-    messageBody.appendChild(panelCopy);
+    messageTools.appendChild(panelCopy);
+    messageBody.appendChild(messageTools);
+    messageBody.appendChild(panelText);
 
     panelMeta = make('p', 'void-god-msg-meta');
     panelMeta.id = 'void-god-panel-meta';
@@ -1087,7 +1089,7 @@
     panelTag.textContent = source.tag;
     panelMeta.textContent = source.kind === 'demo'
       ? 'Sample message from the local demo set \u2014 no real messages have arrived yet. Nothing is sent or stored.'
-      : 'Anonymous public letter';
+      : '';
     clearTimeout(feedbackTimer);
     panelFeedback.hidden = true;
     panelFeedback.textContent = '';
