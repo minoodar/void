@@ -1186,44 +1186,52 @@
     try { s.setItem(VOTES_KEY, JSON.stringify(map)); } catch (e) {}
   }
 
+  function messageVote(msg, id) {
+    return msg && Object.prototype.hasOwnProperty.call(msg, 'my_vote')
+      ? msg.my_vote
+      : loadVotes()[id] || null;
+  }
+
   function renderVotes(msg) {
     if (!panelVotes) return;
     var id = msg && typeof msg.id === 'string' ? msg.id : '';
     var canVote = source.kind === 'api' && !!id && !!api &&
-      typeof api.vote === 'function' && !msg.faded;
+      typeof api.vote === 'function' && typeof api.retractVote === 'function' && !msg.faded;
     panelVotes.hidden = !canVote;
     if (!canVote) {
       panelLike.disabled = true;
       panelDislike.disabled = true;
       return;
     }
-    var voted = loadVotes()[id] || null;
+    var voted = messageVote(msg, id);
     likeCount.textContent = String(Number(msg.votes_like) || 0);
     dislikeCount.textContent = String(Number(msg.votes_dislike) || 0);
     panelLike.setAttribute('aria-label', 'Like this letter, ' + likeCount.textContent + ' votes');
     panelDislike.setAttribute('aria-label', 'Dislike this letter, ' + dislikeCount.textContent + ' votes');
-    panelLike.disabled = !!voted || voteBusy;
-    panelDislike.disabled = !!voted || voteBusy;
+    panelLike.disabled = voteBusy;
+    panelDislike.disabled = voteBusy;
     panelLike.classList.toggle('is-voted', voted === 'like');
     panelDislike.classList.toggle('is-voted', voted === 'dislike');
     panelLike.setAttribute('aria-pressed', voted === 'like' ? 'true' : 'false');
     panelDislike.setAttribute('aria-pressed', voted === 'dislike' ? 'true' : 'false');
-    panelLike.title = voted
-      ? 'You already voted on this letter in this session'
+    panelLike.title = voted === 'like'
+      ? 'Remove your like'
+      : voted === 'dislike'
+        ? 'Change your vote to like'
       : 'Like this letter and add one day';
-    panelDislike.title = voted
-      ? 'You already voted on this letter in this session'
+    panelDislike.title = voted === 'dislike'
+      ? 'Remove your dislike'
+      : voted === 'like'
+        ? 'Change your vote to dislike'
       : 'Dislike this letter and remove one day';
   }
 
-  function projectedExpiry(msg, type) {
+  function projectedExpiry(msg, netDelta) {
     var exp = Number(msg.expires_at) || 0;
     if (!exp) return exp;
-    if (type === 'like') {
-      var cap = (Number(msg.created_at) || exp) + MAX_LIFETIME_SEC;
-      return Math.min(exp + DAY_SEC, cap);
-    }
-    return Math.min(exp, Math.max(exp - DAY_SEC, Math.floor(Date.now() / 1000) + MIN_REMAINING_SEC));
+    var cap = (Number(msg.created_at) || exp) + MAX_LIFETIME_SEC;
+    var floor = Math.floor(Date.now() / 1000) + MIN_REMAINING_SEC;
+    return Math.min(cap, Math.max(floor, exp + DAY_SEC * netDelta));
   }
 
   /* Optimistic: the count and the countdown move at once, then the server
@@ -1232,44 +1240,65 @@
     if (!currentMessage || voteBusy) return;
     var msg = currentMessage;
     var id = msg && typeof msg.id === 'string' ? msg.id : '';
-    if (!id || source.kind !== 'api' || !api || typeof api.vote !== 'function') return;
-    if (loadVotes()[id]) return;
-
-    var before = { expires_at: msg.expires_at, likes: msg.votes_like, dislikes: msg.votes_dislike };
+    if (!id || source.kind !== 'api' || !api || typeof api.vote !== 'function' ||
+        typeof api.retractVote !== 'function') return;
+    var previousVote = messageVote(msg, id);
+    var nextVote = previousVote === type ? null : type;
+    var score = function (vote) { return vote === 'like' ? 1 : vote === 'dislike' ? -1 : 0; };
+    var netDelta = score(nextVote) - score(previousVote);
+    var before = {
+      expires_at: msg.expires_at,
+      likes: msg.votes_like,
+      dislikes: msg.votes_dislike,
+      my_vote: previousVote
+    };
     voteBusy = true;
-    saveVote(id, type);
-    msg.expires_at = projectedExpiry(msg, type);
-    if (type === 'like') msg.votes_like = (Number(msg.votes_like) || 0) + 1;
-    else msg.votes_dislike = (Number(msg.votes_dislike) || 0) + 1;
+    msg.my_vote = nextVote;
+    msg.expires_at = projectedExpiry(msg, netDelta);
+    msg.votes_like = (Number(msg.votes_like) || 0) - (previousVote === 'like' ? 1 : 0) + (nextVote === 'like' ? 1 : 0);
+    msg.votes_dislike = (Number(msg.votes_dislike) || 0) - (previousVote === 'dislike' ? 1 : 0) + (nextVote === 'dislike' ? 1 : 0);
     renderVotes(msg);
-    renderLifespan(msg.expires_at, type);
-    feedback(type === 'like'
-      ? 'The star grows brighter\u2026'
-      : 'The star grows dimmer\u2026', false);
+    renderLifespan(msg.expires_at, netDelta > 0 ? 'like' : netDelta < 0 ? 'dislike' : null);
+    feedback(nextVote === null
+      ? 'Removing your vote\u2026'
+      : previousVote
+        ? 'Changing your vote\u2026'
+        : (type === 'like' ? 'The star grows brighter\u2026' : 'The star grows dimmer\u2026'), false);
 
     function restore() {
-      forgetVote(id);
       msg.expires_at = before.expires_at;
       msg.votes_like = before.likes;
       msg.votes_dislike = before.dislikes;
+      msg.my_vote = before.my_vote;
       renderLifespan(msg.expires_at);
     }
 
-    api.vote(id, type).then(function (res) {
+    var request = nextVote === null ? api.retractVote(id) : api.vote(id, nextVote);
+    request.then(function (res) {
       voteBusy = false;
       if (res.status === 'ok') {
         msg.expires_at = res.letter.expires_at || msg.expires_at;
         msg.votes_like = res.letter.votes_like;
         msg.votes_dislike = res.letter.votes_dislike;
-        renderLifespan(msg.expires_at, type);
-        feedback(res.capped
-          ? (type === 'like'
-            ? 'This star already shines at its brightest.'
-            : 'This letter is already as close to fading as it can get.')
-          : (type === 'like'
-            ? 'A day was added to this star.'
-            : 'A day was taken from this star.'), false);
+        msg.my_vote = res.type;
+        if (res.type) saveVote(id, res.type);
+        else forgetVote(id);
+        renderLifespan(msg.expires_at, netDelta > 0 ? 'like' : netDelta < 0 ? 'dislike' : null);
+        feedback(!res.changed
+          ? (res.type ? 'Your vote is already set.' : 'You have no active vote to remove.')
+          : !res.type
+            ? 'Your vote was removed.'
+            : previousVote
+              ? 'Your vote was changed.'
+              : res.capped
+                ? (res.type === 'like'
+                  ? 'This star already shines at its brightest.'
+                  : 'This letter is already as close to fading as it can get.')
+                : (res.type === 'like'
+                  ? 'A day was added to this star.'
+                  : 'A day was taken from this star.'), false);
       } else if (res.status === 'already') {
+        msg.my_vote = res.type;
         saveVote(id, res.type);
         msg.expires_at = res.letter.expires_at || msg.expires_at;
         msg.votes_like = res.letter.votes_like;
@@ -1278,6 +1307,7 @@
         feedback('You already voted on this letter in this session.', false);
       } else if (res.status === 'not_found') {
         forgetVote(id);
+        msg.my_vote = null;
         msg.faded = true;
         msg.expires_at = 0;
         msg.votes_like = before.likes;

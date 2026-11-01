@@ -392,24 +392,28 @@
     };
   }
 
-  /* One immutable vote per visitor per letter. The Worker owns the ceiling and
-     the ±24h bounds; this layer only classifies the reply. Malformed ids and
-     unknown vote types never leave the browser. */
-  function vote(id, type) {
+  /* Vote state is owned by the Worker. PUT sets or changes it; DELETE retracts
+     it. Malformed ids and unknown vote types never leave the browser. */
+  function voteRequest(id, method, type) {
     if (typeof id !== 'string' || !LETTER_ID_REGEX.test(id) ||
-        (type !== 'like' && type !== 'dislike')) {
+        (method === 'PUT' && type !== 'like' && type !== 'dislike')) {
       return Promise.resolve({ status: 'invalid' });
     }
-    return request(BASE + '/letters/' + id + '/vote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: type })
-    }).then(function (res) {
+    var options = { method: method };
+    if (method === 'PUT') {
+      options.headers = { 'Content-Type': 'application/json' };
+      options.body = JSON.stringify({ type: type });
+    }
+    return request(BASE + '/letters/' + id + '/vote', options).then(function (res) {
       var d = res.data;
-      if (res.status === 200 && d && d.ok === true && d.id === id) {
+      if (res.status === 200 && d && d.ok === true && d.id === id &&
+          (d.type === 'like' || d.type === 'dislike' || d.type === null) &&
+          typeof d.changed === 'boolean' && Number(d.expires_at) > 0 &&
+          Number(d.votes_like) >= 0 && Number(d.votes_dislike) >= 0) {
         return {
           status: 'ok',
-          type: d.type === 'dislike' ? 'dislike' : 'like',
+          type: d.type,
+          changed: d.changed,
           letter: voteState(d, id),
           capped: d.capped === true
         };
@@ -431,6 +435,14 @@
     }, function () {
       return { status: 'network' };
     });
+  }
+
+  function vote(id, type) {
+    return voteRequest(id, 'PUT', type);
+  }
+
+  function retractVote(id) {
+    return voteRequest(id, 'DELETE', null);
   }
 
   /* Visitor counting rides the same Worker and database as the letters. A hit
@@ -478,6 +490,7 @@
     count: count,
     getLetter: getLetter,
     vote: vote,
+    retractVote: retractVote,
     letterUrl: letterUrl,
     recordVisit: recordVisit,
     visitorStats: visitorStats
