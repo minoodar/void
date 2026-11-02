@@ -11,7 +11,10 @@
 // The visitor counter lives here too: /visitors/hit and /visitors/stats read the
 // visitors/daily/rate tables of this same database (see migrations).
 
-const PROD_ORIGIN = 'https://minoodar.github.io';
+const PROD_ORIGINS = new Set([
+  'https://minoodar.github.io',
+  'https://void.runs-at.dev'
+]);
 // Phase A design assumption, not a proven production ceiling.
 const GLOBAL_HOURLY_LIMIT = 500;
 const DAILY_SENDER_LIMIT = 2;
@@ -167,7 +170,7 @@ function isLocalEnv(env) {
 
 function corsFor(origin, env) {
   const local = isLocalEnv(env) && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  const allowed = origin === PROD_ORIGIN || local;
+  const allowed = PROD_ORIGINS.has(origin) || local;
   const headers = { Vary: 'Origin' };
   if (allowed) {
     headers['Access-Control-Allow-Origin'] = origin;
