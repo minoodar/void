@@ -624,15 +624,7 @@
         writeSession(VISIT_COUNTED, '1', false);
         writeSession(VISIT_RETURNING, '1', true);
       }
-      return refreshVisitorStats();
-    });
-  }
-
-  function refreshVisitorStats() {
-    if (!api || typeof api.visitorStats !== 'function') return Promise.resolve(null);
-    return api.visitorStats().then(function (s) {
-      if (s) setVisitors(s);
-      return s;
+      return refreshSiteStats();
     });
   }
 
@@ -1406,20 +1398,35 @@
     if (!api || document.visibilityState === 'hidden' ||
         (window.navigator && window.navigator.onLine === false)) return;
     if (siteStatsRefreshPromise) return siteStatsRefreshPromise;
-    siteStatsRefreshPromise = Promise.all([api.count(), api.visitorStats()]).then(function (values) {
-      if (values[0] !== null) setCount(values[0]);
-      if (values[1]) setVisitors(values[1]);
-    }).then(function () {
+    var update = feed && typeof feed.refreshLatest === 'function'
+      ? feed.refreshLatest().then(function (result) {
+          if (result && result.status === 'ok') {
+            if (result.count !== null) setCount(result.count);
+            if (result.visitors) setVisitors(result.visitors);
+            return;
+          }
+          return Promise.all([api.count(), api.visitorStats()]).then(function (values) {
+            if (values[0] !== null) setCount(values[0]);
+            if (values[1]) setVisitors(values[1]);
+          });
+        })
+      : Promise.all([api.count(), api.visitorStats()]).then(function (values) {
+          if (values[0] !== null) setCount(values[0]);
+          if (values[1]) setVisitors(values[1]);
+        });
+    siteStatsRefreshPromise = update.then(function () {
       siteStatsRefreshPromise = null;
     }, function () {
       siteStatsRefreshPromise = null;
+    }).then(function () {
+      return undefined;
     });
     return siteStatsRefreshPromise;
   }
 
   function scheduleSiteStatsRefresh() {
     if (siteStatsTimer) return;
-    siteStatsTimer = setInterval(refreshSiteStats, 5 * 60 * 1000);
+    siteStatsTimer = setInterval(refreshSiteStats, 60 * 1000);
     window.addEventListener('pageshow', refreshSiteStats);
     window.addEventListener('online', refreshSiteStats);
     document.addEventListener('visibilitychange', function () {
@@ -1432,7 +1439,6 @@
     remoteStarted = true;
     if (!feed) feed = api.createFeed();
     feed.prefetch();
-    refreshCount();
     startVisitors();
     scheduleSiteStatsRefresh();
   }

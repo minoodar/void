@@ -271,15 +271,21 @@
     var nextBefore = null;
     var hasMore = true;
     var loading = null;
+    var latestLoading = null;
+    var latestSeq = null;
 
-    function appendPage(list) {
+    function appendPage(list, prepend) {
+      var added = [];
       for (var i = 0; i < list.length; i++) {
         var letter = list[i];
         if (!letter || typeof letter.id !== 'string' || typeof letter.body !== 'string') continue;
         if (seen[letter.id]) continue;
         seen[letter.id] = true;
-        items.push({
+        var seq = num(letter.seq);
+        if (seq > 0 && (latestSeq === null || seq > latestSeq)) latestSeq = seq;
+        added.push({
           id: letter.id,
+          seq: seq,
           lang: typeof letter.lang === 'string' ? letter.lang : null,
           text: letter.body,
           created_at: num(letter.created_at),
@@ -288,6 +294,9 @@
           votes_dislike: countOf(letter.votes_dislike)
         });
       }
+      if (prepend) items = added.concat(items);
+      else items = items.concat(added);
+      return added.length;
     }
 
     function fetchPage() {
@@ -296,7 +305,7 @@
       loading = request(url, { method: 'GET', cache: 'no-store' }).then(function (res) {
         loading = null;
         if (res.status !== 200 || !res.data || !Array.isArray(res.data.letters)) return { status: 'error' };
-        appendPage(res.data.letters);
+        appendPage(res.data.letters, false);
         var nb = res.data.next_before;
         if (nb === null || nb === undefined || !isFinite(Number(nb))) {
           nextBefore = null;
@@ -332,12 +341,62 @@
       return fetchPage();
     }
 
+    function refreshLatest() {
+      if (loading) return loading.then(function () { return refreshLatest(); });
+      if (latestLoading) return latestLoading;
+      latestLoading = siteUpdates(latestSeq, PAGE_SIZE).then(function (res) {
+        latestLoading = null;
+        if (!res) return { status: 'error' };
+        var incoming = res.letters;
+        if (latestSeq !== null) incoming = incoming.slice().reverse();
+        var added = appendPage(incoming, true);
+        latestSeq = res.next_after;
+        return {
+          status: 'ok',
+          added: added,
+          count: res.count,
+          visitors: res.visitors
+        };
+      }, function () {
+        latestLoading = null;
+        return { status: 'error' };
+      });
+      return latestLoading;
+    }
+
     return {
       next: next,
       prefetch: prefetch,
+      refreshLatest: refreshLatest,
       size: function () { return items.length; },
       hasMore: function () { return hasMore; }
     };
+  }
+
+  function siteUpdates(after, limit) {
+    var url = BASE + '/site/updates?limit=' + encodeURIComponent(String(limit || PAGE_SIZE));
+    if (after !== null && after !== undefined && isFinite(Number(after)) && Number(after) >= 0) {
+      url += '&after=' + encodeURIComponent(String(Math.floor(Number(after))));
+    }
+    return request(url, { method: 'GET', cache: 'no-store' }).then(function (res) {
+      var d = res.status === 200 && res.data && res.data.ok === true ? res.data : null;
+      if (!d || !Array.isArray(d.letters) || !isFinite(Number(d.next_after))) return null;
+      var u = Number(d.unique_visitors);
+      var t = Number(d.total_sessions);
+      var r = Number(d.returning_ratio);
+      var count = Number(d.active);
+      if (!isFinite(count) || count < 0 || !isFinite(u) || u < 0) return null;
+      return {
+        letters: d.letters,
+        next_after: Math.max(0, Math.floor(Number(d.next_after))),
+        count: Math.floor(count),
+        visitors: {
+          u: Math.floor(u),
+          t: isFinite(t) && t >= 0 ? Math.floor(t) : 0,
+          r: isFinite(r) && r >= 0 ? Math.min(1, r) : 0
+        }
+      };
+    }, function () { return null; });
   }
 
   function count() {
