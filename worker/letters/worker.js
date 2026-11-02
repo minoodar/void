@@ -105,6 +105,9 @@ export default {
       if (url.pathname === '/visitors/stats' && request.method === 'GET') {
         return await visitorStats(env, cors);
       }
+      if (url.pathname === '/site/updates' && request.method === 'GET') {
+        return await siteUpdates(url, env, cors);
+      }
 
       // One guard for every management route: no handler below can forget auth.
       if (url.pathname.startsWith('/admin/')) {
@@ -860,7 +863,7 @@ async function countLetters(env, cors) {
   return json(
     { active: Number(row && row.active) || 0 },
     200,
-    Object.assign({ 'Cache-Control': 'public, max-age=60' }, cors.headers)
+    Object.assign({ 'Cache-Control': 'no-store' }, cors.headers)
   );
 }
 
@@ -923,22 +926,75 @@ async function recordVisitorHit(request, env, cors) {
 }
 
 async function visitorStats(env, cors) {
-  const headers = Object.assign({ 'Cache-Control': 'public, max-age=60' }, cors.headers);
+  const headers = Object.assign({ 'Cache-Control': 'no-store' }, cors.headers);
   if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
   const rows = await env.DB.batch([
-    env.DB.prepare('SELECT COUNT(*) AS u, COALESCE(SUM(sessions), 0) AS s FROM visitors'),
-    env.DB.prepare('SELECT COUNT(*) AS r FROM visitors WHERE sessions > 1')
+    env.DB.prepare(
+      'SELECT COUNT(*) AS u, COALESCE(SUM(sessions), 0) AS s, ' +
+      'COALESCE(SUM(CASE WHEN sessions > 1 THEN 1 ELSE 0 END), 0) AS r FROM visitors'
+    )
   ]);
   const first = (rows[0] && rows[0].results && rows[0].results[0]) || {};
-  const second = (rows[1] && rows[1].results && rows[1].results[0]) || {};
   const unique = Number(first.u) || 0;
   const sessions = Number(first.s) || 0;
-  const returning = Number(second.r) || 0;
+  const returning = Number(first.r) || 0;
   return json({
     ok: true,
     unique_visitors: unique,
     total_sessions: sessions,
     returning_ratio: unique ? returning / unique : 0
+  }, 200, headers);
+}
+
+// One foreground refresh for the public UI: active letter count, visitor
+// totals, and letters newer than the client's sequence cursor. No schema or
+// write is involved; the endpoint is deliberately not cacheable.
+async function siteUpdates(url, env, cors) {
+  const headers = Object.assign({ 'Cache-Control': 'no-store' }, cors.headers);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+
+  const after = parseCursor(url.searchParams.get('after'));
+  const limit = parseLimit(url.searchParams.get('limit'));
+  if (after === undefined || limit === null || url.searchParams.has('before')) {
+    return json({ ok: false, error: 'invalid_query' }, 400, headers);
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const letterColumns =
+    'SELECT l.seq, l.id, l.body, l.lang, l.created_at, l.expires_at, ' +
+    "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'like') AS votes_like, " +
+    "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'dislike') AS votes_dislike " +
+    'FROM letters l ';
+  const lettersStmt = after === null
+    ? env.DB.prepare(letterColumns + 'WHERE l.expires_at > ? ORDER BY l.seq DESC LIMIT ?').bind(now, limit)
+    : env.DB.prepare(letterColumns + 'WHERE l.seq > ? AND l.expires_at > ? ORDER BY l.seq ASC LIMIT ?').bind(after, now, limit);
+
+  const rows = await env.DB.batch([
+    lettersStmt,
+    env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS latest_seq FROM letters'),
+    env.DB.prepare('SELECT COUNT(*) AS active FROM letters WHERE expires_at > ?').bind(now),
+    env.DB.prepare(
+      'SELECT COUNT(*) AS u, COALESCE(SUM(sessions), 0) AS s, ' +
+      'COALESCE(SUM(CASE WHEN sessions > 1 THEN 1 ELSE 0 END), 0) AS r FROM visitors'
+    )
+  ]);
+  const letters = (rows[0] && rows[0].results) || [];
+  const latestSeq = Number(rows[1] && rows[1].results && rows[1].results[0] && rows[1].results[0].latest_seq) || 0;
+  const active = Number(rows[2] && rows[2].results && rows[2].results[0] && rows[2].results[0].active) || 0;
+  const visitorRow = (rows[3] && rows[3].results && rows[3].results[0]) || {};
+  const unique = Number(visitorRow.u) || 0;
+  const nextAfter = after === null
+    ? (letters.length ? Number(letters[0].seq) : latestSeq)
+    : (letters.length < limit ? latestSeq : Number(letters[letters.length - 1].seq));
+
+  return json({
+    ok: true,
+    letters,
+    next_after: nextAfter,
+    active,
+    unique_visitors: unique,
+    total_sessions: Number(visitorRow.s) || 0,
+    returning_ratio: unique ? (Number(visitorRow.r) || 0) / unique : 0
   }, 200, headers);
 }
 
