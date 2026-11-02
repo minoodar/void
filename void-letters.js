@@ -143,6 +143,7 @@
   var visitorsStarted = false;
   var siteStatsTimer = 0;
   var siteStatsRefreshPromise = null;
+  var siteStatsRefreshQueued = false;
 
   var quillBtn = null;
   var galaxyLayer = null;
@@ -618,12 +619,13 @@
     var nav = window.navigator || {};
     var skipHit = nav.doNotTrack === '1' || nav.globalPrivacyControl === true ||
       readSession(VISIT_COUNTED, false) === '1';
-    var hit = skipHit ? Promise.resolve(false) : api.recordVisit(readSession(VISIT_RETURNING, true) === '1');
+    if (skipHit) return;
+    var hit = api.recordVisit(readSession(VISIT_RETURNING, true) === '1');
     hit.then(function () {
-      if (!skipHit) {
-        writeSession(VISIT_COUNTED, '1', false);
-        writeSession(VISIT_RETURNING, '1', true);
-      }
+      writeSession(VISIT_COUNTED, '1', false);
+      writeSession(VISIT_RETURNING, '1', true);
+      /* A GET after the hit resolves is safe even when the POST outcome was
+         ambiguous; it never repeats the visitor write. */
       return refreshSiteStats();
     });
   }
@@ -1396,8 +1398,12 @@
 
   function refreshSiteStats() {
     if (!api || document.visibilityState === 'hidden' ||
-        (window.navigator && window.navigator.onLine === false)) return;
-    if (siteStatsRefreshPromise) return siteStatsRefreshPromise;
+        (window.navigator && window.navigator.onLine === false)) return Promise.resolve();
+    if (siteStatsRefreshPromise) {
+      siteStatsRefreshQueued = true;
+      return siteStatsRefreshPromise;
+    }
+    siteStatsRefreshQueued = false;
     var update = feed && typeof feed.refreshLatest === 'function'
       ? feed.refreshLatest().then(function (result) {
           if (result && result.status === 'ok') {
@@ -1414,13 +1420,13 @@
           if (values[0] !== null) setCount(values[0]);
           if (values[1]) setVisitors(values[1]);
         });
-    siteStatsRefreshPromise = update.then(function () {
+    function finishRefresh() {
       siteStatsRefreshPromise = null;
-    }, function () {
-      siteStatsRefreshPromise = null;
-    }).then(function () {
-      return undefined;
-    });
+      if (!siteStatsRefreshQueued) return;
+      siteStatsRefreshQueued = false;
+      return refreshSiteStats();
+    }
+    siteStatsRefreshPromise = update.then(finishRefresh, finishRefresh);
     return siteStatsRefreshPromise;
   }
 
@@ -1439,6 +1445,7 @@
     remoteStarted = true;
     if (!feed) feed = api.createFeed();
     feed.prefetch();
+    refreshSiteStats();
     startVisitors();
     scheduleSiteStatsRefresh();
   }

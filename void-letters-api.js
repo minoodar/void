@@ -342,15 +342,18 @@
     }
 
     function refreshLatest() {
-      if (loading) return loading.then(function () { return refreshLatest(); });
       if (latestLoading) return latestLoading;
-      latestLoading = siteUpdates(latestSeq, PAGE_SIZE).then(function (res) {
+      /* Refresh statistics and newly arrived letters independently from the
+         initial history-page request. Capture the cursor so a concurrent
+         prefetch cannot change the ordering decision for this response. */
+      var afterSeq = latestSeq;
+      latestLoading = siteUpdates(afterSeq, PAGE_SIZE).then(function (res) {
         latestLoading = null;
         if (!res) return { status: 'error' };
         var incoming = res.letters;
-        if (latestSeq !== null) incoming = incoming.slice().reverse();
+        if (afterSeq !== null) incoming = incoming.slice().reverse();
         var added = appendPage(incoming, true);
-        latestSeq = res.next_after;
+        if (latestSeq === null || res.next_after > latestSeq) latestSeq = res.next_after;
         return {
           status: 'ok',
           added: added,
