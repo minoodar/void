@@ -409,6 +409,32 @@
     }, function () { return null; });
   }
 
+  /* The sender's remaining capacity, as counted by the Worker for this exact
+     HMAC identity. null means "unknown" (old Worker, offline, blocked); the UI
+     must not invent a number in that case. */
+  function quota() {
+    return request(BASE + '/letters/quota', { method: 'GET', cache: 'no-store' }).then(function (res) {
+      var d = res.status === 200 && res.data && res.data.ok === true ? res.data : null;
+      if (!d) return null;
+      var limit = Number(d.limit);
+      var used = Number(d.used);
+      var remaining = Number(d.remaining);
+      var after = Number(d.retry_after);
+      var now = Number(d.server_now);
+      if (!isFinite(limit) || limit < 1 || limit > 10 || Math.floor(limit) !== limit) return null;
+      if (!isFinite(used) || used < 0 || Math.floor(used) !== used) return null;
+      if (!isFinite(remaining) || remaining < 0 || Math.floor(remaining) !== remaining) return null;
+      if (used + remaining !== limit) return null;
+      return {
+        limit: limit,
+        used: used,
+        remaining: remaining,
+        retry_after: isFinite(after) && after > 0 ? Math.floor(after) : 0,
+        server_now: isFinite(now) && now > 0 ? Math.floor(now) : null
+      };
+    }, function () { return null; });
+  }
+
   /* Single letter behind a share link. An expired or unknown id is the same
      not_found, exactly like the Worker. Malformed ids never leave the browser. */
   function getLetter(id) {
@@ -550,6 +576,7 @@
     loadPending: loadPending,
     createFeed: createFeed,
     count: count,
+    quota: quota,
     getLetter: getLetter,
     vote: vote,
     retractVote: retractVote,

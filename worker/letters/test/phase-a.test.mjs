@@ -13,7 +13,13 @@ import { randomUUID } from 'node:crypto';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const schemaSql = await readFile(join(root, 'schema.sql'), 'utf8');
+const currentSchemaSql = await readFile(join(root, 'schema.sql'), 'utf8');
+// Exercise every migration from the pre-vote-baseline schema. The current
+// schema contains these columns for new installations, while this harness
+// deliberately models an upgrade from the previous deployed schema.
+const schemaSql = currentSchemaSql
+  .replace(/\r?\n\s*base_expires_at INTEGER DEFAULT NULL,[^\r\n]*\r?\n\s*base_votes_net INTEGER NOT NULL DEFAULT 0[^\r\n]*/, '')
+  .replace(/(\bexpires_at\s+INTEGER NOT NULL),([ \t]*-- Unix timestamp in seconds)/, '$1$2');
 const workerSource = await readFile(join(root, 'worker.js'), 'utf8');
 const wranglerToml = await readFile(join(root, 'wrangler.toml'), 'utf8');
 const migrationNames = (await readdir(join(root, 'migrations')))
@@ -26,6 +32,7 @@ const migrations = await Promise.all(migrationNames.map(async name => ({
 const migrationSql = await readFile(join(root, 'migrations', '2026-10-30-daily-limit-admin.sql'), 'utf8');
 const visitorMigrationSql = await readFile(join(root, 'migrations', '2026-10-31-visitor-counter.sql'), 'utf8');
 const voteMigrationSql = await readFile(join(root, 'migrations', '2026-10-31-letter-votes.sql'), 'utf8');
+const voteRetractMigrationSql = await readFile(join(root, 'migrations', '2026-11-01-vote-retract.sql'), 'utf8');
 
 const workerUrl = 'data:text/javascript;base64,' + Buffer.from(workerSource, 'utf8').toString('base64');
 const worker = await import(workerUrl);
@@ -34,7 +41,7 @@ const PROD = 'https://minoodar.github.io';
 const TEST_SALT = 'phase-a-test-salt-not-a-secret';
 const TTL = { '24h': 86400, '7d': 604800, '30d': 2592000, '90d': 7776000 };
 const DAY_SEC = 86400;
-const DAILY_LIMIT = 2;
+const DAILY_LIMIT = 3;
 const TEST_ADMIN_SECRET = 'phase-a-admin-secret-not-a-real-secret';
 
 class D1Statement {
@@ -222,8 +229,9 @@ function insertLetter(env, id, overrides = {}) {
     expires_at: now + 7 * DAY_SEC
   }, overrides);
   env.__raw.prepare(
-    'INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(row.id, row.body, row.lang, row.created_at, row.expires_at);
+    'INSERT INTO letters (id, body, lang, created_at, expires_at, base_expires_at, base_votes_net) ' +
+    'VALUES (?, ?, ?, ?, ?, ?, 0)'
+  ).run(row.id, row.body, row.lang, row.created_at, row.expires_at, row.expires_at);
   return row;
 }
 
@@ -231,6 +239,21 @@ function voteRequest(env, id, type, opts = {}) {
   return call(env, '/letters/' + id + '/vote', Object.assign({
     method: 'POST',
     body: { type },
+    ip: nextIp()
+  }, opts));
+}
+
+function setVoteRequest(env, id, type, opts = {}) {
+  return call(env, '/letters/' + id + '/vote', Object.assign({
+    method: 'PUT',
+    body: { type },
+    ip: nextIp()
+  }, opts));
+}
+
+function retractVoteRequest(env, id, opts = {}) {
+  return call(env, '/letters/' + id + '/vote', Object.assign({
+    method: 'DELETE',
     ip: nextIp()
   }, opts));
 }
@@ -251,6 +274,7 @@ await test('schema plus migrations create the isolated tables and the visitor ta
   for (const voteTable of ['letter_votes', 'letter_vote_rate']) {
     assert(names.includes(voteTable), 'vote migration did not create ' + voteTable);
   }
+  assert(names.includes('letter_vote_rate_v2'), 'vote baseline migration did not create the Worker rate table');
 });
 
 await test('the vote migration applies to an existing schema and is idempotent', async () => {
@@ -306,7 +330,8 @@ await test('wrangler.toml targets the letters Worker and its D1 binding', async 
 });
 
 await test('worker source has no logging and no outbound fetch', async () => {
-  assert(!/console\s*\./.test(workerSource), 'console usage found');
+  const consoleCalls = [...workerSource.matchAll(/\bconsole\s*\.\s*(\w+)\s*\(/g)];
+  assert(consoleCalls.length === 2 && consoleCalls.every(call => call[1] === 'error'), 'unexpected console usage found');
   assert(!/\bfetch\s*\(\s*['"`]/.test(workerSource), 'outbound fetch found');
   assert(!/\bXMLHttpRequest\b|\bsendBeacon\b/.test(workerSource), 'outbound request API found');
 });
@@ -491,36 +516,124 @@ await test('uppercase request_id retry resolves to the same letter', async () =>
   equal(retry.data.id, first.data.id, 'same id');
 });
 
-await test('two letters per sender in 24h are accepted and the third is limited', async () => {
+await test('three letters per sender in 24h are accepted and the fourth is limited', async () => {
   const env = createEnv();
   const ip = nextIp();
-  const first = await call(env, '/letters', { method: 'POST', ip, body: validBody() });
-  equal(first.status, 201, 'first status');
-  const second = await call(env, '/letters', { method: 'POST', ip, body: validBody() });
-  equal(second.status, 201, 'second status');
-  assert(second.data.id !== first.data.id, 'second letter has its own id');
+  const ids = [];
+  for (let i = 0; i < DAILY_LIMIT; i++) {
+    const res = await call(env, '/letters', { method: 'POST', ip, body: validBody() });
+    equal(res.status, 201, 'accepted #' + (i + 1));
+    ids.push(res.data.id);
+  }
+  equal(new Set(ids).size, DAILY_LIMIT, 'every letter has its own id');
 
-  const third = await call(env, '/letters', { method: 'POST', ip, body: validBody() });
-  equal(third.status, 429, 'third status');
-  equal(third.data.error, 'rate_limited', 'error');
-  assert(Number(third.data.retry_after) > 86000 && Number(third.data.retry_after) <= DAY_SEC,
+  const fourth = await call(env, '/letters', { method: 'POST', ip, body: validBody() });
+  equal(fourth.status, 429, 'fourth status');
+  equal(fourth.data.error, 'rate_limited', 'error');
+  assert(Number(fourth.data.retry_after) > 86000 && Number(fourth.data.retry_after) <= DAY_SEC,
     'retry_after is the remaining 24h window');
-  equal(tableRows(env, 'letters').length, DAILY_LIMIT, 'no third letter');
-  equal(tableRows(env, 'letter_submissions').length, DAILY_LIMIT, 'no third submission');
+  equal(tableRows(env, 'letters').length, DAILY_LIMIT, 'no fourth letter');
+  equal(tableRows(env, 'letter_submissions').length, DAILY_LIMIT, 'no fourth submission');
 });
 
 await test('the daily window slides: quota returns after 24 hours', async () => {
   const env = createEnv();
   const ip = nextIp();
-  equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'first');
-  equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'second');
-  equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 429, 'third limited');
+  for (let i = 0; i < DAILY_LIMIT; i++) {
+    equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'accepted #' + (i + 1));
+  }
+  equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 429, 'next limited');
 
   const now = Math.floor(Date.now() / 1000);
   env.__raw.prepare('UPDATE letter_submissions SET created_at = ?').run(now - DAY_SEC - 1);
-  const fourth = await call(env, '/letters', { method: 'POST', ip, body: validBody() });
-  equal(fourth.status, 201, 'quota returns after the window passes');
-  equal(tableRows(env, 'letters').length, 3, 'three letters stored');
+  const after = await call(env, '/letters', { method: 'POST', ip, body: validBody() });
+  equal(after.status, 201, 'quota returns after the window passes');
+  equal(tableRows(env, 'letters').length, DAILY_LIMIT + 1, 'four letters stored');
+});
+
+await test('concurrent submissions cannot exceed the daily limit', async () => {
+  const env = createEnv();
+  const ip = nextIp();
+  const results = await Promise.all(Array.from({ length: 5 }, () =>
+    call(env, '/letters', { method: 'POST', ip, body: validBody() })
+  ));
+  const accepted = results.filter(r => r.status === 201).length;
+  const limited = results.filter(r => r.status === 429).length;
+  equal(accepted, DAILY_LIMIT, 'exactly the limit accepted');
+  equal(limited, 5 - DAILY_LIMIT, 'the rest limited');
+  equal(tableRows(env, 'letters').length, DAILY_LIMIT, 'no over-issuance');
+  equal(tableRows(env, 'letter_submissions').length, DAILY_LIMIT, 'no extra submission row');
+});
+
+await test('GET /letters/quota reports a fresh sender the full allowance without writing', async () => {
+  const env = createEnv();
+  const ip = nextIp();
+  const writesBefore = env.DB.writes;
+  const res = await call(env, '/letters/quota', { ip });
+  equal(res.status, 200, 'status');
+  equal(res.data.ok, true, 'ok');
+  equal(res.data.limit, DAILY_LIMIT, 'limit');
+  equal(res.data.used, 0, 'used');
+  equal(res.data.remaining, DAILY_LIMIT, 'remaining');
+  equal(res.data.window_seconds, DAY_SEC, 'window');
+  equal(res.data.retry_after, 0, 'no retry at full quota');
+  assert(Math.abs(res.data.server_now - Math.floor(Date.now() / 1000)) < 30, 'server_now is current');
+  equal(env.DB.writes, writesBefore, 'quota read performs no writes');
+  equal(res.headers.get('cache-control'), 'no-store', 'never cached');
+  equal(res.headers.get('access-control-allow-origin'), PROD, 'ACAO');
+  const dump = JSON.stringify(res.data);
+  assert(!dump.includes(ip), 'raw IP never exposed');
+  const hash = await worker.getSenderHash(makeRequest('/letters', { ip }), TEST_SALT);
+  assert(!dump.includes(hash), 'sender hash never exposed');
+});
+
+await test('GET /letters/quota mirrors accepted letters and the exhausted window', async () => {
+  const env = createEnv();
+  const ip = nextIp();
+  equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'first');
+
+  const one = await call(env, '/letters/quota', { ip });
+  equal(one.data.used, 1, 'used after one');
+  equal(one.data.remaining, DAILY_LIMIT - 1, 'remaining after one');
+  equal(one.data.retry_after, 0, 'still accepts');
+
+  for (let i = 1; i < DAILY_LIMIT; i++) {
+    equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'accepted #' + (i + 1));
+  }
+
+  const spent = await call(env, '/letters/quota', { ip });
+  equal(spent.data.used, DAILY_LIMIT, 'used at limit');
+  equal(spent.data.remaining, 0, 'remaining at limit');
+  assert(Number(spent.data.retry_after) > 86000 && Number(spent.data.retry_after) <= DAY_SEC,
+    'retry_after is the remaining window');
+
+  const other = await call(env, '/letters/quota', { ip: nextIp() });
+  equal(other.data.remaining, DAILY_LIMIT, 'another sender is unaffected');
+});
+
+await test('GET /letters/quota follows the sliding window and is never treated as a letter id', async () => {
+  const env = createEnv();
+  const ip = nextIp();
+  for (let i = 0; i < DAILY_LIMIT; i++) {
+    equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'accepted #' + (i + 1));
+  }
+  const now = Math.floor(Date.now() / 1000);
+  env.__raw.prepare('UPDATE letter_submissions SET created_at = ?').run(now - DAY_SEC - 1);
+  const reset = await call(env, '/letters/quota', { ip });
+  equal(reset.data.remaining, DAILY_LIMIT, 'window slid back to full');
+
+  equal((await call(env, '/letters/quota', { method: 'POST', ip, body: { text: 'x' } })).status, 404,
+    'POST quota is not a create route');
+});
+
+await test('GET /letters/quota fails closed without a database or salt', async () => {
+  const noDb = createEnv();
+  delete noDb.DB;
+  equal((await call(noDb, '/letters/quota', { ip: nextIp() })).status, 503, 'missing DB');
+
+  const noSalt = createEnv({ ENVIRONMENT: 'production' });
+  delete noSalt.LETTER_SALT;
+  equal((await call(noSalt, '/letters/quota', { ip: nextIp() })).status, 503, 'missing salt in production');
 });
 
 await test('a retry of an accepted request_id is recovered even at the daily cap', async () => {
@@ -709,12 +822,13 @@ await test('the daily limit is per sender: another IP is unaffected', async () =
   const env = createEnv();
   const ipA = nextIp();
   const ipB = nextIp();
-  equal((await call(env, '/letters', { method: 'POST', ip: ipA, body: validBody() })).status, 201, 'A first');
-  equal((await call(env, '/letters', { method: 'POST', ip: ipA, body: validBody() })).status, 201, 'A second');
+  for (let i = 0; i < DAILY_LIMIT; i++) {
+    equal((await call(env, '/letters', { method: 'POST', ip: ipA, body: validBody() })).status, 201, 'A accepted #' + (i + 1));
+  }
   equal((await call(env, '/letters', { method: 'POST', ip: ipA, body: validBody() })).status, 429, 'A limited');
   const b = await call(env, '/letters', { method: 'POST', ip: ipB, body: validBody() });
   equal(b.status, 201, 'B unaffected');
-  equal(tableRows(env, 'letter_submissions').length, 3, 'three accepted submissions overall');
+  equal(tableRows(env, 'letter_submissions').length, DAILY_LIMIT + 1, 'accepted submissions overall');
 });
 
 await test('CORS allows only the production origin and localhost in local-dev', async () => {
@@ -741,7 +855,7 @@ await test('requests without Origin still work (non-browser clients)', async () 
   const response = await call(env, '/letters/count', { origin: null });
   equal(response.status, 200, 'count status');
   equal(response.data.active, 0, 'active count');
-  equal(response.headers.get('cache-control'), 'public, max-age=60', 'count cache header');
+  equal(response.headers.get('cache-control'), 'no-store', 'count cache header');
 });
 
 await test('missing database or salt fails closed in production', async () => {
@@ -876,8 +990,9 @@ await test('GET /admin/letters paginates with limit and before', async () => {
 await test('POST /admin/letters/clear resets one IP daily quota without deleting letters', async () => {
   const env = createEnv();
   const ip = nextIp();
-  equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'first');
-  equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'second');
+  for (let i = 0; i < DAILY_LIMIT; i++) {
+    equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'accepted #' + (i + 1));
+  }
   equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 429, 'limited');
 
   const cleared = await call(env, '/admin/letters/clear', {
@@ -885,8 +1000,8 @@ await test('POST /admin/letters/clear resets one IP daily quota without deleting
   });
   equal(cleared.status, 200, 'clear status');
   equal(cleared.data.letters_deleted, 0, 'letters kept by default');
-  equal(cleared.data.submissions_cleared, 2, 'quota rows reset');
-  equal(tableRows(env, 'letters').length, 2, 'letters still stored');
+  equal(cleared.data.submissions_cleared, DAILY_LIMIT, 'quota rows reset');
+  equal(tableRows(env, 'letters').length, DAILY_LIMIT, 'letters still stored');
   assert(!JSON.stringify(cleared.data).includes(ip), 'raw IP not returned');
 
   equal((await call(env, '/letters', { method: 'POST', ip, body: validBody() })).status, 201, 'quota available again');
@@ -1347,7 +1462,7 @@ await test('visitor stats match the retired counter shape', async () => {
   equal(res.data.unique_visitors, 2, 'unique explorers');
   equal(res.data.total_sessions, 3, 'total sessions');
   equal(res.data.returning_ratio, 0.5, 'returning share');
-  assert(/max-age=60/.test(res.headers.get('cache-control') || ''), 'stats is publicly cacheable');
+  assert(/no-store/.test(res.headers.get('cache-control') || ''), 'stats is never cached');
 
   const empty = await call(createEnv(), '/visitors/stats', { ip: nextIp() });
   equal(empty.data.unique_visitors, 0, 'empty unique');
@@ -1488,7 +1603,8 @@ await test('lifespan is capped at 90 days and keeps an hour before fading', asyn
   insertLetter(env, floorId, { created_at: now - 1000, expires_at: now + 1800 });
   const below = await voteRequest(env, floorId, 'dislike');
   equal(below.status, 200, 'floor vote status');
-  equal(Number(below.data.expires_at), now + 1800, 'below the floor is unchanged');
+  assert(Number(below.data.expires_at) >= now + 3600 && Number(below.data.expires_at) <= now + 3602,
+    'floor keeps at least an hour: ' + below.data.expires_at);
   equal(below.data.capped, true, 'floor flagged');
 
   const edgeId = 'e1'.repeat(16);
@@ -1519,6 +1635,79 @@ await test('one immutable vote per visitor per letter', async () => {
   equal(other.data.votes_like, 2, 'count grew');
   equal(Number(other.data.expires_at), letter.expires_at + 2 * DAY_SEC, 'expiry moved twice');
   equal(tableRows(env, 'letter_votes').length, 2, 'two ledger rows');
+});
+
+await test('PUT changes vote state and DELETE retracts it idempotently', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const id = 'd2'.repeat(16);
+  const letter = insertLetter(env, id, { created_at: now - 50, expires_at: now + 7 * DAY_SEC });
+  const ip = '203.0.113.232';
+
+  const like = await setVoteRequest(env, id, 'like', { ip });
+  equal(like.status, 200, 'like status');
+  equal(like.data.changed, true, 'like changed');
+  equal(like.data.type, 'like');
+  equal(like.data.votes_like, 1);
+  equal(Number(like.data.expires_at), letter.expires_at + DAY_SEC);
+
+  const repeated = await setVoteRequest(env, id, 'like', { ip });
+  equal(repeated.status, 200, 'repeat status');
+  equal(repeated.data.changed, false, 'same state is idempotent');
+  equal(Number(repeated.data.expires_at), letter.expires_at + DAY_SEC, 'repeat does not shift expiry');
+
+  const changed = await setVoteRequest(env, id, 'dislike', { ip });
+  equal(changed.status, 200, 'switch status');
+  equal(changed.data.type, 'dislike');
+  equal(changed.data.votes_like, 0);
+  equal(changed.data.votes_dislike, 1);
+  equal(Number(changed.data.expires_at), letter.expires_at - DAY_SEC, 'switch reverses the net vote');
+
+  const removed = await retractVoteRequest(env, id, { ip });
+  equal(removed.status, 200, 'retract status');
+  equal(removed.data.type, null);
+  equal(removed.data.changed, true);
+  equal(removed.data.votes_like, 0);
+  equal(removed.data.votes_dislike, 0);
+  equal(Number(removed.data.expires_at), letter.expires_at, 'retract restores baseline');
+
+  const repeatedDelete = await retractVoteRequest(env, id, { ip });
+  equal(repeatedDelete.status, 200);
+  equal(repeatedDelete.data.changed, false, 'repeated retract is idempotent');
+  equal(Number(repeatedDelete.data.expires_at), letter.expires_at);
+});
+
+await test('vote baseline migration preserves a legacy letter at the dislike floor', async () => {
+  const raw = new DatabaseSync(':memory:');
+  raw.exec(schemaSql);
+  for (const migration of migrations) {
+    if (migration.name !== '2026-11-01-vote-retract.sql') raw.exec(migration.sql);
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const id = 'd3'.repeat(16);
+  raw.prepare('INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
+    .run(id, 'legacy floor', 'en', now - 100, now + 7 * DAY_SEC);
+  const insertOldVote = raw.prepare(
+    'INSERT INTO letter_votes (letter_id, voter_hash, vote_type, created_at) VALUES (?, ?, ?, ?)'
+  );
+  for (let i = 0; i < 20; i++) {
+    insertOldVote.run(id, String(i).padStart(64, '0'), 'dislike', now);
+  }
+  const before = raw.prepare('SELECT expires_at FROM letters WHERE id = ?').get(id).expires_at;
+  equal(before, now + 3600, 'legacy trigger reached floor');
+
+  raw.exec(voteRetractMigrationSql);
+  const migrated = raw.prepare('SELECT * FROM letters WHERE id = ?').get(id);
+  equal(migrated.expires_at, before, 'migration leaves the current expiry unchanged');
+  equal(migrated.base_expires_at, before, 'current expiry becomes baseline');
+  equal(migrated.base_votes_net, -20, 'legacy net votes are snapshotted');
+  equal(raw.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='trigger' AND name='letter_votes_apply_lifespan'").get().n,
+    0, 'old trigger removed');
+
+  const env = { DB: new D1(raw), LETTER_SALT: TEST_SALT, ENVIRONMENT: 'local-dev', __raw: raw };
+  const next = await setVoteRequest(env, id, 'like', { ip: '203.0.113.233' });
+  equal(next.status, 200, 'new vote status');
+  equal(Number(next.data.expires_at), before + DAY_SEC, 'new vote shifts only from the migration snapshot');
 });
 
 await test('votes on faded, unknown or malformed ids fail closed', async () => {
@@ -1611,7 +1800,7 @@ await test('the hourly vote ceiling is per hashed visitor', async () => {
   const limited = await voteRequest(env, extraId, 'like', { ip });
   equal(limited.status, 429, 'ceiling status');
   equal(limited.data.error, 'rate_limited', 'ceiling error');
-  equal(Number(env.__raw.prepare('SELECT count FROM letter_vote_rate').get().count), 30, 'rate row stops at 30');
+  equal(Number(env.__raw.prepare('SELECT count FROM letter_vote_rate_v2').get().count), 30, 'rate row stops at 30');
   equal(tableRows(env, 'letter_votes').length, 30, 'no vote past the ceiling');
 
   const other = await voteRequest(env, extraId, 'like', { ip: '203.0.113.221' });
@@ -1673,7 +1862,7 @@ await test('admin delete and the nuclear reset remove votes too', async () => {
   equal(reset.data.votes_cleared, 1, 'reset votes');
   equal(reset.data.vote_limits_cleared, 2, 'reset vote limits');
   equal(tableRows(env, 'letter_votes').length, 0, 'votes gone after reset');
-  equal(tableRows(env, 'letter_vote_rate').length, 0, 'vote limits gone after reset');
+  equal(tableRows(env, 'letter_vote_rate_v2').length, 0, 'vote limits gone after reset');
 });
 
 await test('expired votes are pruned with their letter on the next post', async () => {
@@ -1691,31 +1880,27 @@ await test('expired votes are pruned with their letter on the next post', async 
   equal(tableRows(env, 'letter_votes').length, 0, 'expired votes were pruned');
 });
 
-await test('the lifespan trigger applies once per ledger row and skips faded letters', async () => {
+await test('vote writes recompute lifespan without a trigger and skip faded letters', async () => {
   const env = createEnv();
   const triggers = env.__raw.prepare(
     "SELECT name FROM sqlite_master WHERE type = 'trigger'"
   ).all().map(r => r.name);
-  assert(triggers.includes('letter_votes_apply_lifespan'), 'missing lifespan trigger');
+  assert(!triggers.includes('letter_votes_apply_lifespan'), 'legacy lifespan trigger remains');
 
   const now = Math.floor(Date.now() / 1000);
   const id = '77'.repeat(16);
   const row = insertLetter(env, id, { created_at: now, expires_at: now + DAY_SEC });
-  const insertVote = 'INSERT INTO letter_votes (letter_id, voter_hash, vote_type, created_at) ' +
-    'VALUES (?, ?, ?, ?) ON CONFLICT(letter_id, voter_hash) DO NOTHING';
   const expiryOf = target => env.__raw.prepare('SELECT expires_at FROM letters WHERE id = ?')
     .get(target).expires_at;
 
-  env.__raw.prepare(insertVote).run(id, 'a'.repeat(64), 'like', now);
-  equal(expiryOf(id), row.expires_at + DAY_SEC, 'first insert shifts expiry');
-
-  env.__raw.prepare(insertVote).run(id, 'a'.repeat(64), 'like', now);
-  equal(expiryOf(id), row.expires_at + DAY_SEC, 'a conflicting insert shifts nothing');
-  equal(tableRows(env, 'letter_votes').length, 1, 'still a single ledger row');
+  const liked = await setVoteRequest(env, id, 'like', { ip: '203.0.113.234' });
+  equal(Number(liked.data.expires_at), row.expires_at + DAY_SEC, 'vote updates expiry');
+  equal(expiryOf(id), row.expires_at + DAY_SEC, 'database matches reply');
 
   const faded = '78'.repeat(16);
   insertLetter(env, faded, { created_at: now - 10 * DAY_SEC, expires_at: now - 5 * DAY_SEC });
-  env.__raw.prepare(insertVote).run(faded, 'b'.repeat(64), 'like', now);
+  const rejected = await setVoteRequest(env, faded, 'like', { ip: '203.0.113.235' });
+  equal(rejected.status, 404, 'faded vote rejected');
   equal(expiryOf(faded), now - 5 * DAY_SEC, 'faded letters keep their expiry');
 });
 

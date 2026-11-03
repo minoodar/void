@@ -109,7 +109,7 @@
     z-index: 3;
     box-sizing: border-box;
     display: flex; flex-direction: column; gap: 7px;
-    width: min(248px, calc(100vw - 20px));
+    width: min(264px, calc(100vw - 20px));
     padding: 12px 13px 11px;
     border: 1px solid rgba(235, 240, 245, .16);
     border-radius: 14px;
@@ -148,7 +148,110 @@
 /* The Golden Folder is a collection, not a community figure: one hairline
    keeps its count out of the visitor rows. */
 .vm-gs-div { height: 1px; margin: 1px 0; background: rgba(235, 240, 245, .12); }
-.vm-gs-read { margin-top: 3px; width: 100%; }
+
+/* Read / Write: one balanced pair. Each tile is a button, so the pair stays a
+   single tab stop each and the Write tile carries the same ink meter as the
+   quill beside the galaxy. */
+.vm-gs-acts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+    margin-top: 4px;
+}
+.vm-gs-act {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    min-height: 48px;
+    padding: 8px 9px;
+    border: 1px solid rgba(235, 240, 245, .14);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .028);
+    color: rgba(235, 240, 245, .82);
+    font-family: inherit;
+    text-align: start;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .18s ease, background .18s ease, color .18s ease;
+}
+.vm-gs-act:hover:not(:disabled),
+.vm-gs-act:focus-visible {
+    border-color: rgba(235, 240, 245, .30);
+    background: rgba(255, 255, 255, .06);
+    color: rgba(250, 252, 255, .96);
+}
+.vm-gs-act:focus-visible { outline: 2px solid rgba(220, 230, 240, .85); outline-offset: 2px; }
+.vm-gs-act:disabled { opacity: .42; cursor: default; }
+.vm-gs-act__ico {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 19px;
+    height: 19px;
+    color: rgba(235, 240, 245, .78);
+}
+.vm-gs-act__svg { display: block; width: 18px; height: 18px; }
+.vm-gs-act__quill {
+    display: block;
+    width: 19px;
+    height: 19px;
+    filter: drop-shadow(0 0 2.5px rgba(225, 234, 246, .22));
+}
+.vm-gs-act__txt {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+.vm-gs-act__txt b {
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: .01em;
+}
+.vm-gs-act__txt small {
+    font-size: 9px;
+    line-height: 1.3;
+    letter-spacing: .01em;
+    color: rgba(235, 240, 245, .48);
+    white-space: nowrap;
+}
+.vm-gs-act__meter { margin-top: 3px; color: rgba(235, 240, 245, .6); }
+.vm-gs-act__pad { display: block; height: 9px; }
+
+/* ---- ink drops: one meter, three surfaces ---- */
+.vm-meter {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    color: rgba(235, 240, 245, .7);
+    transition: opacity .2s ease;
+}
+.vm-meter__d { display: block; width: 5px; height: 6px; }
+.vm-meter__d path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.1;
+    opacity: .42;
+    transition: opacity .18s ease, fill .18s ease;
+}
+.vm-meter__d.is-full path { fill: currentColor; opacity: .86; }
+.vm-meter.is-unknown { visibility: hidden; }
+.vm-meter.is-exhausted { color: rgba(235, 240, 245, .5); }
+
+.void-god-sr {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
 
 /* حالت quiet: رابط خودکار محو می‌شود؛ تبلت کم‌نور می‌شود، ولی ناپدید نمی‌شود */
 body.vm-quiet #void-galaxy-stats { opacity: .5; }
@@ -162,9 +265,11 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     top: calc(max(50% - 103px, 30vh + 52px) + 162px);
     right: max(18px, env(safe-area-inset-right, 0px));
     z-index: 4;
+    box-sizing: border-box;
     width: 44px; height: 44px;
-    margin: 0; padding: 0;
-    display: grid; place-items: center;
+    margin: 0; padding: 4px 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px;
     transform: none;
     border: 1px solid rgba(235, 240, 245, .20);
     border-radius: 50%;
@@ -180,16 +285,21 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     -webkit-tap-highlight-color: transparent;
     transition: opacity .2s ease, border-color .2s ease, color .2s ease, background .2s ease;
 }
-#void-god-quill svg {
+.void-god-quill__icon {
     display: block;
-    width: 22px; height: 22px;
-    fill: none; stroke: currentColor;
-    stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+    width: 21px; height: 21px;
+    filter: drop-shadow(0 0 2.5px rgba(225, 234, 246, .20));
+    transition: filter .2s ease;
 }
+#void-god-quill .vm-meter { color: rgba(235, 240, 245, .72); }
 #void-god-quill:hover {
     opacity: 1;
     color: rgba(250, 252, 255, .96);
     border-color: rgba(235, 240, 245, .4);
+}
+#void-god-quill:hover .void-god-quill__icon,
+#void-god-quill:focus-visible .void-god-quill__icon {
+    filter: drop-shadow(0 0 4.5px rgba(235, 242, 255, .40));
 }
 #void-god-quill:active { background: rgba(235, 240, 245, .10); }
 #void-god-quill:focus-visible {
@@ -197,6 +307,69 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     outline-offset: 4px;
     opacity: 1;
 }
+
+/* ---- سهمیهٔ قلم: یک کارتِ شیشه‌ایِ کوچک، فقط هنگامِ تعامل ----
+   همان قلم، همان سه قطره، و «۲ / ۳»؛ هرگز متنِ توضیحیِ دائمی روی صفحه نیست. */
+.void-god-quota-pop {
+    position: fixed;
+    left: 0; top: 0;
+    z-index: 6;
+    box-sizing: border-box;
+    width: 184px;
+    padding: 10px 12px 11px;
+    border: 1px solid rgba(235, 240, 245, .16);
+    border-radius: 12px;
+    background:
+        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
+        rgba(9, 12, 18, .93);
+    -webkit-backdrop-filter: blur(14px) saturate(115%);
+            backdrop-filter: blur(14px) saturate(115%);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .6), 0 0 0 1px rgba(0, 0, 0, .3);
+    color: rgba(235, 240, 245, .8);
+    font: 10.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    opacity: 0; visibility: hidden; transform: translateY(2px) scale(.98);
+    transition: opacity .16s ease, transform .22s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .22s;
+}
+.void-god-quota-pop[hidden] { display: none; }
+.void-god-quota-pop.is-on {
+    opacity: 1; visibility: visible; transform: none; transition-delay: 0s;
+}
+.void-god-quota-pop__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+.void-god-quota-pop__quill {
+    display: grid;
+    place-items: center;
+    width: 18px; height: 18px;
+    color: rgba(235, 240, 245, .86);
+}
+.void-god-quota-pop__quill svg {
+    display: block;
+    width: 18px; height: 18px;
+    filter: drop-shadow(0 0 3px rgba(225, 234, 246, .22));
+}
+.void-god-quota-pop__meter { color: rgba(235, 240, 245, .8); }
+.void-god-quota-pop__text {
+    display: block;
+    font-size: 11px;
+    line-height: 1.35;
+    color: rgba(250, 252, 255, .9);
+}
+.void-god-quota-pop__next {
+    display: block;
+    margin-top: 3px;
+    font-size: 10px;
+    line-height: 1.35;
+    color: rgba(251, 216, 140, .86);
+}
+.void-god-quota-pop__next[hidden] { display: none; }
+.void-god-quota-pop.is-exhausted .void-god-quota-pop__text { color: rgba(251, 216, 140, .92); }
 #void-god-discover {
     position: absolute;
     top: calc(max(50% - 103px, 30vh + 52px) + 210px);
@@ -330,6 +503,7 @@ body.is-letter-reading #void-counter,
 body.is-letter-reading #void-galaxy-stats,
 body.is-letter-reading #void-galaxy-stats-panel,
 body.is-letter-reading #void-god-quill,
+body.is-letter-reading #void-god-quota-pop,
 body.is-letter-reading #void-god-discover,
 body.is-letter-reading #void-golden-status,
 body.is-letter-reading #void-reopen,
@@ -360,6 +534,7 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     body.is-letter-reading #void-galaxy-stats,
     body.is-letter-reading #void-galaxy-stats-panel,
     body.is-letter-reading #void-god-quill,
+    body.is-letter-reading #void-god-quota-pop,
     body.is-letter-reading #void-god-discover,
     body.is-letter-reading #void-golden-status,
     body.is-letter-reading #void-reopen,
@@ -839,6 +1014,38 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     color: rgba(251, 191, 36, .86);
 }
 
+/* Same three drops as the quill, inside the composer: the touch equivalent of
+   the hover tooltip, without adding a paragraph of permanent explanation. */
+.void-god-quota {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding: 5px 10px;
+    border: 1px solid rgba(235, 240, 245, .10);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .025);
+    color: rgba(235, 240, 245, .7);
+    font-size: 10.5px;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+}
+.void-god-quota[hidden] { display: none; }
+.void-god-quota__icon {
+    display: grid;
+    place-items: center;
+    width: 14px; height: 14px;
+    color: rgba(235, 240, 245, .7);
+}
+.void-god-quota__icon svg { display: block; width: 14px; height: 14px; }
+.void-god-quota__meter { color: rgba(235, 240, 245, .74); }
+.void-god-quota__text { color: rgba(235, 240, 245, .6); }
+.void-god-quota.is-exhausted {
+    border-color: rgba(251, 191, 36, .24);
+    background: rgba(251, 191, 36, .06);
+}
+.void-god-quota.is-exhausted .void-god-quota__text { color: rgba(251, 216, 140, .88); }
+
 .void-god-label {
     margin-bottom: -5px;
     font-size: 10.5px;
@@ -1072,12 +1279,15 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
         top: calc(106px + env(safe-area-inset-top, 0px));
         transform: none;
         width: 30px; height: 30px;
+        padding: 3px 0;
+        gap: 1px;
     }
     #void-god-discover {
         left: 57px; right: auto;
         top: calc(106px + env(safe-area-inset-top, 0px) + 34px);
     }
-    #void-god-quill svg { width: 16px; height: 16px; }
+    #void-god-quill .void-god-quill__icon { width: 16px; height: 16px; }
+    #void-god-quill .vm-meter__d { width: 4px; height: 5px; }
     /* In this tier the rail lives top-left, so the panel can use the full width. */
     #void-god-panel { width: min(380px, calc(100vw - 24px)); }
     /* The three marks start at left:64px, so the pill only has 56px in the
@@ -1108,9 +1318,12 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     #void-god-quill {
         top: calc(76px + env(safe-area-inset-top, 0px));
         width: 22px; height: 22px;
+        padding: 1px 0;
+        gap: 0;
     }
     #void-god-discover { top: calc(76px + env(safe-area-inset-top, 0px) + 26px); left: 53px; right: auto; }
-    #void-god-quill svg { width: 12px; height: 12px; }
+    #void-god-quill .void-god-quill__icon { width: 11px; height: 11px; }
+    #void-god-quill .vm-meter__d { width: 2.5px; height: 3.5px; }
 }
 
 /* Lift the complete right-side tool group on touch devices in landscape,
@@ -1134,6 +1347,11 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     .vm-gs__dot { animation: none; opacity: .9; transform: none; }
     #void-galaxy-stats-panel { transition: none; }
     #void-god-dialog[open] { animation: none; }
+    .void-god-quota-pop,
+    .vm-meter,
+    .vm-meter__d path,
+    .void-god-quill__icon,
+    .vm-gs-act { transition: none; }
     #void-god-anchor,
     #void-god-anchor.is-closing,
     #void-god-panel,

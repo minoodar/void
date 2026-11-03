@@ -131,6 +131,8 @@
   var showFrame = 0;
   var statsPanel = null;
   var statsRead = null;
+  var statsReadSub = null;
+  var statsWrite = null;
   var statsOpen = false;
   var statsHoverTimer = 0;
   var statsCloseTimer = 0;
@@ -152,6 +154,26 @@
   var siteStatsTimer = 0;
   var siteStatsRefreshPromise = null;
   var siteStatsRefreshQueued = false;
+
+  /* One server-reported quota drives every surface: the quill, the Write action
+     in the statistics panel, and the strip inside the composer. Unknown means
+     unknown — nothing is drawn and no number is shown. */
+  var quota = null;
+  var quotaState = 'idle';
+  var quotaFetchedAt = 0;
+  var quotaPromise = null;
+  var quotaGen = 0;
+  var quotaTick = 0;
+  var dropMeters = [];
+  var quillDrops = null;
+  var quotaPop = null;
+  var quotaPopAnchor = null;
+  var quotaPopTimer = 0;
+  var quotaPopHideTimer = 0;
+  var quotaPopText = null;
+  var quotaPopNext = null;
+  var composeQuota = null;
+  var composeQuotaText = null;
 
   var quillBtn = null;
   var galaxyLayer = null;
@@ -227,6 +249,7 @@
     toolsHideTimer = 0;
     toolsRevealed = false;
     toolsIntro = false;
+    hideQuotaPop();
     if (document.body) document.body.classList.remove('is-tools-revealed');
     if (discoveryBtn) {
       discoveryBtn.setAttribute('aria-expanded', 'false');
@@ -386,6 +409,255 @@
     return n;
   }
 
+  /* ---- سهمیهٔ نامه: همان عددِ سرور برای قلم، دکمهٔ نوشتن و پنجرهٔ نوشتن ---- */
+  function meterDrop() {
+    var s = svgNode('svg', { viewBox: '0 0 12 14', 'aria-hidden': 'true', focusable: 'false' });
+    s.setAttribute('class', 'vm-meter__d');
+    s.appendChild(svgNode('path', { d: 'M6 1.1c1.9 3 3.4 5.3 3.4 7.2a3.4 3.4 0 1 1-6.8 0c0-1.9 1.5-4.2 3.4-7.2Z' }));
+    return s;
+  }
+
+  function buildMeter(host, className) {
+    var root = make('span', 'vm-meter' + (className ? ' ' + className : ''));
+    root.setAttribute('aria-hidden', 'true');
+    host.appendChild(root);
+    var meter = { root: root, dots: [], limit: -1 };
+    dropMeters.push(meter);
+    syncMeter(meter);
+    return meter;
+  }
+
+  function syncMeter(m) {
+    var ready = quotaState === 'ready' && !!quota;
+    var limit = ready ? quota.limit : 3;
+    if (m.limit !== limit) {
+      while (m.root.firstChild) m.root.removeChild(m.root.firstChild);
+      m.dots = [];
+      for (var i = 0; i < limit; i++) {
+        var d = meterDrop();
+        m.root.appendChild(d);
+        m.dots.push(d);
+      }
+      m.limit = limit;
+    }
+    var remaining = ready ? quota.remaining : -1;
+    for (var j = 0; j < m.dots.length; j++) {
+      var full = remaining > 0 && j >= limit - remaining;
+      m.dots[j].classList.toggle('is-full', full);
+      m.dots[j].classList.toggle('is-empty', remaining >= 0 && !full);
+    }
+    m.root.classList.toggle('is-unknown', remaining < 0);
+    m.root.classList.toggle('is-exhausted', remaining === 0);
+  }
+
+  function quotaLeftSec() {
+    if (!quota || !quota.retry_after) return 0;
+    var left = Math.ceil((quotaFetchedAt + quota.retry_after * 1000 - Date.now()) / 1000);
+    return left > 0 ? left : 0;
+  }
+
+  function quotaWait(sec) {
+    sec = Math.max(0, Math.ceil(Number(sec) || 0));
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    if (h > 0) return h + ' h' + (m ? ' ' + m + ' m' : '');
+    if (m > 0) return m + ' m';
+    return sec + ' s';
+  }
+
+  function quotaExhaustedNow() {
+    if (quotaState !== 'ready' || !quota || quota.remaining > 0) return false;
+    if (quota.retry_after > 0 && quotaLeftSec() === 0) return false;
+    return true;
+  }
+
+  function quotaStateText() {
+    if (quotaState !== 'ready' || !quota) return '';
+    if (quota.remaining > 0) return quota.remaining + ' of ' + quota.limit + ' letters available today';
+    var wait = quotaLeftSec();
+    return 'No letters left today' + (wait > 0 ? '. Next letter in ' + quotaWait(wait) : '');
+  }
+
+  function renderQuota() {
+    for (var i = 0; i < dropMeters.length; i++) syncMeter(dropMeters[i]);
+    var sr = document.getElementById('void-god-quota-sr');
+    if (sr) sr.textContent = quotaStateText();
+    if (quotaState === 'ready' && quota) {
+      if (composeQuota) {
+        composeQuota.hidden = false;
+        composeQuota.classList.toggle('is-exhausted', quota.remaining === 0);
+        var left = quotaLeftSec();
+        composeQuotaText.textContent = quota.remaining > 0
+          ? quota.remaining + ' / ' + quota.limit + ' available today'
+          : 'No letters left today' + (left > 0 ? ' \u00b7 next in ' + quotaWait(left) : '');
+      }
+    } else if (composeQuota) {
+      composeQuota.hidden = true;
+    }
+    updateQuotaPop();
+  }
+
+  function setQuota(q) {
+    quota = q || null;
+    quotaState = q ? 'ready' : 'unavailable';
+    quotaFetchedAt = q ? Date.now() : quotaFetchedAt;
+    renderQuota();
+    scheduleQuotaTick();
+  }
+
+  function refreshQuota(force) {
+    if (DEV_DEMO || !api || typeof api.quota !== 'function') {
+      quotaState = 'unavailable';
+      renderQuota();
+      return Promise.resolve(null);
+    }
+    if (quotaPromise) return quotaPromise;
+    if (!force && quota && Date.now() - quotaFetchedAt < 30000) {
+      renderQuota();
+      return Promise.resolve(quota);
+    }
+    if (!quota) {
+      quotaState = 'loading';
+      renderQuota();
+    }
+    // A publication can land while this read is in flight; its answer predates
+    // the new letter, so it must not overwrite the newer local count.
+    var gen = quotaGen;
+    quotaPromise = api.quota().then(function (q) {
+      quotaPromise = null;
+      if (gen !== quotaGen) return quota;
+      setQuota(q);
+      return quota;
+    }, function () {
+      quotaPromise = null;
+      if (gen !== quotaGen) return quota;
+      setQuota(null);
+      return null;
+    });
+    return quotaPromise;
+  }
+
+  /* The 429 body owns retry_after; mirror it until the next server reply. */
+  function noteQuotaRate(seconds) {
+    var s = Number(seconds);
+    if (!isFinite(s) || s <= 0) return;
+    quotaGen++;
+    if (quotaState === 'ready' && quota) {
+      quota.used = quota.limit;
+      quota.remaining = 0;
+      quota.retry_after = Math.floor(s);
+      quotaFetchedAt = Date.now();
+      renderQuota();
+      scheduleQuotaTick();
+      return;
+    }
+    refreshQuota(true);
+  }
+
+  function noteQuotaPublished() {
+    var inFlight = quotaPromise;
+    quotaGen++;
+    if (quotaState === 'ready' && quota && quota.remaining > 0) {
+      quota.remaining -= 1;
+      quota.used += 1;
+      quotaFetchedAt = Date.now();
+      renderQuota();
+    }
+    refreshQuota(true);
+    if (inFlight) inFlight.then(function () { refreshQuota(true); });
+  }
+
+  function scheduleQuotaTick() {
+    clearInterval(quotaTick);
+    quotaTick = 0;
+    if (quotaState !== 'ready' || !quota || quota.remaining > 0 || quota.retry_after <= 0) return;
+    quotaTick = setInterval(function () {
+      if (quotaLeftSec() === 0) {
+        clearInterval(quotaTick);
+        quotaTick = 0;
+        refreshQuota(true);
+        return;
+      }
+      renderQuota();
+    }, 15000);
+  }
+
+  function placeQuotaPop(anchorEl) {
+    if (!quotaPop || !anchorEl) return;
+    var r = anchorEl.getBoundingClientRect();
+    var W = quotaPop.offsetWidth, H = quotaPop.offsetHeight;
+    var m = 8, gap = 10;
+    var left;
+    if (r.right + gap + W <= window.innerWidth - m) left = r.right + gap;
+    else if (r.left - gap - W >= m) left = r.left - gap - W;
+    else left = clamp(r.left + r.width / 2 - W / 2, m, Math.max(m, window.innerWidth - m - W));
+    var top = clamp(r.top + r.height / 2 - H / 2, m, Math.max(m, window.innerHeight - m - H));
+    quotaPop.style.left = Math.round(left) + 'px';
+    quotaPop.style.top = Math.round(top) + 'px';
+  }
+
+  function updateQuotaPop() {
+    if (!quotaPop) return;
+    var ready = quotaState === 'ready' && !!quota;
+    if (!ready) {
+      quotaPopText.textContent = '';
+      quotaPopNext.hidden = true;
+      if (quotaPopAnchor) hideQuotaPop();
+      return;
+    }
+    quotaPop.classList.toggle('is-exhausted', quota.remaining === 0);
+    quotaPopText.textContent = quota.remaining + ' / ' + quota.limit + ' available today';
+    var left = quotaLeftSec();
+    quotaPopNext.hidden = quota.remaining > 0 || left === 0;
+    quotaPopNext.textContent = quota.remaining === 0 && left > 0 ? 'Next letter in ' + quotaWait(left) : '';
+  }
+
+  function showQuotaPop(anchorEl, touch) {
+    if (!quotaPop || !anchorEl || quotaState !== 'ready' || !quota) return;
+    clearTimeout(quotaPopHideTimer);
+    quotaPopHideTimer = 0;
+    clearTimeout(quotaPopTimer);
+    quotaPopTimer = 0;
+    quotaPopAnchor = anchorEl;
+    quotaPop.hidden = false;
+    updateQuotaPop();
+    placeQuotaPop(anchorEl);
+    requestAnimationFrame(function () {
+      if (quotaPop && !quotaPop.hidden && quotaPopAnchor === anchorEl) quotaPop.classList.add('is-on');
+    });
+    if (touch) {
+      quotaPopTimer = setTimeout(function () {
+        quotaPopTimer = 0;
+        hideQuotaPop();
+      }, 3600);
+    }
+  }
+
+  function hideQuotaPop() {
+    clearTimeout(quotaPopTimer);
+    quotaPopTimer = 0;
+    clearTimeout(quotaPopHideTimer);
+    quotaPopHideTimer = 0;
+    quotaPopAnchor = null;
+    if (!quotaPop || quotaPop.hidden) return;
+    quotaPop.classList.remove('is-on');
+    setTimeout(function () {
+      if (quotaPop && !quotaPop.classList.contains('is-on')) quotaPop.hidden = true;
+    }, 220);
+  }
+
+  function scheduleQuotaPopHide() {
+    clearTimeout(quotaPopHideTimer);
+    quotaPopHideTimer = setTimeout(function () {
+      quotaPopHideTimer = 0;
+      hideQuotaPop();
+    }, 140);
+  }
+
+  function touchPointer() {
+    try { return !!(window.matchMedia && window.matchMedia('(hover: none)').matches); } catch (e) { return false; }
+  }
+
   function canHoverExpand() {
     try {
       return !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
@@ -485,10 +757,40 @@
     var r5 = statRow('\u266b', 'Golden Folder tracks', '\u2014');
     rowTracks = r5.value;
     statsPanel.appendChild(r5.row);
-    statsRead = make('button', 'void-god-btn vm-gs-read', 'No letters yet');
+    var acts = make('div', 'vm-gs-acts');
+    statsRead = make('button', 'vm-gs-act vm-gs-act--read');
     statsRead.type = 'button';
     statsRead.disabled = true;
-    statsPanel.appendChild(statsRead);
+    var readIco = make('span', 'vm-gs-act__ico');
+    readIco.appendChild(mailSvg('vm-gs-act__svg'));
+    statsRead.appendChild(readIco);
+    var readTxt = make('span', 'vm-gs-act__txt');
+    readTxt.appendChild(make('b', null, 'Read'));
+    statsReadSub = make('small', null, 'newest letter');
+    readTxt.appendChild(statsReadSub);
+    // Same 9px the Write meter occupies, so both titles share one baseline.
+    var readPad = make('span', 'vm-gs-act__pad');
+    readPad.setAttribute('aria-hidden', 'true');
+    readTxt.appendChild(readPad);
+    statsRead.appendChild(readTxt);
+    statsRead.setAttribute('aria-label', 'No letters yet');
+
+    statsWrite = make('button', 'vm-gs-act vm-gs-act--write');
+    statsWrite.type = 'button';
+    statsWrite.title = 'Write an anonymous letter';
+    statsWrite.setAttribute('aria-label', 'Write an anonymous letter');
+    statsWrite.setAttribute('aria-describedby', 'void-god-quota-sr');
+    var writeIco = make('span', 'vm-gs-act__ico');
+    writeIco.appendChild(quillSvg(19, 'vm-gs-act__quill'));
+    statsWrite.appendChild(writeIco);
+    var writeTxt = make('span', 'vm-gs-act__txt');
+    writeTxt.appendChild(make('b', null, 'Write'));
+    writeTxt.appendChild(make('small', null, 'anonymous letter'));
+    buildMeter(writeTxt, 'vm-gs-act__meter');
+    statsWrite.appendChild(writeTxt);
+    acts.appendChild(statsRead);
+    acts.appendChild(statsWrite);
+    statsPanel.appendChild(acts);
     host.appendChild(statsPanel);
 
     setTracks(readTrackCount());
@@ -546,6 +848,17 @@
     window.addEventListener('keydown', function () { keyboardFocus = true; }, true);
     window.addEventListener('pointerdown', function () { keyboardFocus = false; }, true);
     statsRead.addEventListener('click', readNewest);
+    statsWrite.addEventListener('click', writeFromStats);
+    statsWrite.addEventListener('pointerenter', function (e) {
+      if (e.pointerType === 'touch') return;
+      showQuotaPop(statsWrite, false);
+    });
+    statsWrite.addEventListener('pointerleave', function (e) {
+      if (e.pointerType === 'touch') return;
+      scheduleQuotaPopHide();
+    });
+    statsWrite.addEventListener('focus', function () { showQuotaPop(statsWrite, false); });
+    statsWrite.addEventListener('blur', function () { scheduleQuotaPopHide(); });
     window.addEventListener('resize', function () {
       positionStatsIndicator();
       if (statsOpen) placeStats();
@@ -629,6 +942,7 @@
       if (statsOpen && statsPanel) statsPanel.classList.add('is-on');
     });
     refreshCount();
+    refreshQuota(false);
   }
 
   function closeStats(focus) {
@@ -668,6 +982,18 @@
     openMessageAt(c.x, c.y);
   }
 
+  /* The same composer as the quill: no second form, no second submit path. */
+  function writeFromStats() {
+    if (quotaExhaustedNow()) {
+      showQuotaPop(statsWrite, touchPointer());
+      refreshQuota(true);
+      return;
+    }
+    hideQuotaPop();
+    closeStats(true);
+    openCompose();
+  }
+
   function hide() {
     if (!el) return false;
     pillShown = false;
@@ -692,8 +1018,9 @@
     if (statsRead) {
       var can = ok && n > 0;
       statsRead.disabled = !can;
-      statsRead.textContent = can ? 'Read the newest letter' : 'No letters yet';
-      statsRead.title = can ? 'Open the newest letter' : 'The galaxy has no letters yet';
+      if (statsReadSub) statsReadSub.textContent = can ? 'newest letter' : 'no letters yet';
+      statsRead.title = can ? 'Read the newest letter' : 'The galaxy has no letters yet';
+      statsRead.setAttribute('aria-label', can ? 'Read the newest letter' : 'No letters yet');
     }
     updateStatsLabel();
     showPill();
@@ -1558,6 +1885,7 @@
   function refreshSiteStats() {
     if (!api || document.visibilityState === 'hidden' ||
         (window.navigator && window.navigator.onLine === false)) return Promise.resolve();
+    refreshQuota(false);
     if (siteStatsRefreshPromise) {
       siteStatsRefreshQueued = true;
       return siteStatsRefreshPromise;
@@ -1604,6 +1932,7 @@
     remoteStarted = true;
     if (!feed) feed = api.createFeed();
     feed.prefetch();
+    refreshQuota(true);
     refreshSiteStats();
     startVisitors();
     scheduleSiteStatsRefresh();
@@ -2035,6 +2364,7 @@
     try { compose.showModal(); }
     catch (e) { compose.setAttribute('open', ''); }
     if (quillBtn) quillBtn.setAttribute('aria-expanded', 'true');
+    refreshQuota(false);
     try { composer.focus({ preventScroll: true }); } catch (e) {}
   }
 
@@ -2065,6 +2395,18 @@
     var intro = make('p', 'void-god-intro',
       'Leave a thought among the stars. It becomes a small star in the galaxy: anonymous, public, and temporary. Write with care \u2014 once it leaves, it cannot be taken back.');
     intro.id = 'void-god-intro';
+
+    /* The composer carries the same meter, so touch users see the quota without
+       needing a hover state anywhere. Hidden while the server answer is unknown. */
+    composeQuota = make('div', 'void-god-quota');
+    composeQuota.id = 'void-god-quota';
+    composeQuota.hidden = true;
+    var qIcon = make('span', 'void-god-quota__icon');
+    qIcon.appendChild(quillSvg(14));
+    composeQuota.appendChild(qIcon);
+    buildMeter(composeQuota, 'void-god-quota__meter');
+    composeQuotaText = make('span', 'void-god-quota__text', '');
+    composeQuota.appendChild(composeQuotaText);
 
     var demo = make('p', 'void-god-demo', 'Your letter is stored anonymously on the public sky until it fades. Pressing Submit is final \u2014 it cannot be edited or deleted afterwards.');
     demo.id = 'void-god-demo';
@@ -2152,6 +2494,7 @@
     successEl.appendChild(okFoot);
 
     composeForm.appendChild(head);
+    composeForm.appendChild(composeQuota);
     composeForm.appendChild(intro);
     composeForm.appendChild(demo);
     composeForm.appendChild(label);
@@ -2263,6 +2606,7 @@
     } else if (result.kind === 'expired') {
       notice('The previous letter has expired. Press Submit again to send this one as a new letter.');
     } else if (result.kind === 'rate') {
+      noteQuotaRate(result.retry_after);
       startCooldown(result.retry_after);
       notice('The galaxy is limiting submissions for now. Your draft is saved; the same request will be checked safely when you try again.');
     } else if (result.kind === 'invalid') {
@@ -2301,6 +2645,8 @@
     composer.value = '';
     ackEl.checked = false;
     refreshCount();
+    if (result.kind === 'created') noteQuotaPublished();
+    else refreshQuota(true);
     if (api) {
       feed = api.createFeed();
       feed.prefetch();
@@ -2349,6 +2695,67 @@
     return n;
   }
 
+  /* A writing instrument, not a leaf: closed vane, thin silver strokes, barbs,
+     and a metal nib that catches the same light as the player's glass. */
+  var quillSvgSeq = 0;
+  function quillSvg(size, className) {
+    var id = 'void-quill-nib-' + (++quillSvgSeq);
+    var svg = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    if (className) svg.setAttribute('class', className);
+    if (size) { svg.setAttribute('width', String(size)); svg.setAttribute('height', String(size)); }
+
+    var defs = svgNode('defs');
+    var grad = svgNode('linearGradient', {
+      id: id, gradientUnits: 'userSpaceOnUse',
+      x1: '9.9', y1: '15.1', x2: '5.2', y2: '21.6'
+    });
+    grad.appendChild(svgNode('stop', { offset: '0', 'stop-color': '#f8fbff' }));
+    grad.appendChild(svgNode('stop', { offset: '.5', 'stop-color': '#c7d1dc' }));
+    grad.appendChild(svgNode('stop', { offset: '1', 'stop-color': '#7f8b98' }));
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+
+    var feather = svgNode('g', {
+      fill: 'none', stroke: 'currentColor', 'stroke-width': '1.25',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+    });
+    feather.appendChild(svgNode('path', {
+      d: 'M20.4 3.6c.5 6.3-3.1 10.6-10 11.6-1 .1-1.9-.1-2.6-.5.1-1.8.8-3.4 2.1-4.7 2.7-2.8 6.5-4.9 10.5-6.4Z'
+    }));
+    feather.appendChild(svgNode('path', { d: 'M20.4 3.6 10.4 15.9' }));
+    feather.appendChild(svgNode('path', { d: 'M16.8 8.1c-1.8.4-3.5 1.4-5 2.9' }));
+    feather.appendChild(svgNode('path', { d: 'M13.8 11.4c-1.1.7-2 1.7-2.7 3' }));
+    svg.appendChild(feather);
+
+    svg.appendChild(svgNode('path', {
+      class: 'void-quill__nib',
+      d: 'M9.9 15.1 11.6 16.8 5.2 21.6 4.3 19.4Z',
+      fill: 'url(#' + id + ')',
+      stroke: 'currentColor', 'stroke-opacity': '.45',
+      'stroke-width': '.7', 'stroke-linejoin': 'round'
+    }));
+    svg.appendChild(svgNode('path', {
+      class: 'void-quill__slit',
+      d: 'M9.6 16.5 6.3 19.8',
+      stroke: '#0b0e13', 'stroke-opacity': '.55',
+      'stroke-width': '.7', 'stroke-linecap': 'round'
+    }));
+    return svg;
+  }
+
+  function mailSvg(className) {
+    var svg = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    if (className) svg.setAttribute('class', className);
+    var g = svgNode('g', {
+      fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+    });
+    g.appendChild(svgNode('path', { d: 'M4.2 6.4h15.6a1 1 0 0 1 1 1v9.2a1 1 0 0 1-1 1H4.2a1 1 0 0 1-1-1V7.4a1 1 0 0 1 1-1Z' }));
+    g.appendChild(svgNode('path', { d: 'M3.6 7.2 12 13l8.4-5.8' }));
+    svg.appendChild(g);
+    return svg;
+  }
+
   function buildQuill(host) {
     quillBtn = make('button', 'void-god-quill');
     quillBtn.id = 'void-god-quill';
@@ -2358,18 +2765,33 @@
     quillBtn.setAttribute('aria-haspopup', 'dialog');
     quillBtn.setAttribute('aria-expanded', 'false');
     quillBtn.setAttribute('aria-controls', 'void-god-dialog');
-    var svg = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
-    svg.appendChild(svgNode('path', { d: 'M21 3c0 7.8-4.7 12.5-12.5 12.5H7.1L4.8 19.8' }));
-    svg.appendChild(svgNode('path', { d: 'M17.2 3.4c-1.3 5-4.3 8-9.3 9.3' }));
-    svg.appendChild(svgNode('path', { d: 'M12.4 4.9c-.4 2.9-1.5 5-3.6 6.9' }));
-    quillBtn.appendChild(svg);
+    quillBtn.setAttribute('aria-describedby', 'void-god-quota-sr');
+    quillBtn.appendChild(quillSvg(20, 'void-god-quill__icon'));
+    quillDrops = buildMeter(quillBtn, 'void-god-quill__drops');
     host.appendChild(quillBtn);
+    quillBtn.addEventListener('pointerenter', function (e) {
+      if (e.pointerType === 'touch') return;
+      showQuotaPop(quillBtn, false);
+    });
+    quillBtn.addEventListener('pointerleave', function (e) {
+      if (e.pointerType === 'touch') return;
+      scheduleQuotaPopHide();
+    });
+    quillBtn.addEventListener('focus', function () { showQuotaPop(quillBtn, false); });
+    quillBtn.addEventListener('blur', function () { scheduleQuotaPopHide(); });
     quillBtn.addEventListener('click', function () {
       if (!toolsRevealed || toolsIntro) {
         toolsIntro = false;
         showToolPalette();
+        if (touchPointer()) showQuotaPop(quillBtn, true);
         return;
       }
+      if (quotaExhaustedNow()) {
+        showQuotaPop(quillBtn, touchPointer());
+        refreshQuota(true);
+        return;
+      }
+      hideQuotaPop();
       hideToolPalette();
       openCompose();
     });
@@ -2395,12 +2817,49 @@
     positionStatsIndicator();
   }
 
+  /* One compact glass tooltip serves both entry points. It is not permanent:
+     it appears on hover/focus, on the first touch tap that reveals the tools,
+     or when an exhausted action is activated. */
+  function buildQuotaPop(host) {
+    if (quotaPop) return;
+    quotaPop = make('div', 'void-god-quota-pop');
+    quotaPop.id = 'void-god-quota-pop';
+    quotaPop.setAttribute('role', 'tooltip');
+    quotaPop.hidden = true;
+    var top = make('div', 'void-god-quota-pop__top');
+    var qi = make('span', 'void-god-quota-pop__quill');
+    qi.appendChild(quillSvg(18));
+    top.appendChild(qi);
+    buildMeter(top, 'void-god-quota-pop__meter');
+    quotaPop.appendChild(top);
+    quotaPopText = make('span', 'void-god-quota-pop__text', '');
+    quotaPop.appendChild(quotaPopText);
+    quotaPopNext = make('span', 'void-god-quota-pop__next', '');
+    quotaPopNext.hidden = true;
+    quotaPop.appendChild(quotaPopNext);
+    host.appendChild(quotaPop);
+
+    var sr = make('span', 'void-god-sr', '');
+    sr.id = 'void-god-quota-sr';
+    host.appendChild(sr);
+
+    document.addEventListener('pointerdown', function (e) {
+      if (!quotaPop || quotaPop.hidden) return;
+      if (quotaPopAnchor && quotaPopAnchor.contains(e.target)) return;
+      hideQuotaPop();
+    }, true);
+    window.addEventListener('resize', function () {
+      if (quotaPopAnchor) placeQuotaPop(quotaPopAnchor);
+    });
+  }
+
   function buildUi(host) {
     if (compose) return;
     buildQuill(host);
     buildGalaxy(host);
     buildPanel(host);
     buildCompose(host);
+    buildQuotaPop(host);
     startRemote();
   }
 

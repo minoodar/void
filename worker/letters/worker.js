@@ -17,7 +17,9 @@ const PROD_ORIGINS = new Set([
 ]);
 // Phase A design assumption, not a proven production ceiling.
 const GLOBAL_HOURLY_LIMIT = 500;
-const DAILY_SENDER_LIMIT = 2;
+// Three letters per sender inside a sliding 24h window. Enforced by the guarded
+// claim INSERT, not by this number alone; the quota route reports it verbatim.
+const DAILY_SENDER_LIMIT = 3;
 const DAY_SEC = 86400;
 // Idempotency is kept for the longest possible letter lifetime (90d).
 const SUBMISSION_RETENTION_SEC = 7776000;
@@ -82,6 +84,10 @@ export default {
       if (origin && !cors.allowed) return json({ ok: false, error: 'forbidden' }, 403, cors.headers);
       if (url.pathname === '/letters/count' && request.method === 'GET') {
         return await countLetters(env, cors);
+      }
+      // Must stay above /letters/:id, or "quota" is read as a letter id.
+      if (url.pathname === '/letters/quota' && request.method === 'GET') {
+        return await senderQuota(request, env, cors);
       }
       if (url.pathname.startsWith('/letters/') && url.pathname.endsWith('/vote') &&
           ['POST', 'PUT', 'DELETE'].indexOf(request.method) !== -1) {
@@ -402,7 +408,7 @@ async function createLetter(request, env, cors) {
     return json({ ok: false, error: 'expired' }, 410, headers);
   }
 
-  // Sliding 24h per-sender ceiling (2 letters).
+  // Sliding 24h per-sender ceiling (DAILY_SENDER_LIMIT letters).
   const recent = await recentSubmissionStats(env, senderHash, now);
   if (Number(recent && recent.count) >= DAILY_SENDER_LIMIT) {
     return json({
@@ -428,7 +434,7 @@ async function createLetter(request, env, cors) {
   const id = randomId();
 
   // The count is repeated inside the INSERT so two concurrent requests cannot
-  // both slip past the 2-per-24h ceiling; the batch is transactional.
+  // both slip past the per-sender ceiling; the batch is transactional.
   const claimStmt = env.DB.prepare(
     'INSERT INTO letter_submissions (request_id, sender_hash, letter_id, created_at) ' +
     'SELECT ?, ?, ?, ? ' +
@@ -868,6 +874,31 @@ async function countLetters(env, cors) {
     200,
     Object.assign({ 'Cache-Control': 'no-store' }, cors.headers)
   );
+}
+
+/* The sender's own remaining capacity, derived from the same HMAC identity and
+   the same sliding window the submit path enforces. It is per-IP by design, so
+   it must never be cached by a shared proxy; the response carries no hash. */
+async function senderQuota(request, env, cors) {
+  const headers = Object.assign({ 'Cache-Control': 'no-store' }, cors.headers);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+  const salt = resolveSalt(env);
+  if (!salt) return json({ ok: false, error: 'unavailable' }, 503, headers);
+
+  const senderHash = await getSenderHash(request, salt);
+  const now = Math.floor(Date.now() / 1000);
+  const stats = await recentSubmissionStats(env, senderHash, now);
+  const used = Math.min(DAILY_SENDER_LIMIT, Math.max(0, Number(stats && stats.count) || 0));
+  const remaining = DAILY_SENDER_LIMIT - used;
+  return json({
+    ok: true,
+    limit: DAILY_SENDER_LIMIT,
+    used,
+    remaining,
+    window_seconds: DAY_SEC,
+    retry_after: remaining === 0 ? dailyRetryAfter(stats, now) : 0,
+    server_now: now
+  }, 200, headers);
 }
 
 /* Visitor counting. Same contract the retired void-galaxy-counter served, but
