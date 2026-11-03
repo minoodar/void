@@ -49,7 +49,11 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 /* §ARTWORK ردیفِ نمایش فقط نام است (هیچ تصویری کنارِ عنوان نیست، پس متن و ستاره‌ها روی محورِ مرکزی
    می‌مانند). عنوان وقتی جلد دارد دکمه می‌شود: کلیک/Enter همان پنجرهٔ نمایشِ جلد در کرهٔ سیاه را
    از نو اجرا می‌کند. والد (.vm-meta) pointer-events ندارد، پس فقط همین متن هدفِ کلیک است. */
-.vm-meta.is-art .vm-title { position: relative; z-index: 1; pointer-events: auto; cursor: pointer; }
+/* ردیفِ نام خودش بالای لایهٔ کلیکِ کهکشان می‌نشیند: پودر شدنِ عنوان opacity را زیرِ ۱ می‌برد و
+   همان opacity یک بافتِ پشته می‌سازد؛ اگر z-index روی خودِ عنوان باشد، داخلِ آن بافت زندانی
+   می‌شود و لایهٔ کهکشان (z-index:0) رویش می‌افتد. */
+.vm-meta.is-art { position: relative; z-index: 2; }
+.vm-meta.is-art .vm-title { pointer-events: auto; cursor: pointer; }
 .vm-meta.is-art .vm-title:hover { color: #fff; }
 .vm-meta.is-art .vm-title:focus-visible { outline: 1px solid rgba(235, 240, 245, .55); outline-offset: 3px; border-radius: 4px; }
 #void-music-root.is-quiet .vm-meta .vm-title, .vm-meta.is-out .vm-title { pointer-events: none; }
