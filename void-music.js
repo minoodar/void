@@ -44,7 +44,8 @@
     voidMusicPlaybackCheckFailed: 'Could not verify playback in other tabs. Please try again.',
     voidMusicRetry: 'Retry',
     voidMusicFullscreen: 'Full screen', voidMusicExitFullscreen: 'Exit full screen',
-    voidMusicShowWidget: 'Show extension widget', voidMusicHideWidget: 'Hide extension widget'
+    voidMusicShowWidget: 'Show extension widget', voidMusicHideWidget: 'Hide extension widget',
+    voidMusicCoverHint: 'Show album art in the galaxy'
   };
   // پیش‌فرض انگلیسیِ کلیدهای جستجو/شافل (ترجمهٔ ۱۲ زبانه در i18n.js است)
   EN.voidMusicSearch = 'Search tracks'; EN.voidMusicSearchClear = 'Clear search'; EN.voidMusicNoResults = 'No matching tracks';
@@ -114,8 +115,6 @@
   const SHUFFLE_DEFAULT = false, SHUF_KEY = 'voidMusic.shuffle';
   try { const sv = localStorage.getItem(SHUF_KEY); S.shuffle = sv === null ? SHUFFLE_DEFAULT : sv === '1'; } catch (e) { S.shuffle = SHUFFLE_DEFAULT; }
   let root, dock, els = {};
-  /* Cosmic fallback for the current track: used when an artwork URL fails to load. */
-  let coverFallback = null;
 
   /* ------------------------------------------------------------------ */
   /* ابزارها                                                              */
@@ -733,7 +732,6 @@
      meta line empty. */
   function resolveRemoteCover(tr, tok) {
     const fallback = cosmicCover(tr.title, tr.url || '');
-    coverFallback = fallback;
     const explicit = resolveMediaUrl(tr.artwork);
     if (explicit) { applyCover(tok, tr, explicit); return; }
     if (fallback) setMeta(tr.title, tr.artist, fallback);
@@ -791,7 +789,6 @@
     if (prevTr && prevTr.url && prevTr.id !== id) emitRemoteFor(prevTr, 'inactive');
     playbackLog('audio-source-set', { readyState: a.readyState, paused: a.paused, muted: a.muted, volume: a.volume, hasSource: !!a.currentSrc, fileType: remote ? 'remote-url' : (file.type || ''), fileSize: remote ? null : file.size, remote: remote });
     setMeta(tr.title, tr.artist, null);
-    coverFallback = null;
     renderQueue();
     publishSession(tr, null);
     if (remote) resolveRemoteCover(tr, tok);
@@ -813,7 +810,6 @@
       let cu = null;
       if (m.cover) { cu = URL.createObjectURL(m.cover); }
       const cosmic = cosmicCover(tr.title, tr.name || '');
-      coverFallback = cosmic;
       if (S.coverUrl) { try { URL.revokeObjectURL(S.coverUrl); } catch (e) {} }
       S.coverUrl = cu;
       setMeta(tr.title, tr.artist, cu || cosmic, function () {
@@ -1025,18 +1021,20 @@
     root = el('div', '', { id: 'void-music-root', role: 'region', hidden: '' });
     root.classList.add('vm-root-meta-empty');
 
-    // عنوان + جلد
+    // ردیفِ نمایش فقط نام: تصویرِ آلبوم جایی در این ردیف ندارد تا متن و ستاره‌ها روی محورِ مرکزی بمانند.
     els.meta = el('div', 'vm-meta is-blank');
-    els.cover = el('img', 'vm-cover', { alt: '', hidden: '', draggable: 'false' });
-    els.cover.addEventListener('error', function () {
-      if (!coverFallback || els.cover.src === coverFallback) return;
-      els.cover.src = coverFallback;
-    });
     const tx = el('div', 'vm-text');
     els.title = el('div', 'vm-title', { dir: 'auto', 'aria-live': 'polite' });
     els.artist = el('div', 'vm-artist', { dir: 'auto' });
     tx.append(els.title, els.artist);
-    els.meta.append(els.cover, tx);
+    els.meta.append(tx);
+    // §ARTWORK عنوان دکمه است: کلیک/Enter/Space همان جلدی را که آخرین بار دیده شد از نو نشان می‌دهد.
+    els.title.addEventListener('click', function () { replayArtwork(); });
+    els.title.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); replayArtwork(); }
+    });
+    window.addEventListener('pointermove', artHoverCheck, { passive: true });
+    window.addEventListener('pointercancel', artHoverReset, { passive: true });
 
     dock = el('div', 'vm-dock is-empty');
     // کمان + تیک‌ها
@@ -1191,6 +1189,7 @@
   function relabel() {
     refreshMenuLabel();                       // دکمهٔ نوارِ بالا و منو حتی پیش از ساخته‌شدنِ پلیر
     if (!S.built) return;
+    if (artSrc) setTitleArt(true, els.title.textContent);   // راهنمای عنوان با زبانِ تازه هم‌گام بماند
     [els.vol, els.prev, els.next, els.queueBtn, els.open].forEach(function (b) {
       const s = L(b.dataset.k); b.setAttribute('aria-label', s); b.title = s;
     });
@@ -1297,6 +1296,46 @@
 
   /* ---- هم‌گام‌سازی نمایش ---- */
   let metaTimer = 0;
+  /* §ARTWORK جلد فقط دو پنجرهٔ ۵ثانیه‌ای در کرهٔ سیاه دارد: آغازِ آهنگ و پایانِ آن. ردیفِ نمایش
+     دیگر تصویر ندارد؛ کلیک روی عنوان یا هاور روی خودِ دایره همان پنجره را از نو اجرا می‌کند.
+     جلدِ آهنگِ تازه پوششِ تازه می‌گیرد؛ جلدِ کامل‌ترِ همان آهنگ (ID3) فقط جایگزین می‌شود. */
+  const ART_WIN_S = 5;
+  let artSrc = null;        // جلدِ آهنگِ جاری؛ تنها منبعِ فراخوانیِ دوباره
+  let artTrackId = null;
+  let artEndTok = -1;       // توکنِ پخشی که پنجرهٔ پایانی‌اش اجرا شده
+  function flashArtwork(url, restart) {
+    const viz = window.VoidMusicViz;
+    if (!viz || typeof viz.artwork !== 'function' || typeof url !== 'string' || !url) return;
+    const same = !restart && !!S.curId && artTrackId === S.curId;
+    artTrackId = S.curId;
+    viz.artwork(url, { replace: same, restart: !!restart });
+  }
+  function replayArtwork() { if (artSrc) flashArtwork(artSrc, true); }
+  /* عنوان فقط وقتی تصویرِ آلبوم دارد دکمه می‌شود؛ متنِ خودِ عنوان نامِ دسترس‌پذیر می‌ماند. */
+  function setTitleArt(on, title) {
+    if (!els.title) return;
+    els.meta.classList.toggle('is-art', !!on);
+    if (!on) { els.title.removeAttribute('role'); els.title.removeAttribute('tabindex'); els.title.removeAttribute('title'); return; }
+    const hint = L('voidMusicCoverHint');
+    els.title.setAttribute('role', 'button');
+    els.title.tabIndex = 0;
+    els.title.title = hint;
+    els.title.setAttribute('aria-label', (title ? title + ' \u2014 ' : '') + hint);
+  }
+  /* هاور روی دایرهٔ سیاه (نه روی داک/ردیفِ نام): اگر جلد همین حالا نمایش داده نمی‌شود، از نو می‌آید.
+     فقط گذرِ بیرون→داخل شلیک می‌کند تا حرکتِ موس روی دایره پوشش را پشتِ‌سرهم از نو نچیند. */
+  let artHover = false;
+  function artHoverReset() { artHover = false; }
+  function artHoverCheck(e) {
+    const viz = window.VoidMusicViz;
+    if (!artSrc || !viz || typeof viz.holeHit !== 'function') { artHover = false; return; }
+    const over = viz.holeHit(e.clientX, e.clientY, 12);
+    if (over === artHover) return;
+    artHover = over;
+    if (!over) return;
+    const st = typeof viz.artworkState === 'function' ? viz.artworkState() : null;
+    if (!st || !st.on) flashArtwork(artSrc, true);
+  }
   function setMeta(title, artist, coverUrl, onApplied) {
     const apply = function () {
       els.title.textContent = title || '';
@@ -1304,8 +1343,9 @@
       const cur = curTrack();
       els.meta.classList.toggle('is-golden', !!(cur && cur.golden));
       renderStars();
-      if (coverUrl) { els.cover.src = coverUrl; els.cover.hidden = false; }
-      else { els.cover.removeAttribute('src'); els.cover.hidden = true; }
+      artSrc = coverUrl || null;
+      setTitleArt(!!artSrc, title);
+      if (artSrc) flashArtwork(artSrc);
       els.meta.classList.toggle('is-blank', !title);
       els.meta.classList.remove('is-out');
       if (title) document.title = '\u266A ' + title;
@@ -1352,6 +1392,12 @@
     els.seek.setAttribute('aria-valuemax', String(Math.round(dur)));
     els.seek.setAttribute('aria-valuenow', String(Math.round(cur)));
     els.seek.setAttribute('aria-valuetext', fmt(cur) + ' / ' + fmt(dur));
+    /* §ARTWORK پنجرهٔ پایانی: ۵ ثانیهٔ آخرِ آهنگ همان جلد را دوباره می‌آورد؛ آغاز را setMeta می‌فرستد.
+       آهنگِ کوتاه‌تر از دو پنجره عمداً دوباره نمی‌شود تا نمایش یک‌سره و بی‌پرش بماند. */
+    if (a && !a.paused && artSrc && S.token !== artEndTok && cur > 0 && dur > ART_WIN_S * 2 && dur - cur <= ART_WIN_S) {
+      artEndTok = S.token;
+      flashArtwork(artSrc, true);
+    }
     if (S.mini && !S.open) syncMini();
   }
 
@@ -1590,8 +1636,9 @@
     if (!S.built || !els.stars || els.stars.hidden) return;
     const tr = els.title.getBoundingClientRect(), ar = els.artist.getBoundingClientRect();
     const bottom = Math.max(tr.bottom, ar.height ? ar.bottom : 0);
-    let cx = tr.left + tr.width / 2;
-    try { const rg = document.createRange(); rg.selectNodeContents(els.title); const b = rg.getBoundingClientRect(); if (b.width) cx = b.left + b.width / 2; } catch (e) {}
+    // محورِ X ستاره‌ها = محورِ داک (کلیدِ پخش/ساعت)، نه مرکزِ متنِ عنوان: ستاره‌ها هرگز با ردیفِ نام جابه‌جا نمی‌شوند.
+    const dr = dock.getBoundingClientRect();
+    const cx = dr.width ? dr.left + dr.width / 2 : window.innerWidth / 2;
     els.stars.style.left = Math.round(cx) + 'px'; els.stars.style.top = Math.round(bottom + 10) + 'px';
   }
   function renderStars() {

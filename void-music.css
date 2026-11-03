@@ -46,13 +46,13 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 }
 .vm-meta.is-out { opacity: 0; }
 .vm-meta.is-blank { visibility: hidden; }
-.vm-cover {
-    width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex: none;
-    opacity: .55;
-    -webkit-mask-image: radial-gradient(circle, #000 52%, transparent 100%);
-            mask-image: radial-gradient(circle, #000 52%, transparent 100%);
-}
-.vm-cover[hidden] { display: none; }
+/* §ARTWORK ردیفِ نمایش فقط نام است (هیچ تصویری کنارِ عنوان نیست، پس متن و ستاره‌ها روی محورِ مرکزی
+   می‌مانند). عنوان وقتی جلد دارد دکمه می‌شود: کلیک/Enter همان پنجرهٔ نمایشِ جلد در کرهٔ سیاه را
+   از نو اجرا می‌کند. والد (.vm-meta) pointer-events ندارد، پس فقط همین متن هدفِ کلیک است. */
+.vm-meta.is-art .vm-title { position: relative; z-index: 1; pointer-events: auto; cursor: pointer; }
+.vm-meta.is-art .vm-title:hover { color: #fff; }
+.vm-meta.is-art .vm-title:focus-visible { outline: 1px solid rgba(235, 240, 245, .55); outline-offset: 3px; border-radius: 4px; }
+#void-music-root.is-quiet .vm-meta .vm-title, .vm-meta.is-out .vm-title { pointer-events: none; }
 .vm-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .vm-title {
     font-size: 14px; font-weight: 600; letter-spacing: .02em; color: var(--vm-fg-hi);
