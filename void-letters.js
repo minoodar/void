@@ -133,6 +133,11 @@
   var statsRead = null;
   var statsOpen = false;
   var statsHoverTimer = 0;
+  var statsCloseTimer = 0;
+  var statsHovered = false;
+  var lastPointerType = 'mouse';
+  var keyboardFocus = false;
+  var suppressFocusOpen = false;
   var pillShown = false;
   var visitorsN = null;
   var rowVisitors = null;
@@ -361,6 +366,39 @@
     return { row: row, value: b };
   }
 
+  function canHoverExpand() {
+    try {
+      return !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+    } catch (e) { return false; }
+  }
+
+  /* مرحلهٔ سوم: اگر نشانگر روی تبلت بماند، پنلِ کامل بدونِ کلیک باز می‌شود. */
+  function armHoverOpen() {
+    if (statsOpen || !canHoverExpand()) return;
+    statsHovered = true;
+    clearTimeout(statsHoverTimer);
+    statsHoverTimer = setTimeout(function () {
+      statsHoverTimer = 0;
+      if (statsHovered) openStats();
+    }, 320);
+  }
+
+  function disarmHover() {
+    statsHovered = false;
+    clearTimeout(statsHoverTimer);
+    statsHoverTimer = 0;
+  }
+
+  /* مهلتِ کوتاه برای عبورِ نشانگر از تبلت به پنل؛ بدونِ آن لبه‌ها می‌لرزند. */
+  function armHoverClose() {
+    clearTimeout(statsCloseTimer);
+    if (!statsOpen) return;
+    statsCloseTimer = setTimeout(function () {
+      statsCloseTimer = 0;
+      if (!statsHovered) closeStats(false);
+    }, 320);
+  }
+
   function buildBadge(host) {
     if (el) return;
     el = document.createElement('button');
@@ -374,6 +412,9 @@
     el.setAttribute('aria-label', 'Galaxy statistics');
     el.setAttribute('title', 'Galaxy statistics');
     var people = make('span', 'vm-gs__fig');
+    var liveDot = make('span', 'vm-gs__dot');
+    liveDot.setAttribute('aria-hidden', 'true');
+    people.appendChild(liveDot);
     visitorsN = make('span', 'vm-gs__n', '\u2014');
     people.appendChild(visitorsN);
     people.appendChild(make('span', 'vm-gs__l', 'explorers'));
@@ -414,24 +455,57 @@
     statsPanel.appendChild(statsRead);
     host.appendChild(statsPanel);
 
-    el.addEventListener('click', function () {
-      if (statsOpen) closeStats(false);
-      else openStats();
+    el.addEventListener('pointerdown', function (e) {
+      lastPointerType = e.pointerType || 'mouse';
+      keyboardFocus = false;
+    });
+    el.addEventListener('pointerenter', function (e) {
+      lastPointerType = e.pointerType || 'mouse';
+      if (lastPointerType === 'touch') return;
+      clearTimeout(statsCloseTimer);
+      statsCloseTimer = 0;
+      if (statsOpen) statsHovered = true;
+      else armHoverOpen();
     });
     el.addEventListener('pointerleave', function (e) {
       if (e.pointerType === 'touch') return;
-      if (!statsOpen) return;
-      clearTimeout(statsHoverTimer);
-      statsHoverTimer = setTimeout(function () { closeStats(false); }, 1200);
+      disarmHover();
+      armHoverClose();
     });
-    statsPanel.addEventListener('pointerenter', function () {
+    el.addEventListener('focus', function () {
+      if (!keyboardFocus || suppressFocusOpen || statsOpen) return;
+      openStats();
+    });
+    el.addEventListener('click', function (e) {
+      if (lastPointerType === 'touch') {
+        if (statsOpen) closeStats(false);
+        else openStats();
+        return;
+      }
+      /* ماوس/قلم: هاور خودش باز می‌کند؛ کلیک فقط بازشدن را کامل می‌کند
+         (Enter/Space هم همین مسیر را دارند). */
+      openStats();
+    });
+    statsPanel.addEventListener('pointerenter', function (e) {
+      if (e.pointerType === 'touch') return;
+      statsHovered = true;
       clearTimeout(statsHoverTimer);
+      statsHoverTimer = 0;
+      clearTimeout(statsCloseTimer);
+      statsCloseTimer = 0;
     });
     statsPanel.addEventListener('pointerleave', function (e) {
       if (e.pointerType === 'touch') return;
-      clearTimeout(statsHoverTimer);
-      statsHoverTimer = setTimeout(function () { closeStats(false); }, 1200);
+      statsHovered = false;
+      armHoverClose();
     });
+    document.addEventListener('focusin', function (e) {
+      if (!statsOpen) return;
+      if (el.contains(e.target) || statsPanel.contains(e.target)) return;
+      closeStats(false);
+    });
+    window.addEventListener('keydown', function () { keyboardFocus = true; }, true);
+    window.addEventListener('pointerdown', function () { keyboardFocus = false; }, true);
     statsRead.addEventListener('click', readNewest);
     window.addEventListener('resize', function () {
       positionStatsIndicator();
@@ -494,12 +568,20 @@
     if (!best) best = { left: maxLeft, top: maxTop };
     statsPanel.style.left = Math.round(best.left) + 'px';
     statsPanel.style.top = Math.round(best.top) + 'px';
+    /* پنل از همان گوشه‌ای باز می‌شود که به تبلت نزدیک است تا بازشدن
+       شبیهِ بازشدنِ خودِ تبلت دیده شود، نه یک پنجرهٔ جدا. */
+    var ox = best.left + W / 2 > r.left + r.width / 2 ? 'left' : 'right';
+    var oy = best.top + H / 2 > r.top + r.height / 2 ? 'top' : 'bottom';
+    statsPanel.style.transformOrigin = ox + ' ' + oy;
   }
 
   function openStats() {
     if (!statsPanel || statsOpen) return;
     statsOpen = true;
     clearTimeout(statsHoverTimer);
+    statsHoverTimer = 0;
+    clearTimeout(statsCloseTimer);
+    statsCloseTimer = 0;
     clearTimeout(hideTimer);
     statsPanel.hidden = false;
     el.setAttribute('aria-expanded', 'true');
@@ -512,14 +594,22 @@
 
   function closeStats(focus) {
     clearTimeout(statsHoverTimer);
+    statsHoverTimer = 0;
+    clearTimeout(statsCloseTimer);
+    statsCloseTimer = 0;
+    statsHovered = false;
     if (!statsOpen) return;
     statsOpen = false;
     statsPanel.classList.remove('is-on');
     el.setAttribute('aria-expanded', 'false');
     setTimeout(function () {
       if (!statsOpen && statsPanel) statsPanel.hidden = true;
-    }, 180);
-    if (focus) { try { el.focus({ preventScroll: true }); } catch (e) {} }
+    }, 300);
+    if (focus) {
+      suppressFocusOpen = true;
+      try { el.focus({ preventScroll: true }); } catch (e) {}
+      setTimeout(function () { suppressFocusOpen = false; }, 0);
+    }
   }
 
   function holeCenter() {
