@@ -506,6 +506,277 @@
     .void-golden-modal__btn:disabled { opacity: .38; cursor: default; }
     .void-golden-modal__btn:disabled:hover { background: rgba(255, 255, 255, .03); }
     .void-golden-modal__btn--primary:disabled:hover { background: rgba(251, 191, 36, .16); }
+
+    /* ---- Sharing: one quiet row target, one folder action, one small sheet ---- */
+    .void-golden-modal__share {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      margin: 0 2px 0 4px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: none;
+      color: rgba(235, 240, 245, .44);
+      cursor: pointer;
+      transition: color .18s ease, background .18s ease;
+    }
+    .void-golden-modal__share svg {
+      display: block;
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .void-golden-modal__share:hover { color: rgba(250, 252, 255, .9); background: rgba(235, 240, 245, .06); }
+    .void-golden-modal__share:focus-visible { outline: 1px solid rgba(235, 240, 245, .8); outline-offset: 2px; color: rgba(250, 252, 255, .9); }
+    .void-golden-modal__btn--share {
+      margin-right: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding-left: 13px;
+      padding-right: 14px;
+      color: rgba(235, 240, 245, .78);
+    }
+    .void-golden-modal__btn--share svg {
+      display: block;
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    /* Narrowest phones: the share control keeps its mark, not its label, so the
+       footer stays one row and the dialog keeps its baseline height. */
+    @media (max-width: 344px) {
+      .void-golden-modal__btn--share { width: 38px; padding: 0; gap: 0; justify-content: center; font-size: 0; }
+    }
+
+    /* The sharing sheet is its own small top-layer window: same glass, tighter. */
+    #void-golden-share {
+      width: min(330px, calc(100vw - 32px));
+      margin: auto;
+      padding: 0;
+      border: 0;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(5, 7, 12, .34) 0%, rgba(2, 3, 8, .54) 100%);
+      -webkit-backdrop-filter: blur(10px) saturate(120%);
+      backdrop-filter: blur(10px) saturate(120%);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 0 0 1px rgba(235, 240, 245, .10);
+      color: rgba(250, 252, 255, .95);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+      overflow: hidden;
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    #void-golden-share[open] { display: block; animation: vgShareIn .2s cubic-bezier(.22, 1, .36, 1); }
+    #void-golden-share::backdrop {
+      background: rgba(2, 3, 8, .3);
+      -webkit-backdrop-filter: blur(3px);
+      backdrop-filter: blur(3px);
+    }
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      #void-golden-share { background: rgba(5, 7, 12, .94); }
+      #void-golden-share::backdrop { background: rgba(2, 3, 8, .78); }
+    }
+    @keyframes vgShareIn {
+      from { opacity: 0; transform: translateY(4px) scale(.985); }
+      to   { opacity: 1; transform: none; }
+    }
+    .void-golden-share__panel {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 20px 20px 16px;
+    }
+    .void-golden-share__eyebrow {
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: rgba(251, 191, 36, .72);
+    }
+    .void-golden-share__title {
+      margin: 0;
+      padding-right: 26px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: .01em;
+      color: rgba(250, 252, 255, .96);
+    }
+    .void-golden-share__meta {
+      margin: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11.5px;
+      color: rgba(235, 240, 245, .62);
+    }
+    .void-golden-share__msg {
+      margin: 2px 0 5px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: rgba(235, 240, 245, .74);
+    }
+    .void-golden-share__actions { display: flex; flex-direction: column; gap: 7px; }
+    .void-golden-share__btn {
+      padding: 9px 14px;
+      border: 1px solid rgba(235, 240, 245, .2);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .05);
+      color: rgba(250, 252, 255, .9);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .18s ease, border-color .18s ease, opacity .18s ease;
+    }
+    .void-golden-share__btn:hover { background: rgba(255, 255, 255, .08); }
+    .void-golden-share__btn--primary {
+      border-color: rgba(251, 191, 36, .5);
+      background: rgba(251, 191, 36, .14);
+      color: rgba(255, 230, 170, .98);
+    }
+    .void-golden-share__btn--primary:hover { background: rgba(251, 191, 36, .24); }
+    .void-golden-share__btn:focus-visible { outline: 2px solid rgba(235, 240, 245, .8); outline-offset: 3px; }
+    .void-golden-share__btn[hidden] { display: none; }
+    .void-golden-share__status {
+      min-height: 16px;
+      margin: 0;
+      font-size: 11px;
+      line-height: 1.45;
+      color: rgba(190, 225, 195, .9);
+    }
+    .void-golden-share__status.is-raw { color: rgba(255, 228, 168, .84); word-break: break-all; user-select: text; -webkit-user-select: text; }
+    .void-golden-share__close {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: none;
+      color: rgba(235, 240, 245, .55);
+      font: 18px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      cursor: pointer;
+    }
+    .void-golden-share__close:hover { color: rgba(250, 252, 255, .95); background: rgba(235, 240, 245, .07); }
+    .void-golden-share__close:focus-visible { outline: 2px solid rgba(235, 240, 245, .8); outline-offset: 2px; }
+
+    /* Recipient invitation: a floating card above the dock, never a modal, never an ad. */
+    #void-invite {
+      position: fixed;
+      left: max(16px, env(safe-area-inset-left, 0px));
+      bottom: calc(168px + env(safe-area-inset-bottom, 0px));
+      z-index: 1080;
+      width: min(336px, calc(100vw - 32px));
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 15px 17px 14px;
+      border: 1px solid rgba(235, 240, 245, .16);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(8, 10, 14, .74) 0%, rgba(5, 7, 12, .84) 100%);
+      -webkit-backdrop-filter: blur(14px) saturate(118%);
+      backdrop-filter: blur(14px) saturate(118%);
+      box-shadow: 0 16px 44px rgba(0, 0, 0, .46), inset 0 1px 0 rgba(255, 255, 255, .1);
+      color: rgba(250, 252, 255, .94);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+      animation: vgInviteIn .46s cubic-bezier(.22, 1, .36, 1) both;
+    }
+    #void-invite[hidden] { display: none; }
+    @keyframes vgInviteIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .void-invite__eyebrow {
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: rgba(251, 191, 36, .72);
+    }
+    .void-invite__title {
+      margin: 0;
+      font-size: 15.5px;
+      font-weight: 600;
+      line-height: 1.3;
+      letter-spacing: .005em;
+      color: rgba(250, 252, 255, .97);
+    }
+    .void-invite__line {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.5;
+      color: rgba(235, 240, 245, .68);
+    }
+    .void-invite__track {
+      margin: 3px 0 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12.5px;
+      color: rgba(255, 228, 168, .9);
+    }
+    .void-invite__track[hidden] { display: none; }
+    .void-invite__actions { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+    .void-invite__go {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 9px 12px;
+      border: 1px solid rgba(251, 191, 36, .5);
+      border-radius: 999px;
+      background: rgba(251, 191, 36, .14);
+      color: rgba(255, 230, 170, .98);
+      font: inherit;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: .09em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      transition: background .18s ease, border-color .18s ease, opacity .18s ease;
+    }
+    .void-invite__go:hover { background: rgba(251, 191, 36, .24); }
+    .void-invite__go:focus-visible { outline: 2px solid rgba(235, 240, 245, .8); outline-offset: 3px; }
+    .void-invite__go[hidden] { display: none; }
+    .void-invite__close {
+      flex: none;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: none;
+      color: rgba(235, 240, 245, .55);
+      font: 18px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      cursor: pointer;
+    }
+    .void-invite__close:hover { color: rgba(250, 252, 255, .95); background: rgba(235, 240, 245, .07); }
+    .void-invite__close:focus-visible { outline: 2px solid rgba(235, 240, 245, .8); outline-offset: 2px; }
+    @media (max-width: 520px) {
+      #void-invite {
+        left: 12px;
+        right: 12px;
+        bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+        width: auto;
+      }
+    }
+    @media (max-height: 430px) {
+      #void-invite { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); padding: 12px 14px 11px; gap: 4px; }
+      .void-invite__title { font-size: 14px; }
+    }
     @media (max-width: 420px) {
       #void-golden-modal { width: calc(100vw - 20px); border-radius: 18px; }
       .void-golden-modal__panel { padding: 18px 16px max(14px, calc(env(safe-area-inset-bottom, 0px) + 12px)); }
@@ -514,6 +785,8 @@
     }
     @media (prefers-reduced-motion: reduce) {
       #void-golden-modal[open] { animation: none; }
+      #void-golden-share[open] { animation: none; }
+      #void-invite { animation: none; }
       .void-golden-modal__sheen,
       .void-golden-modal__sheen::after { animation: none; opacity: .22; transform: none; }
       .void-golden-modal__pick,
@@ -521,7 +794,10 @@
       .void-golden-modal__pick input::after,
       .void-golden-modal__icon,
       .void-golden-modal__count,
-      .void-golden-modal__btn { transition: none; }
+      .void-golden-modal__btn,
+      .void-golden-modal__share,
+      .void-golden-share__btn,
+      .void-invite__go { transition: none; }
       .void-golden-modal__eq rect { animation: none; }
     }
 
@@ -557,11 +833,42 @@
       </div>
       <ul id="void-golden-list" class="void-golden-modal__list" aria-label="Golden Folder tracks"></ul>
       <div class="void-golden-modal__foot">
+        <button id="void-golden-share-folder" class="void-golden-modal__btn void-golden-modal__btn--share" type="button" aria-haspopup="dialog">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="12.1" cy="3.6" r="1.7"/><circle cx="3.9" cy="8" r="1.7"/><circle cx="12.1" cy="12.4" r="1.7"/><path d="M5.4 7.25 10.6 4.35M5.4 8.75l5.2 2.9"/></svg>
+          Share
+        </button>
         <button id="void-golden-cancel" class="void-golden-modal__btn" type="button">Cancel</button>
         <button id="void-golden-play" class="void-golden-modal__btn void-golden-modal__btn--primary" type="button" disabled>Play selected</button>
       </div>
     </div>
   </dialog>
+
+  <dialog id="void-golden-share" aria-labelledby="void-golden-share-title">
+    <div class="void-golden-modal__sheen" aria-hidden="true"></div>
+    <div class="void-golden-share__panel">
+      <span class="void-golden-share__eyebrow">Golden Folder</span>
+      <h2 id="void-golden-share-title" class="void-golden-share__title">Golden Folder</h2>
+      <p id="void-golden-share-meta" class="void-golden-share__meta"></p>
+      <p id="void-golden-share-msg" class="void-golden-share__msg"></p>
+      <div class="void-golden-share__actions">
+        <button id="void-golden-share-copy" class="void-golden-share__btn void-golden-share__btn--primary" type="button">Copy invitation link</button>
+        <button id="void-golden-share-native" class="void-golden-share__btn" type="button" hidden>Share&hellip;</button>
+      </div>
+      <p id="void-golden-share-status" class="void-golden-share__status" role="status" aria-live="polite"></p>
+      <button id="void-golden-share-close" class="void-golden-share__close" type="button" aria-label="Close share window">&times;</button>
+    </div>
+  </dialog>
+
+  <aside id="void-invite" hidden aria-labelledby="void-invite-title" aria-describedby="void-invite-line">
+    <span class="void-invite__eyebrow">Golden Folder</span>
+    <h2 id="void-invite-title" class="void-invite__title"></h2>
+    <p id="void-invite-line" class="void-invite__line"></p>
+    <p id="void-invite-track" class="void-invite__track"></p>
+    <div class="void-invite__actions">
+      <button id="void-invite-go" class="void-invite__go" type="button"></button>
+      <button id="void-invite-close" class="void-invite__close" type="button" aria-label="Dismiss invitation">&times;</button>
+    </div>
+  </aside>
 
   <button id="void-reopen" type="button" hidden>Open music</button>
 
@@ -705,6 +1012,19 @@
           '<rect x="6.9" y="2.4" width="2.2" height="11.6" rx="1.1" fill="currentColor"/>' +
           '<rect x="11.4" y="4.6" width="2.2" height="9.4" rx="1.1" fill="currentColor"/>' +
         '</svg>';
+      /* Same thin-stroke family as the note glyph: three nodes, two links. */
+      var SHARE_SVG =
+        '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
+          '<circle cx="12.1" cy="3.6" r="1.7"/>' +
+          '<circle cx="3.9" cy="8" r="1.7"/>' +
+          '<circle cx="12.1" cy="12.4" r="1.7"/>' +
+          '<path d="M5.4 7.25 10.6 4.35M5.4 8.75l5.2 2.9"/>' +
+        '</svg>';
+
+      function openShare(entry) {
+        var api = window.VoidGolden;
+        if (api && typeof api.openShare === 'function') api.openShare(entry);
+      }
 
       function buildList() {
         listEl.textContent = '';
@@ -731,6 +1051,18 @@
             label.appendChild(icon);
             label.appendChild(name);
             li.appendChild(label);
+            var share = document.createElement('button');
+            share.type = 'button';
+            share.className = 'void-golden-modal__share';
+            share.setAttribute('aria-label', 'Share ' + entry.title);
+            share.title = 'Share';
+            share.innerHTML = SHARE_SVG;
+            share.addEventListener('click', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              openShare(entry);
+            });
+            li.appendChild(share);
             var now = document.createElement('span');
             now.className = 'void-golden-modal__now';
             li.appendChild(now);
@@ -932,10 +1264,11 @@
         buildList();
         syncSelection();
         syncPlaying();
+        settleCatalogue();
       }
 
       function loadManagedTracks() {
-        if (typeof window.fetch !== 'function') return;
+        if (typeof window.fetch !== 'function') { settleCatalogue(); return; }
         var api = window.VoidLettersApi;
         var base = api && typeof api.base === 'string' ? api.base : 'https://void-galaxy-letters.minoodar.workers.dev';
         var controller = typeof AbortController === 'function' ? new AbortController() : null;
@@ -954,8 +1287,54 @@
         }).then(function (payload) {
           var list = normalizeTracks(payload);
           if (list) applyTracks(list);
-        }, function () { clearTimeout(timer); });
+          else settleCatalogue();
+        }, function () { clearTimeout(timer); settleCatalogue(); });
       }
+
+      /* One read-only window onto the settled catalogue for the invitation layer.
+         `ready` settles on a 200, a failure, a malformed payload or the 8 s abort;
+         `find` accepts the managed `gf-<id>` form and the static `<id>` fallback,
+         and returns null rather than guessing another track. */
+      var catalogueSettled = false;
+      var catalogueResolve = null;
+      var catalogueReady = new Promise(function (resolve) { catalogueResolve = resolve; });
+      function snapshotTracks() {
+        return DATA.map(function (t) {
+          return { id: t.id, title: t.title, artist: t.artist || '', url: t.url, artwork_url: t.artwork_url || null };
+        });
+      }
+      function settleCatalogue() {
+        if (catalogueSettled) return;
+        catalogueSettled = true;
+        catalogueResolve(snapshotTracks());
+      }
+      function findTrack(id) {
+        if (typeof id !== 'string' || !id) return null;
+        var candidates = [id];
+        if (id.indexOf('gf-') === 0) candidates.push(id.slice(3));
+        else candidates.push('gf-' + id);
+        for (var c = 0; c < candidates.length; c++) {
+          for (var i = 0; i < DATA.length; i++) {
+            if (DATA[i] && DATA[i].id === candidates[c]) return DATA[i];
+          }
+        }
+        return null;
+      }
+      window.VoidGolden = {
+        ready: catalogueReady,
+        getTracks: snapshotTracks,
+        find: findTrack,
+        play: function (id) {
+          var tr = findTrack(id);
+          if (!tr) return false;
+          requestPlay([tr], false);
+          return true;
+        },
+        open: function () {
+          /* Re-opening clears the checks; an already-open window keeps its selection. */
+          if (!dialog.open) openDialog();
+        }
+      };
 
       buildList();
       syncSelection();
@@ -974,6 +1353,9 @@
       });
 
       cancelBtn.addEventListener('click', closeDialog);
+
+      var folderShareBtn = document.getElementById('void-golden-share-folder');
+      if (folderShareBtn) folderShareBtn.addEventListener('click', function () { openShare(null); });
 
       playBtn.addEventListener('click', function () {
         if (busy) return;
@@ -1023,6 +1405,13 @@
       var PLAYER_KEYS = { k: 1, m: 1, n: 1, p: 1, f: 1, w: 1, ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1 };
       window.addEventListener('keydown', function (e) {
         if (!dialog.open) return;
+        /* The share sheet is a second top-layer window: it owns Escape and its own
+           focus, but player shortcuts must stay blocked while it is open. */
+        var shareDialog = document.getElementById('void-golden-share');
+        if (shareDialog && shareDialog.open) {
+          if (PLAYER_KEYS[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) e.stopPropagation();
+          return;
+        }
         if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
@@ -1102,6 +1491,7 @@
       });
     })();
   </script>
+  <script src="void-invite.js"></script>
   <script src="void-letters-api.js" defer></script>
   <script src="void-letters.js" defer></script>
   <script src="void-artwork.js" defer></script>
