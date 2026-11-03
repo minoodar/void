@@ -140,11 +140,14 @@
   var suppressFocusOpen = false;
   var pillShown = false;
   var visitorsN = null;
+  var returningN = null;
   var rowVisitors = null;
   var rowSessions = null;
   var rowReturned = null;
   var rowLetters = null;
+  var rowTracks = null;
   var letterTotal = null;
+  var trackTotal = 0;
   var visitorsStarted = false;
   var siteStatsTimer = 0;
   var siteStatsRefreshPromise = null;
@@ -358,12 +361,29 @@
     el.style.top = Math.round(safeTop) + 'px';
   }
 
-  function statRow(label, value) {
+  function statRow(icon, label, value) {
     var row = make('div', 'vm-gs-row');
     var b = make('b', null, value);
     row.appendChild(b);
-    row.appendChild(make('span', null, label));
+    var key = make('span', null);
+    var ico = make('i', null, icon);
+    ico.setAttribute('aria-hidden', 'true');
+    key.appendChild(ico);
+    key.appendChild(document.createTextNode(label));
+    row.appendChild(key);
     return { row: row, value: b };
+  }
+
+  function glyph(ch) {
+    var n = make('span', 'vm-gs__i', ch);
+    n.setAttribute('aria-hidden', 'true');
+    return n;
+  }
+
+  function sepGlyph() {
+    var n = make('span', 'vm-gs__sep', '\u00b7');
+    n.setAttribute('aria-hidden', 'true');
+    return n;
   }
 
   function canHoverExpand() {
@@ -415,19 +435,29 @@
     var liveDot = make('span', 'vm-gs__dot');
     liveDot.setAttribute('aria-hidden', 'true');
     people.appendChild(liveDot);
+    people.appendChild(glyph('\ud83c\udf0c'));
     visitorsN = make('span', 'vm-gs__n', '\u2014');
     people.appendChild(visitorsN);
     people.appendChild(make('span', 'vm-gs__l', 'explorers'));
-    var sep = make('span', 'vm-gs__sep');
-    sep.textContent = '\u00b7';
-    sep.setAttribute('aria-hidden', 'true');
+    /* Stage two: the two figures that only fit once the pointer rests on the
+       pill. Compact tiers never show this block; the panel carries the detail. */
+    var more = make('span', 'vm-gs__more');
+    more.appendChild(sepGlyph());
     var letters = make('span', 'vm-gs__fig');
+    letters.appendChild(glyph('\u2709\ufe0e'));
     num = make('span', 'vm-gs__n', '\u2014');
     letters.appendChild(num);
     letters.appendChild(make('span', 'vm-gs__l', 'letters'));
+    more.appendChild(letters);
+    more.appendChild(sepGlyph());
+    var back = make('span', 'vm-gs__fig');
+    back.appendChild(glyph('\u21bb'));
+    returningN = make('span', 'vm-gs__n', '\u2014');
+    back.appendChild(returningN);
+    back.appendChild(make('span', 'vm-gs__l', 'returning'));
+    more.appendChild(back);
     el.appendChild(people);
-    el.appendChild(sep);
-    el.appendChild(letters);
+    el.appendChild(more);
     host.appendChild(el);
     updateStatsLabel();
 
@@ -437,23 +467,32 @@
     statsPanel.setAttribute('role', 'dialog');
     statsPanel.setAttribute('aria-modal', 'false');
     statsPanel.setAttribute('aria-label', 'Galaxy statistics');
-    var r1 = statRow('explorers', '\u2014');
-    var r2 = statRow('sessions', '\u2014');
-    var r3 = statRow('returned', '\u2014');
-    var r4 = statRow('letters', '\u2014');
+    var r1 = statRow('\ud83c\udf0c', 'explorers', '\u2014');
+    var r2 = statRow('\u2709\ufe0e', 'letters', '\u2014');
+    var r3 = statRow('\u25f7', 'sessions', '\u2014');
+    var r4 = statRow('\u21bb', 'returning', '\u2014');
     rowVisitors = r1.value;
-    rowSessions = r2.value;
-    rowReturned = r3.value;
-    rowLetters = r4.value;
+    rowLetters = r2.value;
+    rowSessions = r3.value;
+    rowReturned = r4.value;
     statsPanel.appendChild(r1.row);
     statsPanel.appendChild(r2.row);
     statsPanel.appendChild(r3.row);
     statsPanel.appendChild(r4.row);
+    var divider = make('div', 'vm-gs-div');
+    divider.setAttribute('role', 'presentation');
+    statsPanel.appendChild(divider);
+    var r5 = statRow('\u266b', 'Golden Folder tracks', '\u2014');
+    rowTracks = r5.value;
+    statsPanel.appendChild(r5.row);
     statsRead = make('button', 'void-god-btn vm-gs-read', 'No letters yet');
     statsRead.type = 'button';
     statsRead.disabled = true;
     statsPanel.appendChild(statsRead);
     host.appendChild(statsPanel);
+
+    setTracks(readTrackCount());
+    watchCatalogue();
 
     el.addEventListener('pointerdown', function (e) {
       lastPointerType = e.pointerType || 'mouse';
@@ -665,7 +704,10 @@
     if (!el) return;
     var explorers = visitorsN ? visitorsN.textContent : '\u2014';
     var letters = num ? num.textContent : '\u2014';
-    el.setAttribute('aria-label', 'Galaxy statistics: ' + explorers + ' explorers, ' + letters + ' letters');
+    var tracks = trackTotal > 0 ? fmt(trackTotal) : '\u2014';
+    el.setAttribute('aria-label',
+      'Galaxy statistics: ' + explorers + ' explorers, ' + letters +
+      ' letters, ' + tracks + ' tracks in the Golden Folder');
   }
 
   function setVisitors(s) {
@@ -675,11 +717,38 @@
     if (visitorsN) visitorsN.textContent = fmt(u);
     if (rowVisitors) rowVisitors.textContent = fmt(u);
     if (rowSessions) rowSessions.textContent = isFinite(t) && t >= 0 ? fmt(t) : '\u2014';
-    if (rowReturned) {
-      rowReturned.textContent = isFinite(r) ? Math.round(Math.min(1, Math.max(0, r)) * 100) + '%' : '\u2014';
-    }
+    var pct = isFinite(r) ? Math.round(Math.min(1, Math.max(0, r)) * 100) + '%' : '\u2014';
+    if (returningN) returningN.textContent = pct;
+    if (rowReturned) rowReturned.textContent = pct;
     updateStatsLabel();
     showPill();
+  }
+
+  /* The Golden Folder catalogue lives on the page (static file first, then the
+     managed list). The card only mirrors it; it never fetches a second time. */
+  function readTrackCount() {
+    try {
+      var g = window.VoidGolden;
+      var list = g && typeof g.getTracks === 'function' ? g.getTracks() : null;
+      return Array.isArray(list) ? list.length : 0;
+    } catch (e) { return 0; }
+  }
+
+  function setTracks(n) {
+    n = Math.floor(Number(n));
+    trackTotal = isFinite(n) && n > 0 ? n : 0;
+    if (rowTracks) rowTracks.textContent = trackTotal ? fmt(trackTotal) : '\u2014';
+    updateStatsLabel();
+  }
+
+  function watchCatalogue() {
+    var g = window.VoidGolden;
+    if (!g || !g.ready || typeof g.ready.then !== 'function') return;
+    g.ready.then(function (list) {
+      setTracks(Array.isArray(list) ? list.length : readTrackCount());
+    }, function () {
+      setTracks(readTrackCount());
+    });
   }
 
   /* یک hit در هر نشستِ مرورگر و بعد stats. احترام به DNT/GPC مثل شمارندهٔ
