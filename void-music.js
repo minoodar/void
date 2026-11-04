@@ -1163,7 +1163,7 @@
       '.vm-stars{transition:opacity .6s ease}' +
       '.is-quiet .vm-stars{opacity:0}' +                                  // با خودکارپنهانِ رابط (همان رفتارِ عنوان) ستاره‌ها هم محو می‌شوند
       '.is-powder .vm-stars{opacity:0;transition:none}' +
-      '.vm-sound-pop{width:min(440px,calc(100vw - 24px));box-sizing:border-box;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;max-height:min(78vh,580px);overflow:auto}' +
+      '.vm-sound-pop{width:min(440px,calc(100vw - 24px));box-sizing:border-box;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;max-height:min(78vh,580px,calc(100vh - 176px));overflow:auto}' +
       '.vm-sound-pop.is-unavailable .vm-eq-bands,.vm-sound-pop.is-unavailable .vm-snd-spec{opacity:.4;pointer-events:none}' +
       '.vm-snd-head{display:flex;align-items:center;gap:8px}.vm-snd-title{flex:1;font-size:13px;letter-spacing:.04em}' +
       '.vm-snd-spec{width:100%;height:84px;display:block;border-radius:10px;background:rgba(8,10,24,.55)}' +

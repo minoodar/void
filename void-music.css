@@ -179,8 +179,9 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 #void-music-root.is-drop .vm-open-label { color: var(--vm-fg-hi); opacity: 1; }
 
 /* ---- پاپ‌اورها ---- */
+/* سطحِ ۳ پاپ‌اور را بالای .vm-meta.is-art (سطحِ ۲) می‌گذارد؛ بی آن، عنوان روی منو می‌افتد. */
 .vm-pop {
-    position: absolute; pointer-events: auto;
+    position: absolute; pointer-events: auto; z-index: 3;
     background: rgba(8, 10, 14, .82);
     -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
     border: 1px solid var(--vm-line); border-radius: 14px;
@@ -201,7 +202,9 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 }
 .vm-vol-pop input[type="range"]:focus-visible { outline: 2px solid rgba(220, 230, 240, .9); outline-offset: 2px; border-radius: 6px; }
 
-.vm-queue-pop { width: min(320px, calc(100vw - 24px)); max-height: min(44vh, 360px); display: flex; flex-direction: column; overflow: hidden; }
+/* سقفِ سوم: ۱۷۶px = ارتفاعِ داک (≤۱۴۴) + پدینگِ پایینِ ریشه (۱۴) + ۸px حاشیهٔ بالا + لنگرِ پاپ‌اور.
+   بدونِ آن، پنلِ ۷۸vh در پنجره‌های کوتاه از لبهٔ بالای دید بیرون می‌زد. */
+.vm-queue-pop { width: min(320px, calc(100vw - 24px)); max-height: min(44vh, 360px, calc(100vh - 176px)); display: flex; flex-direction: column; overflow: hidden; }
 .vm-queue-head { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--vm-line); }
 .vm-chip {
     flex: 1; min-height: 36px; padding: 0 10px; border: 1px solid var(--vm-line); border-radius: 999px;
