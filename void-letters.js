@@ -195,6 +195,38 @@
   var sharePopItems = [];
   var sharePopOpen = false;
   var sharePopTimer = 0;
+
+  /* Translation state is memory-only: nothing about a letter is persisted,
+     and the server copy is never touched. */
+  var panelTranslate = null;
+  var translatePop = null;
+  var translatePopOpen = false;
+  var translatePopTimer = 0;
+  var translateNote = null;
+  var translateDefaultItem = null;
+  var translateDefaultLabel = null;
+  var translateOriginalItem = null;
+  var translateRetryItem = null;
+  var translateList = null;
+  var translateLangItems = [];
+  var translateState = 'original';
+  var translateBusy = false;
+  var translateReady = false;
+  var translateSourceLang = null;
+  var translateTargetLang = null;
+  var translateDefaultTarget = null;
+  var translateDefaultAvail = null;
+  var translateOriginalLang = null;
+  var translateToken = 0;
+  var translatePrepToken = 0;
+  var translatePendingKey = '';
+  var translateCache = {};
+  var translators = {};
+  var translatorPending = {};
+  var translatorGen = 0;
+  var langDetector = null;
+  var langDetectorPromise = null;
+
   var panelFeedback = null;
   var panelPrevious = null;
   var panelNext = null;
@@ -1471,6 +1503,26 @@
     x.type = 'button';
     x.id = 'void-god-panel-close';
     x.setAttribute('aria-label', 'Close message');
+
+    panelTranslate = make('button', 'void-god-translate');
+    panelTranslate.type = 'button';
+    panelTranslate.id = 'void-god-panel-translate';
+    panelTranslate.disabled = true;
+    panelTranslate.setAttribute('aria-label', 'Translate letter');
+    panelTranslate.title = 'Translate letter';
+    panelTranslate.setAttribute('aria-haspopup', 'menu');
+    panelTranslate.setAttribute('aria-expanded', 'false');
+    panelTranslate.setAttribute('aria-controls', 'void-god-translate-pop');
+    panelTranslate.setAttribute('aria-pressed', 'false');
+    var translateRing = make('span', 'void-god-translate__ring');
+    var translateGlyph = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    translateGlyph.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '8.2' }));
+    translateGlyph.appendChild(svgNode('path', { d: 'M3.8 12h16.4' }));
+    translateGlyph.appendChild(svgNode('path', { d: 'M12 3.8c2.3 2.4 3.5 5.3 3.5 8.2s-1.2 5.8-3.5 8.2c-2.3-2.4-3.5-5.3-3.5-8.2S9.7 6.2 12 3.8Z' }));
+    translateRing.appendChild(translateGlyph);
+    panelTranslate.appendChild(translateRing);
+
+    head.appendChild(panelTranslate);
     head.appendChild(titles);
     head.appendChild(x);
 
@@ -1565,6 +1617,12 @@
     x.addEventListener('click', function () {
       closePanel({ dissolve: true, focus: true });
     });
+    panelTranslate.addEventListener('click', function () {
+      if (panelTranslate.disabled || translateBusy) return;
+      if (translatePopOpen) { closeTranslatePop(true); return; }
+      if (translateState === 'translated') { showOriginalLetter(); return; }
+      openTranslatePop();
+    });
     panelShareMenu.addEventListener('click', function () {
       if (sharePopOpen) closeSharePop(true);
       else openSharePop();
@@ -1577,10 +1635,13 @@
   }
 
   function renderMessage(msg) {
+    resetTranslation();
     voteBusy = false;
     panelText.textContent = msg.text;
     if (msg.lang) panelText.setAttribute('lang', msg.lang);
     else panelText.removeAttribute('lang');
+    translateOriginalLang = msg.lang || null;
+    if (panelTranslate) panelTranslate.disabled = false;
     panelTag.textContent = source.tag;
     panelMeta.textContent = source.kind === 'demo'
       ? 'Sample message from the local demo set \u2014 no real messages have arrived yet. Nothing is sent or stored.'
@@ -1835,11 +1896,13 @@
   /* Panel states reuse the existing tag/text/meta elements so the layout and
      styling stay untouched while the feed loads, is empty, or fails. */
   function showPanelState(state) {
+    resetTranslation();
     currentMessage = null;
     voteBusy = false;
     clearLifespanTimer();
     panelTag.textContent = source.tag;
     closeSharePop(false);
+    if (panelTranslate) panelTranslate.disabled = true;
     panelShareMenu.disabled = true;
     panelShare.disabled = true;
     if (panelLifespan) {
@@ -2178,6 +2241,7 @@
     panelClosing = false;
     panelRequestToken++;
     closeSharePop(false);
+    resetTranslation({ release: true });
     setReadingMode(false);
     if (!preserveReaderState) restoreMusicPresentation();
     voteBusy = false;
@@ -2197,6 +2261,7 @@
     panelClosing = true;
     panelRequestToken++;
     closeSharePop(false);
+    resetTranslation({ release: true });
     setReadingMode(false);
     restoreMusicPresentation();
     currentMessage = null;
@@ -2272,18 +2337,21 @@
     return legacyCopy(text);
   }
 
-  function feedback(label) {
+  function feedback(label, duration) {
     if (!panelFeedback) return;
     clearTimeout(feedbackTimer);
+    feedbackTimer = 0;
     panelFeedback.textContent = label;
     panelFeedback.hidden = false;
     relayoutSoon();
+    var ms = typeof duration === 'number' ? duration : 2200;
+    if (ms <= 0) return;
     feedbackTimer = setTimeout(function () {
       if (!panelFeedback) return;
       panelFeedback.hidden = true;
       panelFeedback.textContent = '';
       relayoutSoon();
-    }, 2200);
+    }, ms);
   }
 
   /* ---- منوی اشتراک: یک کارتِ شیشه‌ایِ کوچک، بیرون از پنلِ اسکرول‌شدنی در برابرِ بریده‌شدن ---- */
@@ -2381,6 +2449,7 @@
 
   function openSharePop() {
     if (!sharePop || !panelShareMenu || !currentMessage || sharePopOpen || panelShareMenu.disabled) return;
+    closeTranslatePop(false);
     syncShareMenu();
     sharePopOpen = true;
     clearTimeout(sharePopTimer);
@@ -2528,6 +2597,691 @@
     }, function () {
       feedback('Could not copy \u2014 select the message text and copy it.', false);
     });
+  }
+
+  /* ==================================================================
+     ترجمهٔ نامه — فقط روی دستگاه، با Translator و LanguageDetector بومیِ
+     کروم. متن نامه هیچ‌گاه به سروری فرستاده نمی‌شود و هیچ‌جا ذخیره نمی‌شود؛
+     فقط در حافظهٔ همین صفحه می‌ماند.
+     ================================================================== */
+  var TRANSLATE_LANGS = [
+    { code: 'ar', name: 'Arabic' },
+    { code: 'bg', name: 'Bulgarian' },
+    { code: 'bn', name: 'Bengali' },
+    { code: 'cs', name: 'Czech' },
+    { code: 'da', name: 'Danish' },
+    { code: 'de', name: 'German' },
+    { code: 'el', name: 'Greek' },
+    { code: 'en', name: 'English' },
+    { code: 'es', name: 'Spanish' },
+    { code: 'fi', name: 'Finnish' },
+    { code: 'fr', name: 'French' },
+    { code: 'he', name: 'Hebrew' },
+    { code: 'hi', name: 'Hindi' },
+    { code: 'hr', name: 'Croatian' },
+    { code: 'hu', name: 'Hungarian' },
+    { code: 'id', name: 'Indonesian' },
+    { code: 'it', name: 'Italian' },
+    { code: 'ja', name: 'Japanese' },
+    { code: 'kn', name: 'Kannada' },
+    { code: 'ko', name: 'Korean' },
+    { code: 'lt', name: 'Lithuanian' },
+    { code: 'mr', name: 'Marathi' },
+    { code: 'nl', name: 'Dutch' },
+    { code: 'pl', name: 'Polish' },
+    { code: 'pt', name: 'Portuguese' },
+    { code: 'ro', name: 'Romanian' },
+    { code: 'ru', name: 'Russian' },
+    { code: 'sk', name: 'Slovak' },
+    { code: 'sl', name: 'Slovenian' },
+    { code: 'sv', name: 'Swedish' },
+    { code: 'ta', name: 'Tamil' },
+    { code: 'te', name: 'Telugu' },
+    { code: 'th', name: 'Thai' },
+    { code: 'tr', name: 'Turkish' },
+    { code: 'uk', name: 'Ukrainian' },
+    { code: 'vi', name: 'Vietnamese' },
+    { code: 'zh-Hans', name: 'Chinese (Simplified)' },
+    { code: 'zh-Hant', name: 'Chinese (Traditional)' }
+  ];
+  var TRANSLATE_NAME = {};
+  (function () {
+    for (var i = 0; i < TRANSLATE_LANGS.length; i++) TRANSLATE_NAME[TRANSLATE_LANGS[i].code] = TRANSLATE_LANGS[i].name;
+  })();
+
+  function hasTranslator() {
+    return typeof window.Translator !== 'undefined' && window.Translator &&
+      typeof window.Translator.availability === 'function' &&
+      typeof window.Translator.create === 'function';
+  }
+
+  function hasDetector() {
+    return typeof window.LanguageDetector !== 'undefined' && window.LanguageDetector &&
+      typeof window.LanguageDetector.create === 'function';
+  }
+
+  function supportedLangCode(tag) {
+    if (!tag || typeof tag !== 'string') return null;
+    var low = tag.toLowerCase().replace(/_/g, '-');
+    if (low.indexOf('zh') === 0 || low.indexOf('zh-') === 0) {
+      return /(?:^|-)hant(?:-|$)|-(?:tw|hk|mo)(?:-|$)/.test(low) ? 'zh-Hant' : 'zh-Hans';
+    }
+    var base = low.split('-')[0];
+    if (base === 'iw') base = 'he';
+    else if (base === 'in') base = 'id';
+    return TRANSLATE_NAME[base] ? base : null;
+  }
+
+  function preferredTargetCodes(source) {
+    var nav = window.navigator || {};
+    var prefs = nav.languages && nav.languages.length
+      ? Array.prototype.slice.call(nav.languages)
+      : (nav.language ? [nav.language] : []);
+    var out = [];
+    for (var i = 0; i < prefs.length && out.length < 3; i++) {
+      var code = supportedLangCode(prefs[i]);
+      if (code && code !== source && out.indexOf(code) < 0) out.push(code);
+    }
+    return out;
+  }
+
+  function ensureDetector() {
+    if (langDetector) return Promise.resolve(langDetector);
+    if (langDetectorPromise) return langDetectorPromise;
+    if (!hasDetector()) return Promise.reject(new Error('detector_unsupported'));
+    var gen = translatorGen;
+    langDetectorPromise = Promise.resolve().then(function () {
+      return window.LanguageDetector.create();
+    }).then(function (det) {
+      langDetectorPromise = null;
+      if (gen !== translatorGen) {
+        try { det.destroy(); } catch (e) {}
+        throw new Error('cancelled');
+      }
+      langDetector = det;
+      return det;
+    }, function (err) {
+      langDetectorPromise = null;
+      throw err;
+    });
+    return langDetectorPromise;
+  }
+
+  function detectLetterLanguage(text) {
+    var settled = false;
+    var timer = 0;
+    var work = ensureDetector().then(function (det) {
+      return det.detect(text);
+    }).then(function (results) {
+      var best = results && results[0];
+      if (!best || !best.detectedLanguage) return null;
+      return {
+        code: String(best.detectedLanguage),
+        confidence: typeof best.confidence === 'number' ? best.confidence : null
+      };
+    });
+    /* A detector still fetching its model can stay pending indefinitely;
+       surface the existing retry instead of an endless "Checking…". */
+    return new Promise(function (resolve, reject) {
+      timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error('detect_timeout'));
+      }, 15000);
+      work.then(function (value) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      }, function (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
+
+  function pairAvailability(source, target) {
+    try {
+      return Promise.resolve(window.Translator.availability({
+        sourceLanguage: source,
+        targetLanguage: target
+      })).then(function (value) {
+        return typeof value === 'string' ? value : 'unavailable';
+      }, function () { return 'unavailable'; });
+    } catch (e) { return Promise.resolve('unavailable'); }
+  }
+
+  function translateIconNode(kind) {
+    var s = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    if (kind === 'globe') {
+      s.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '8.4' }));
+      s.appendChild(svgNode('path', { d: 'M3.6 12h16.8' }));
+      s.appendChild(svgNode('path', { d: 'M12 3.6c2.3 2.4 3.5 5.3 3.5 8.4s-1.2 6-3.5 8.4c-2.3-2.4-3.5-5.3-3.5-8.4S9.7 6 12 3.6Z' }));
+    } else if (kind === 'undo') {
+      s.appendChild(svgNode('path', { d: 'M8 4.8 4.4 8.4 8 12' }));
+      s.appendChild(svgNode('path', { d: 'M4.4 8.4h8.9a5.3 5.3 0 0 1 0 10.6h-4' }));
+    } else {
+      s.appendChild(svgNode('path', { d: 'M19.4 12a7.4 7.4 0 1 1-2.2-5.2' }));
+      s.appendChild(svgNode('path', { d: 'M19.3 3.7v4.6h-4.6' }));
+    }
+    return s;
+  }
+
+  function translateMenuItem(action, icon, label) {
+    var item = make('button', 'void-god-translate-pop__item');
+    item.type = 'button';
+    item.setAttribute('role', 'menuitem');
+    item.setAttribute('tabindex', '-1');
+    item.setAttribute('data-tx', action);
+    var ico = make('span', 'void-god-translate-pop__ico');
+    ico.appendChild(translateIconNode(icon));
+    item.appendChild(ico);
+    item.appendChild(make('span', 'void-god-translate-pop__label-text', label));
+    return item;
+  }
+
+  function buildTranslatePop(host) {
+    if (translatePop || !host) return;
+    translatePop = make('div', 'void-god-translate-pop');
+    translatePop.id = 'void-god-translate-pop';
+    translatePop.hidden = true;
+    translatePop.setAttribute('role', 'menu');
+    translatePop.setAttribute('aria-label', 'Translate letter');
+
+    translateNote = make('p', 'void-god-translate-pop__note');
+    translateNote.id = 'void-god-translate-note';
+    translateNote.setAttribute('role', 'status');
+    translateNote.setAttribute('aria-live', 'polite');
+    translateNote.hidden = true;
+    translatePop.appendChild(translateNote);
+
+    translateDefaultItem = translateMenuItem('translate', 'globe', 'Translate');
+    translateDefaultLabel = translateDefaultItem.querySelector('.void-god-translate-pop__label-text');
+    translateDefaultItem.hidden = true;
+    translateOriginalItem = translateMenuItem('original', 'undo', 'Show original letter');
+    translateOriginalItem.hidden = true;
+    translateRetryItem = translateMenuItem('retry', 'retry', 'Try again');
+    translateRetryItem.hidden = true;
+    translatePop.appendChild(translateDefaultItem);
+    translatePop.appendChild(translateOriginalItem);
+    translatePop.appendChild(translateRetryItem);
+
+    var sep = make('div', 'void-god-translate-pop__sep');
+    sep.setAttribute('aria-hidden', 'true');
+    var listLabel = make('p', 'void-god-translate-pop__label', 'Choose another language');
+    listLabel.setAttribute('aria-hidden', 'true');
+    translateList = make('div', 'void-god-translate-pop__list');
+    translateList.setAttribute('role', 'group');
+    translateList.setAttribute('aria-label', 'Choose another language');
+    for (var i = 0; i < TRANSLATE_LANGS.length; i++) {
+      var spec = TRANSLATE_LANGS[i];
+      var item = make('button', 'void-god-translate-pop__item void-god-translate-pop__lang');
+      item.type = 'button';
+      item.setAttribute('role', 'menuitemradio');
+      item.setAttribute('tabindex', '-1');
+      item.setAttribute('aria-checked', 'false');
+      item.setAttribute('data-lang', spec.code);
+      item.appendChild(make('span', 'void-god-translate-pop__label-text', spec.name));
+      translateList.appendChild(item);
+      translateLangItems.push(item);
+    }
+    translatePop.appendChild(sep);
+    translatePop.appendChild(listLabel);
+    translatePop.appendChild(translateList);
+
+    translatePop.addEventListener('click', onTranslatePopClick);
+    translatePop.addEventListener('keydown', onTranslatePopKey);
+    host.appendChild(translatePop);
+  }
+
+  function setTranslateNote(text) {
+    if (!translateNote) return;
+    translateNote.textContent = text || '';
+    translateNote.hidden = !text;
+    if (translatePopOpen) placeTranslatePop();
+  }
+
+  function syncTranslateButton() {
+    if (!panelTranslate) return;
+    var on = translateState === 'translated';
+    panelTranslate.classList.toggle('is-on', on);
+    panelTranslate.classList.toggle('is-busy', translateBusy);
+    panelTranslate.setAttribute('aria-busy', translateBusy ? 'true' : 'false');
+    panelTranslate.setAttribute('aria-pressed', on ? 'true' : 'false');
+    var label = translateBusy
+      ? 'Translating letter\u2026'
+      : on ? 'Show the original letter' : 'Translate letter';
+    panelTranslate.title = label;
+    panelTranslate.setAttribute('aria-label', label);
+  }
+
+  function syncTranslatePop() {
+    if (!translatePop) return;
+    if (translateDefaultItem) {
+      translateDefaultItem.hidden = !translateDefaultTarget;
+      translateDefaultItem.disabled = translateBusy || !translateReady;
+      if (translateDefaultTarget && translateDefaultLabel) {
+        translateDefaultLabel.textContent = 'Translate to ' + (TRANSLATE_NAME[translateDefaultTarget] || translateDefaultTarget);
+      }
+    }
+    if (translateOriginalItem) {
+      translateOriginalItem.hidden = translateState !== 'translated';
+      translateOriginalItem.disabled = translateBusy;
+    }
+    if (translateRetryItem) translateRetryItem.disabled = translateBusy;
+    for (var i = 0; i < translateLangItems.length; i++) {
+      var item = translateLangItems[i];
+      var code = item.getAttribute('data-lang');
+      item.hidden = !!translateSourceLang && code === translateSourceLang;
+      item.disabled = translateBusy || !translateReady;
+      var current = translateState === 'translated' && translateTargetLang === code;
+      item.classList.toggle('is-current', current);
+      item.setAttribute('aria-checked', current ? 'true' : 'false');
+    }
+  }
+
+  function translateFocusable() {
+    var list = [translateDefaultItem, translateOriginalItem, translateRetryItem];
+    for (var i = 0; i < translateLangItems.length; i++) list.push(translateLangItems[i]);
+    var out = [];
+    for (var j = 0; j < list.length; j++) {
+      var item = list[j];
+      if (item && !item.hidden && !item.disabled) out.push(item);
+    }
+    return out;
+  }
+
+  function focusTranslateFirst() {
+    if (!translatePopOpen) return;
+    /* Detection can resolve before the opening frame applies .is-on; focus()
+       would be dropped while the popover is still visibility:hidden. */
+    if (translatePop && !translatePop.classList.contains('is-on')) {
+      requestAnimationFrame(focusTranslateFirst);
+      return;
+    }
+    var active = document.activeElement;
+    if (active && active !== panelTranslate && active !== document.body) return;
+    var first = translateFocusable()[0];
+    if (first) first.focus({ preventScroll: true });
+  }
+
+  function placeTranslatePop() {
+    if (!translatePop || !translatePopOpen || !panelTranslate) return;
+    var r = panelTranslate.getBoundingClientRect();
+    translatePop.style.maxHeight = '';
+    translatePop.style.overflowY = '';
+    var w = translatePop.offsetWidth;
+    var h = translatePop.offsetHeight;
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    if (h > vh - 16) {
+      translatePop.style.maxHeight = (vh - 16) + 'px';
+      translatePop.style.overflowY = 'auto';
+      h = Math.min(translatePop.offsetHeight, vh - 16);
+    }
+    var left = Math.round(r.left);
+    left = Math.max(8, Math.min(left, vw - w - 8));
+    var top = Math.round(r.bottom + 8);
+    if (top + h > vh - 8) {
+      var above = Math.round(r.top - h - 8);
+      top = above >= 8 ? above : Math.max(8, vh - h - 8);
+    }
+    translatePop.style.left = left + 'px';
+    translatePop.style.top = top + 'px';
+  }
+
+  function openTranslatePop() {
+    if (!translatePop || !panelTranslate || !currentMessage || translatePopOpen || panelTranslate.disabled) return;
+    closeSharePop(false);
+    translatePopOpen = true;
+    clearTimeout(translatePopTimer);
+    translatePop.hidden = false;
+    panelTranslate.classList.add('is-open');
+    panelTranslate.setAttribute('aria-expanded', 'true');
+    document.addEventListener('pointerdown', onTranslatePointer, true);
+    window.addEventListener('scroll', onTranslateScroll, true);
+    window.addEventListener('resize', onTranslateDismiss);
+
+    if (translateState === 'translated' && translateSourceLang) {
+      translateReady = true;
+      translateDefaultTarget = null;
+      setTranslateNote('');
+      if (translateRetryItem) translateRetryItem.hidden = true;
+      syncTranslatePop();
+      placeTranslatePop();
+      requestAnimationFrame(function () {
+        if (!translatePopOpen) return;
+        translatePop.classList.add('is-on');
+        focusTranslateFirst();
+      });
+      return;
+    }
+
+    translateReady = false;
+    translateDefaultTarget = null;
+    translateDefaultAvail = null;
+    if (translateOriginalItem) translateOriginalItem.hidden = true;
+    if (translateRetryItem) translateRetryItem.hidden = true;
+    setTranslateNote('Checking translation support\u2026');
+    syncTranslatePop();
+    placeTranslatePop();
+    requestAnimationFrame(function () {
+      if (translatePopOpen) translatePop.classList.add('is-on');
+    });
+    prepareTranslation();
+  }
+
+  function closeTranslatePop(restoreFocus) {
+    if (!translatePopOpen) return;
+    translatePopOpen = false;
+    clearTimeout(translatePopTimer);
+    document.removeEventListener('pointerdown', onTranslatePointer, true);
+    window.removeEventListener('scroll', onTranslateScroll, true);
+    window.removeEventListener('resize', onTranslateDismiss);
+    if (translatePop) translatePop.classList.remove('is-on');
+    if (panelTranslate) {
+      panelTranslate.classList.remove('is-open');
+      panelTranslate.setAttribute('aria-expanded', 'false');
+    }
+    translatePopTimer = setTimeout(function () {
+      if (!translatePopOpen && translatePop) translatePop.hidden = true;
+    }, 180);
+    if (restoreFocus && panelTranslate && !panelTranslate.disabled) {
+      panelTranslate.focus({ preventScroll: true });
+    }
+  }
+
+  function onTranslatePointer(e) {
+    if (!translatePopOpen) return;
+    if (translatePop && translatePop.contains(e.target)) return;
+    if (panelTranslate && panelTranslate.contains(e.target)) return;
+    closeTranslatePop(false);
+  }
+
+  function onTranslateScroll(e) {
+    if (!translatePopOpen) return;
+    if (e && e.target && translatePop && translatePop.contains(e.target)) return;
+    closeTranslatePop(false);
+  }
+
+  function onTranslateDismiss() {
+    closeTranslatePop(false);
+  }
+
+  function onTranslatePopKey(e) {
+    var list = translateFocusable();
+    if (e.key === 'Tab') { closeTranslatePop(false); return; }
+    var i = list.indexOf(document.activeElement);
+    var next = -1;
+    if (e.key === 'ArrowDown') next = (i + 1) % list.length;
+    else if (e.key === 'ArrowUp') next = (i - 1 + list.length) % list.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = list.length - 1;
+    if (next >= 0 && list[next]) {
+      e.preventDefault();
+      list[next].focus({ preventScroll: true });
+    }
+  }
+
+  function onTranslatePopClick(e) {
+    var target = e.target && e.target.closest ? e.target.closest('[data-tx],[data-lang]') : null;
+    if (!target || target.disabled || target.hidden) return;
+    var lang = target.getAttribute('data-lang');
+    if (lang) { startTranslation(lang); return; }
+    var action = target.getAttribute('data-tx');
+    if (action === 'translate' && translateDefaultTarget) startTranslation(translateDefaultTarget);
+    else if (action === 'original') showOriginalLetter();
+    else if (action === 'retry') prepareTranslation();
+  }
+
+  function prepareTranslation() {
+    var token = ++translatePrepToken;
+    var msg = currentMessage;
+    translateSourceLang = null;
+    translateDefaultTarget = null;
+    translateDefaultAvail = null;
+    translateReady = false;
+    if (translateDefaultItem) translateDefaultItem.hidden = true;
+    if (translateOriginalItem) translateOriginalItem.hidden = translateState !== 'translated';
+    if (translateRetryItem) translateRetryItem.hidden = true;
+    setTranslateNote('Checking translation support\u2026');
+    syncTranslatePop();
+    if (!msg || !translatePopOpen) return;
+    if (!hasTranslator() || !hasDetector()) {
+      setTranslateNote('Translation is not supported in this browser.');
+      return;
+    }
+    detectLetterLanguage(msg.text).then(function (result) {
+      if (token !== translatePrepToken || !translatePopOpen) return;
+      if (!result || !result.code) { showTranslateProblem('Could not detect this letter\u2019s language.'); return; }
+      if (result.confidence !== null && result.confidence < 0.35) {
+        showTranslateProblem('Could not confidently detect this letter\u2019s language.');
+        return;
+      }
+      var src = supportedLangCode(result.code) || result.code;
+      translateSourceLang = src;
+      var prefs = preferredTargetCodes(src);
+      if (!prefs.length) {
+        var name = TRANSLATE_NAME[src];
+        translateReady = !!name;
+        setTranslateNote(name ? 'This letter is already in ' + name + '.' : '');
+        syncTranslatePop();
+        focusTranslateFirst();
+        return;
+      }
+      return chooseDefaultTarget(src, prefs, token);
+    }).catch(function (err) {
+      if (token !== translatePrepToken || !translatePopOpen) return;
+      if (err && err.message === 'detect_timeout') {
+        showTranslateProblem('Could not detect this letter\u2019s language.');
+        return;
+      }
+      showTranslateProblem('Translation is not supported in this browser.');
+    });
+  }
+
+  function showTranslateProblem(note) {
+    translateReady = false;
+    translateDefaultTarget = null;
+    setTranslateNote(note);
+    if (translateRetryItem) translateRetryItem.hidden = false;
+    syncTranslatePop();
+  }
+
+  function chooseDefaultTarget(src, prefs, token) {
+    var i = 0;
+    function next() {
+      if (token !== translatePrepToken || !translatePopOpen) return;
+      if (i >= prefs.length) {
+        translateReady = true;
+        translateDefaultTarget = null;
+        setTranslateNote('Translation unavailable for this language pair.');
+        syncTranslatePop();
+        return;
+      }
+      var target = prefs[i++];
+      return pairAvailability(src, target).then(function (av) {
+        if (token !== translatePrepToken || !translatePopOpen) return;
+        if (av === 'unavailable') return next();
+        translateReady = true;
+        translateDefaultTarget = target;
+        translateDefaultAvail = av;
+        setTranslateNote('');
+        syncTranslatePop();
+        focusTranslateFirst();
+      });
+    }
+    return next();
+  }
+
+  function ensureTranslator(src, target, token) {
+    var key = src + '|' + target;
+    if (translators[key]) return Promise.resolve(translators[key]);
+    if (translatorPending[key]) return translatorPending[key];
+    var gen = translatorGen;
+    var promise = Promise.resolve().then(function () {
+      var options = { sourceLanguage: src, targetLanguage: target };
+      options.monitor = function (monitor) {
+        if (!monitor || typeof monitor.addEventListener !== 'function') return;
+        monitor.addEventListener('downloadprogress', function (e) {
+          if (token !== translateToken || !translateBusy) return;
+          var loaded = Number(e && e.loaded);
+          var total = Number(e && e.total);
+          var text = 'Downloading language model\u2026';
+          if (total > 0 && loaded >= 0) {
+            text += ' ' + Math.max(1, Math.min(100, Math.round((loaded / total) * 100))) + '%';
+          }
+          feedback(text, 0);
+        });
+      };
+      return window.Translator.create(options);
+    }).then(function (translator) {
+      delete translatorPending[key];
+      if (gen !== translatorGen || token !== translateToken) {
+        try { translator.destroy(); } catch (e) {}
+        throw new Error('cancelled');
+      }
+      var keys = Object.keys(translators);
+      if (keys.length >= 3) {
+        try { translators[keys[0]].destroy(); } catch (e) {}
+        delete translators[keys[0]];
+      }
+      translators[key] = translator;
+      return translator;
+    }, function (err) {
+      delete translatorPending[key];
+      throw err;
+    });
+    translatorPending[key] = promise;
+    return promise;
+  }
+
+  function applyTranslation(text, target, msg, token) {
+    if (token !== translateToken || !panelOpen || !msg || currentMessage !== msg) return;
+    translateBusy = false;
+    translatePendingKey = '';
+    translateCache[msg.id + '|' + target] = text;
+    translateState = 'translated';
+    translateTargetLang = target;
+    if (!translateOriginalLang) translateOriginalLang = msg.lang || null;
+    panelText.textContent = text;
+    panelText.setAttribute('lang', target);
+    syncTranslateButton();
+    syncTranslatePop();
+    feedback('Translated to ' + (TRANSLATE_NAME[target] || target) + '.', 2400);
+    relayoutSoon();
+  }
+
+  function failTranslation(token, error) {
+    if (token !== translateToken) return;
+    translateBusy = false;
+    translatePendingKey = '';
+    syncTranslateButton();
+    syncTranslatePop();
+    var name = error && error.name;
+    var label;
+    if (error === 'pair' || name === 'NotSupportedError') {
+      label = 'Translation unavailable for this language pair.';
+    } else if (name === 'NotAllowedError') {
+      label = 'Translation needs another tap \u2014 try again.';
+    } else {
+      label = 'Translation failed. Please try again.';
+    }
+    feedback(label, 4200);
+  }
+
+  function startTranslation(target) {
+    if (!target || !currentMessage || translateBusy) return;
+    var msg = currentMessage;
+    var src = translateSourceLang;
+    if (!src) return;
+    var key = msg.id + '|' + src + '|' + target;
+    if (translatePendingKey === key) return;
+    var token = ++translateToken;
+    var avail = target === translateDefaultTarget ? translateDefaultAvail : null;
+    translatePendingKey = key;
+    translateBusy = true;
+    translateTargetLang = target;
+    closeTranslatePop(true);
+    syncTranslateButton();
+    syncTranslatePop();
+
+    var cached = translateCache[msg.id + '|' + target];
+    if (cached) { applyTranslation(cached, target, msg, token); return; }
+
+    feedback('Preparing language model\u2026', 0);
+    function run(availability) {
+      if (token !== translateToken) return;
+      if (availability === 'unavailable') { failTranslation(token, 'pair'); return; }
+      feedback(availability === 'available' ? 'Translating letter\u2026' : 'Preparing language model\u2026', 0);
+      ensureTranslator(src, target, token).then(function (translator) {
+        if (token !== translateToken) return;
+        feedback('Translating letter\u2026', 0);
+        return Promise.resolve(translator.translate(msg.text)).then(function (out) {
+          if (token !== translateToken) return;
+          if (typeof out !== 'string' || !out) throw new Error('empty');
+          applyTranslation(out, target, msg, token);
+        });
+      }).catch(function (err) {
+        if (token !== translateToken) return;
+        failTranslation(token, err);
+      });
+    }
+    if (avail !== null) run(avail);
+    else pairAvailability(src, target).then(run);
+  }
+
+  function showOriginalLetter() {
+    if (!currentMessage || translateState !== 'translated') return;
+    closeTranslatePop(true);
+    panelText.textContent = currentMessage.text;
+    if (translateOriginalLang) panelText.setAttribute('lang', translateOriginalLang);
+    else panelText.removeAttribute('lang');
+    translateState = 'original';
+    syncTranslateButton();
+    syncTranslatePop();
+    feedback('Showing the original letter.', 2200);
+    relayoutSoon();
+  }
+
+  function releaseTranslationEngine() {
+    translatorGen++;
+    var keys = Object.keys(translators);
+    for (var i = 0; i < keys.length; i++) {
+      try { translators[keys[i]].destroy(); } catch (e) {}
+    }
+    translators = {};
+    translatorPending = {};
+    if (langDetector) {
+      try { langDetector.destroy(); } catch (e) {}
+    }
+    langDetector = null;
+    langDetectorPromise = null;
+  }
+
+  function resetTranslation(opts) {
+    opts = opts || {};
+    translateToken++;
+    translatePrepToken++;
+    closeTranslatePop(false);
+    translateBusy = false;
+    translatePendingKey = '';
+    translateState = 'original';
+    translateTargetLang = null;
+    translateDefaultTarget = null;
+    translateDefaultAvail = null;
+    translateSourceLang = null;
+    translateOriginalLang = null;
+    translateReady = false;
+    translateCache = {};
+    if (translateDefaultItem) translateDefaultItem.hidden = true;
+    if (translateOriginalItem) translateOriginalItem.hidden = true;
+    if (translateRetryItem) translateRetryItem.hidden = true;
+    syncTranslateButton();
+    syncTranslatePop();
+    if (opts.release) releaseTranslationEngine();
   }
 
   /* ==================================================================
@@ -3073,6 +3827,7 @@
     buildGalaxy(host);
     buildPanel(host);
     buildSharePop(host);
+    buildTranslatePop(host);
     buildCompose(host);
     buildQuotaPop(host);
     startRemote();
@@ -3095,7 +3850,8 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      if (sharePopOpen) closeSharePop(true);
+      if (translatePopOpen) closeTranslatePop(true);
+      else if (sharePopOpen) closeSharePop(true);
       else if (compose && compose.open) closeCompose();
       else if (panelOpen) closePanel({ dissolve: true, focus: true });
       else closeStats(true);
@@ -3105,6 +3861,19 @@
        popover navigation has to be forwarded here instead of swallowed. */
     var keyTarget = e.target;
     if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (translatePopOpen && translatePop && keyTarget && translatePop.contains(keyTarget)) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+          e.stopPropagation();
+          onTranslatePopKey(e);
+          return;
+        }
+      }
+      if (keyTarget === panelTranslate && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        e.stopPropagation();
+        openTranslatePop();
+        return;
+      }
       if (sharePopOpen && sharePop && keyTarget && sharePop.contains(keyTarget) &&
           (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         e.stopPropagation();
