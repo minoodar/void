@@ -809,6 +809,78 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-copy-icon.is-copied { color: rgba(180, 220, 195, .96); }
 .void-god-copy-icon.is-copied > svg:first-child { display: none; }
 .void-god-copy-icon.is-copied .void-god-copy-icon__check { display: block; }
+/* ---- منوی اشتراک: شیشهٔ کوچک، بیرون از پنلِ اسکرول‌شدنی تا هیچ‌گاه بریده نشود ---- */
+.void-god-share-trigger { position: static; }
+.void-god-share-trigger svg {
+    display: block; width: 18px; height: 18px;
+    fill: none; stroke: currentColor; stroke-width: 1.7;
+    stroke-linecap: round; stroke-linejoin: round;
+}
+.void-god-share-trigger.is-open { color: #fff; background: rgba(255, 255, 255, .07); }
+.void-god-share-pop {
+    position: fixed;
+    left: 0; top: 0;
+    z-index: 6;
+    box-sizing: border-box;
+    width: 188px;
+    padding: 6px;
+    border: 1px solid rgba(235, 240, 245, .16);
+    border-radius: 12px;
+    background:
+        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
+        rgba(9, 12, 18, .93);
+    -webkit-backdrop-filter: blur(14px) saturate(115%);
+            backdrop-filter: blur(14px) saturate(115%);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .6), 0 0 0 1px rgba(0, 0, 0, .3);
+    font: 11.5px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    pointer-events: auto;
+    opacity: 0; visibility: hidden; transform: translateY(2px) scale(.98);
+    transition: opacity .16s ease, transform .22s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .22s;
+}
+.void-god-share-pop[hidden] { display: none; }
+.void-god-share-pop.is-on { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.void-god-share-pop__item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    min-height: 38px;
+    margin: 0;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: rgba(245, 247, 250, .9);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.void-god-share-pop__item[hidden] { display: none; }
+.void-god-share-pop__item:hover:not(:disabled),
+.void-god-share-pop__item:focus-visible {
+    background: rgba(255, 255, 255, .07);
+    color: #fff;
+}
+.void-god-share-pop__item:focus-visible { outline: 1px solid rgba(235, 240, 245, .7); outline-offset: 1px; }
+.void-god-share-pop__item:disabled { opacity: .34; cursor: not-allowed; }
+.void-god-share-pop__ico {
+    display: grid;
+    place-items: center;
+    flex: 0 0 15px;
+    width: 15px; height: 15px;
+    color: rgba(235, 240, 245, .8);
+}
+.void-god-share-pop__ico svg {
+    display: block;
+    width: 15px; height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.void-god-share-pop__label { display: block; min-width: 0; }
 .void-god-msg-meta {
     margin: 0;
     font-size: 11px;
@@ -1348,6 +1420,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     #void-galaxy-stats-panel { transition: none; }
     #void-god-dialog[open] { animation: none; }
     .void-god-quota-pop,
+    .void-god-share-pop,
     .vm-meter,
     .vm-meter__d path,
     .void-god-quill__icon,

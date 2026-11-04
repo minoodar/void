@@ -189,8 +189,12 @@
   var panelDislike = null;
   var likeCount = null;
   var dislikeCount = null;
-  var panelCopy = null;
+  var panelShareMenu = null;
   var panelShare = null;
+  var sharePop = null;
+  var sharePopItems = [];
+  var sharePopOpen = false;
+  var sharePopTimer = 0;
   var panelFeedback = null;
   var panelPrevious = null;
   var panelNext = null;
@@ -1474,18 +1478,20 @@
     panelText.id = 'void-god-panel-text';
     panelText.setAttribute('dir', 'auto');
     var messageBody = make('div', 'void-god-msg-wrap');
-    panelCopy = make('button', 'void-god-reader-icon void-god-copy-icon');
-    panelCopy.type = 'button';
-    panelCopy.id = 'void-god-copy';
-    panelCopy.setAttribute('aria-label', 'Copy letter');
-    panelCopy.title = 'Copy letter';
-    var copySvg = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
-    copySvg.appendChild(svgNode('rect', { x: '8', y: '8', width: '12', height: '12', rx: '2' }));
-    copySvg.appendChild(svgNode('path', { d: 'M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3' }));
-    panelCopy.appendChild(copySvg);
-    var copiedSvg = svgNode('svg', { viewBox: '0 0 24 24', class: 'void-god-copy-icon__check', 'aria-hidden': 'true', focusable: 'false' });
-    copiedSvg.appendChild(svgNode('path', { d: 'm5 12 4 4L19 6' }));
-    panelCopy.appendChild(copiedSvg);
+    panelShareMenu = make('button', 'void-god-reader-icon void-god-share-trigger');
+    panelShareMenu.type = 'button';
+    panelShareMenu.id = 'void-god-share-menu';
+    panelShareMenu.setAttribute('aria-label', 'Share this letter');
+    panelShareMenu.title = 'Share this letter';
+    panelShareMenu.setAttribute('aria-haspopup', 'menu');
+    panelShareMenu.setAttribute('aria-expanded', 'false');
+    panelShareMenu.setAttribute('aria-controls', 'void-god-share-pop');
+    var shareGlyph = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    shareGlyph.appendChild(svgNode('circle', { cx: '17', cy: '6', r: '2.2' }));
+    shareGlyph.appendChild(svgNode('circle', { cx: '7', cy: '12', r: '2.2' }));
+    shareGlyph.appendChild(svgNode('circle', { cx: '17', cy: '18', r: '2.2' }));
+    shareGlyph.appendChild(svgNode('path', { d: 'M8.9 10.9 15.1 7.1M8.9 13.1 15.1 16.9' }));
+    panelShareMenu.appendChild(shareGlyph);
     messageBody.appendChild(panelText);
 
     panelMeta = make('p', 'void-god-msg-meta');
@@ -1537,9 +1543,9 @@
     nav.setAttribute('role', 'group');
     nav.setAttribute('aria-label', 'Letter navigation and actions');
     nav.appendChild(panelPrevious);
-    nav.appendChild(panelShare);
+    nav.appendChild(panelShareMenu);
     nav.appendChild(panelVotes);
-    nav.appendChild(panelCopy);
+    nav.appendChild(panelShare);
     nav.appendChild(panelNext);
 
     panelFeedback = make('p', 'void-god-panel__status');
@@ -1559,7 +1565,10 @@
     x.addEventListener('click', function () {
       closePanel({ dissolve: true, focus: true });
     });
-    panelCopy.addEventListener('click', onCopy);
+    panelShareMenu.addEventListener('click', function () {
+      if (sharePopOpen) closeSharePop(true);
+      else openSharePop();
+    });
     panelShare.addEventListener('click', onShare);
     panelLike.addEventListener('click', function () { onVote('like'); });
     panelDislike.addEventListener('click', function () { onVote('dislike'); });
@@ -1579,18 +1588,18 @@
     clearTimeout(feedbackTimer);
     panelFeedback.hidden = true;
     panelFeedback.textContent = '';
-    panelCopy.classList.remove('is-copied');
-    panelCopy.setAttribute('aria-label', 'Copy letter');
-    panelCopy.title = 'Copy letter';
-    panelCopy.disabled = false;
+    closeSharePop(false);
+    panelShareMenu.disabled = false;
+    panelShareMenu.setAttribute('aria-label', 'Share this letter');
+    panelShareMenu.title = 'Share this letter';
     var canShare = !!messageLink(msg);
     panelShare.disabled = !canShare;
     panelShare.title = canShare
       ? 'Share this letter on X'
-      : 'This message has no public link \u2014 use Copy instead';
+      : 'This message has no public link \u2014 use Share instead';
     panelShare.setAttribute('aria-label', canShare
       ? 'Share this letter on X'
-      : 'Sharing unavailable \u2014 copy the message instead');
+      : 'Sharing unavailable \u2014 share the message instead');
     renderLifespan(msg.expires_at);
     renderVotes(msg);
   }
@@ -1830,7 +1839,8 @@
     voteBusy = false;
     clearLifespanTimer();
     panelTag.textContent = source.tag;
-    panelCopy.disabled = true;
+    closeSharePop(false);
+    panelShareMenu.disabled = true;
     panelShare.disabled = true;
     if (panelLifespan) {
       panelLifespan.hidden = true;
@@ -2167,6 +2177,7 @@
     panelOpen = false;
     panelClosing = false;
     panelRequestToken++;
+    closeSharePop(false);
     setReadingMode(false);
     if (!preserveReaderState) restoreMusicPresentation();
     voteBusy = false;
@@ -2185,6 +2196,7 @@
     panelOpen = false;
     panelClosing = true;
     panelRequestToken++;
+    closeSharePop(false);
     setReadingMode(false);
     restoreMusicPresentation();
     currentMessage = null;
@@ -2260,34 +2272,236 @@
     return legacyCopy(text);
   }
 
-  function feedback(label, copied) {
+  function feedback(label) {
     if (!panelFeedback) return;
     clearTimeout(feedbackTimer);
     panelFeedback.textContent = label;
     panelFeedback.hidden = false;
-    panelCopy.classList.toggle('is-copied', !!copied);
-    panelCopy.setAttribute('aria-label', copied ? 'Letter copied' : 'Copy letter');
-    panelCopy.title = copied ? 'Copied' : 'Copy letter';
     relayoutSoon();
     feedbackTimer = setTimeout(function () {
       if (!panelFeedback) return;
       panelFeedback.hidden = true;
       panelFeedback.textContent = '';
-      panelCopy.classList.remove('is-copied');
-      panelCopy.setAttribute('aria-label', 'Copy letter');
-      panelCopy.title = 'Copy letter';
       relayoutSoon();
     }, 2200);
   }
 
-  function onCopy() {
-    if (!currentMessage) return;
-    var text = currentMessage.text;
-    copyText(text).then(function () {
-      feedback('Copied to clipboard.', true);
-    }, function () {
-      feedback('Could not copy automatically \u2014 select the message text and copy it.', false);
+  /* ---- منوی اشتراک: یک کارتِ شیشه‌ایِ کوچک، بیرون از پنلِ اسکرول‌شدنی در برابرِ بریده‌شدن ---- */
+  var SHARE_ITEMS = [
+    { key: 'copy-link', label: 'Copy Link', icon: 'link', needsLink: true },
+    { key: 'copy-text', label: 'Copy Text', icon: 'text', needsLink: false },
+    { key: 'whatsapp', label: 'WhatsApp', icon: 'chat', needsLink: true },
+    { key: 'telegram', label: 'Telegram', icon: 'send', needsLink: true },
+    { key: 'native', label: 'More', icon: 'more', needsLink: false, nativeOnly: true }
+  ];
+
+  function shareIconNode(kind) {
+    var s = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    if (kind === 'link') {
+      s.appendChild(svgNode('path', { d: 'M10.6 13.4a4.4 4.4 0 0 0 6.2 0l2.1-2.1a4.4 4.4 0 0 0-6.2-6.2l-1.2 1.2' }));
+      s.appendChild(svgNode('path', { d: 'M13.4 10.6a4.4 4.4 0 0 0-6.2 0l-2.1 2.1a4.4 4.4 0 0 0 6.2 6.2l1.2-1.2' }));
+    } else if (kind === 'text') {
+      s.appendChild(svgNode('path', { d: 'M8 4h8a2 2 0 0 1 2 2v14l-3-2-3 2-3-2-3 2V6a2 2 0 0 1 2-2Z' }));
+      s.appendChild(svgNode('path', { d: 'M9.5 9.5h5M9.5 13h5' }));
+    } else if (kind === 'chat') {
+      s.appendChild(svgNode('path', { d: 'M21 11.4a8.4 8.4 0 0 1-8.4 8.4H5.2l1.9-3A8.4 8.4 0 1 1 21 11.4Z' }));
+    } else if (kind === 'send') {
+      s.appendChild(svgNode('path', { d: 'M21.5 2.5 10.8 13.2' }));
+      s.appendChild(svgNode('path', { d: 'M21.5 2.5 14.8 21l-4-7.8-7.8-4 18.5-6.7Z' }));
+    } else {
+      s.appendChild(svgNode('path', { d: 'M12 15V4M8 8l4-4 4 4M5 14v5h14v-5' }));
+    }
+    return s;
+  }
+
+  function buildSharePop(host) {
+    if (sharePop || !host) return;
+    sharePop = make('div', 'void-god-share-pop');
+    sharePop.id = 'void-god-share-pop';
+    sharePop.hidden = true;
+    sharePop.setAttribute('role', 'menu');
+    sharePop.setAttribute('aria-label', 'Share this letter');
+    for (var i = 0; i < SHARE_ITEMS.length; i++) {
+      var spec = SHARE_ITEMS[i];
+      var item = make('button', 'void-god-share-pop__item');
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      item.setAttribute('tabindex', '-1');
+      item.setAttribute('data-share', spec.key);
+      if (spec.nativeOnly) item.setAttribute('data-native', '1');
+      var ico = make('span', 'void-god-share-pop__ico');
+      ico.appendChild(shareIconNode(spec.icon));
+      item.appendChild(ico);
+      item.appendChild(make('span', 'void-god-share-pop__label', spec.label));
+      sharePopItems.push(item);
+      sharePop.appendChild(item);
+    }
+    sharePop.addEventListener('click', function (e) {
+      var item = e.target && e.target.closest ? e.target.closest('[data-share]') : null;
+      if (item) shareMenuAction(item.getAttribute('data-share'));
     });
+    sharePop.addEventListener('keydown', onSharePopKey);
+    host.appendChild(sharePop);
+  }
+
+  function shareFocusable() {
+    var list = [];
+    for (var i = 0; i < sharePopItems.length; i++) {
+      var el = sharePopItems[i];
+      if (!el.disabled && !el.hidden) list.push(el);
+    }
+    return list;
+  }
+
+  function syncShareMenu() {
+    var link = messageLink(currentMessage);
+    var canNative = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+    for (var i = 0; i < sharePopItems.length; i++) {
+      var item = sharePopItems[i];
+      var spec = SHARE_ITEMS[i];
+      if (spec.nativeOnly) item.hidden = !canNative;
+      var blocked = (spec.needsLink && !link) || (spec.nativeOnly && !canNative);
+      item.disabled = blocked;
+      item.setAttribute('aria-disabled', blocked ? 'true' : 'false');
+      item.title = blocked ? 'No public link for this letter' : '';
+    }
+  }
+
+  function placeSharePop() {
+    var r = panelShareMenu.getBoundingClientRect();
+    var w = sharePop.offsetWidth;
+    var h = sharePop.offsetHeight;
+    var left = Math.round(r.left + r.width / 2 - w / 2);
+    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+    var top = Math.round(r.top - h - 8);
+    if (top < 8) top = Math.round(Math.min(r.bottom + 8, window.innerHeight - h - 8));
+    sharePop.style.left = left + 'px';
+    sharePop.style.top = top + 'px';
+  }
+
+  function openSharePop() {
+    if (!sharePop || !panelShareMenu || !currentMessage || sharePopOpen || panelShareMenu.disabled) return;
+    syncShareMenu();
+    sharePopOpen = true;
+    clearTimeout(sharePopTimer);
+    sharePop.hidden = false;
+    placeSharePop();
+    panelShareMenu.classList.add('is-open');
+    panelShareMenu.setAttribute('aria-expanded', 'true');
+    document.addEventListener('pointerdown', onSharePointer, true);
+    window.addEventListener('scroll', onShareDismiss, true);
+    window.addEventListener('resize', onShareDismiss);
+    requestAnimationFrame(function () {
+      if (!sharePopOpen) return;
+      sharePop.classList.add('is-on');
+      var first = shareFocusable()[0];
+      if (first) first.focus({ preventScroll: true });
+    });
+  }
+
+  function closeSharePop(restoreFocus) {
+    if (!sharePopOpen) return;
+    sharePopOpen = false;
+    clearTimeout(sharePopTimer);
+    document.removeEventListener('pointerdown', onSharePointer, true);
+    window.removeEventListener('scroll', onShareDismiss, true);
+    window.removeEventListener('resize', onShareDismiss);
+    if (sharePop) sharePop.classList.remove('is-on');
+    if (panelShareMenu) {
+      panelShareMenu.classList.remove('is-open');
+      panelShareMenu.setAttribute('aria-expanded', 'false');
+    }
+    sharePopTimer = setTimeout(function () {
+      if (!sharePopOpen && sharePop) sharePop.hidden = true;
+    }, 180);
+    if (restoreFocus && panelShareMenu && !panelShareMenu.disabled) {
+      panelShareMenu.focus({ preventScroll: true });
+    }
+  }
+
+  function onSharePointer(e) {
+    if (!sharePopOpen) return;
+    if (sharePop && sharePop.contains(e.target)) return;
+    if (panelShareMenu && panelShareMenu.contains(e.target)) return;
+    closeSharePop(false);
+  }
+
+  function onShareDismiss() {
+    closeSharePop(false);
+  }
+
+  function onSharePopKey(e) {
+    var list = shareFocusable();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSharePop(true);
+      return;
+    }
+    if (e.key === 'Tab') { closeSharePop(false); return; }
+    var i = list.indexOf(document.activeElement);
+    var next = -1;
+    if (e.key === 'ArrowDown') next = (i + 1) % list.length;
+    else if (e.key === 'ArrowUp') next = (i - 1 + list.length) % list.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = list.length - 1;
+    if (next >= 0 && list[next]) {
+      e.preventDefault();
+      list[next].focus({ preventScroll: true });
+    }
+  }
+
+  function shareMenuAction(key) {
+    var msg = currentMessage;
+    if (!msg) return;
+    var link = messageLink(msg);
+    if (key === 'copy-link') {
+      if (!link) return;
+      copyText(link).then(function () {
+        closeSharePop(true);
+        feedback('Link copied.');
+      }, function () {
+        closeSharePop(true);
+        feedback('Could not copy the link \u2014 select the URL and copy it.');
+      });
+    } else if (key === 'copy-text') {
+      copyText(msg.text).then(function () {
+        closeSharePop(true);
+        feedback('Copied to clipboard.');
+      }, function () {
+        closeSharePop(true);
+        feedback('Could not copy automatically \u2014 select the message text and copy it.');
+      });
+    } else if (key === 'whatsapp') {
+      if (!link) return;
+      shareWindow('https://wa.me/?text=' + encodeURIComponent(msg.text + '\n\n' + link));
+    } else if (key === 'telegram') {
+      if (!link) return;
+      shareWindow('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(msg.text));
+    } else if (key === 'native') {
+      shareNative(msg, link);
+    }
+  }
+
+  function shareWindow(url) {
+    closeSharePop(true);
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e) {}
+  }
+
+  function shareNative(msg, link) {
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return;
+    var payload = { title: 'A message from the galaxy', text: xShareText(msg.text, 'panel') };
+    if (link) payload.url = link;
+    try {
+      navigator.share(payload).then(function () {
+        closeSharePop(true);
+      }, function (err) {
+        closeSharePop(true);
+        if (!err || err.name !== 'AbortError') {
+          feedback('Sharing was not available \u2014 copy the link instead.');
+        }
+      });
+    } catch (e) { closeSharePop(true); }
   }
 
   /* اشتراک در X با همان روشِ دکمهٔ «Share on X» پس از ثبت: یک لینکِ مستقیمِ
@@ -2858,6 +3072,7 @@
     buildQuill(host);
     buildGalaxy(host);
     buildPanel(host);
+    buildSharePop(host);
     buildCompose(host);
     buildQuotaPop(host);
     startRemote();
@@ -2880,10 +3095,28 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      if (compose && compose.open) closeCompose();
+      if (sharePopOpen) closeSharePop(true);
+      else if (compose && compose.open) closeCompose();
       else if (panelOpen) closePanel({ dissolve: true, focus: true });
       else closeStats(true);
       return;
+    }
+    /* The capture guard runs before the popover's own keydown handler, so
+       popover navigation has to be forwarded here instead of swallowed. */
+    var keyTarget = e.target;
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (sharePopOpen && sharePop && keyTarget && sharePop.contains(keyTarget) &&
+          (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.stopPropagation();
+        onSharePopKey(e);
+        return;
+      }
+      if (keyTarget === panelShareMenu && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        e.stopPropagation();
+        openSharePop();
+        return;
+      }
     }
     /* Let the dialog own arrows/space (radios, buttons); only keep the player's
        document-capture shortcuts from firing underneath the open surface. */
