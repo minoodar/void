@@ -9,7 +9,10 @@ CREATE TABLE IF NOT EXISTS letters (
   body        TEXT NOT NULL,                 -- Normalized, validated UTF-8 text (max 500 codepoints)
   lang        TEXT DEFAULT NULL,             -- Normalized ISO/BCP47 lang tag or NULL
   created_at  INTEGER NOT NULL,              -- Unix timestamp in seconds
-  expires_at  INTEGER NOT NULL               -- Unix timestamp in seconds
+  expires_at  INTEGER NOT NULL,              -- Unix timestamp in seconds
+  secret_ink  INTEGER NOT NULL DEFAULT 0,    -- 1 = readers see it masked until they reveal it
+  base_expires_at INTEGER DEFAULT NULL,       -- Expiry snapshot used as the vote baseline
+  base_votes_net INTEGER NOT NULL DEFAULT 0   -- Net vote count already baked into that snapshot
 );
 
 CREATE INDEX IF NOT EXISTS idx_letters_expires ON letters(expires_at);
