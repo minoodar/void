@@ -711,6 +711,93 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     line-height: 1.25;
     letter-spacing: .02em;
     color: rgba(250, 252, 255, .96);
+    overflow-wrap: anywhere;
+}
+/* The translation control keeps its own circle: a 44px target whose visible
+   mark is a 30px ring, so busy/original/translated never resize the header. */
+.void-god-translate {
+    display: grid;
+    place-items: center;
+    flex: 0 0 44px;
+    width: 44px; height: 44px;
+    min-width: 44px; min-height: 44px;
+    margin: 0; padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: rgba(214, 208, 190, .62);
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .18s ease, background .18s ease;
+}
+.void-god-translate__ring {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 30px; height: 30px;
+    border: 1px solid rgba(214, 208, 190, .26);
+    border-radius: 50%;
+    transition: border-color .18s ease, color .18s ease;
+}
+.void-god-translate__ring svg {
+    display: block;
+    width: 17px; height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.void-god-translate:hover:not(:disabled),
+.void-god-translate:focus-visible {
+    color: rgba(232, 220, 192, .95);
+    background: rgba(214, 208, 190, .07);
+}
+.void-god-translate:hover:not(:disabled) .void-god-translate__ring,
+.void-god-translate:focus-visible .void-god-translate__ring { border-color: rgba(214, 208, 190, .42); }
+.void-god-translate:focus-visible { outline: 2px solid rgba(214, 208, 190, .8); outline-offset: 2px; }
+.void-god-translate:active:not(:disabled) { background: rgba(214, 208, 190, .1); }
+.void-god-translate:disabled { opacity: .34; cursor: not-allowed; }
+.void-god-translate.is-on {
+    color: rgba(201, 176, 137, .95);
+    background: rgba(165, 140, 97, .09);
+}
+.void-god-translate.is-on .void-god-translate__ring { border-color: rgba(165, 140, 97, .5); }
+.void-god-translate.is-busy .void-god-translate__ring { color: rgba(232, 220, 192, .9); }
+.void-god-translate.is-busy .void-god-translate__ring::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 1px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: voidTranslateSpin .9s linear infinite;
+}
+@keyframes voidTranslateSpin { to { transform: rotate(360deg); } }
+/* A quiet signature: the writer's glyph sits between the translation control
+   and the label, inert and never mistaken for a button. */
+.void-god-msg-presence {
+    display: grid;
+    place-items: center;
+    flex: 0 0 26px;
+    width: 26px; height: 26px;
+    border: 1px solid rgba(214, 208, 190, .18);
+    border-radius: 50%;
+    background: rgba(214, 208, 190, .03);
+    color: rgba(214, 208, 190, .66);
+    pointer-events: none;
+}
+.void-god-msg-presence[hidden] { display: none; }
+.void-god-msg-presence svg {
+    display: block;
+    width: 15px; height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 .void-god-nav__button {
     display: grid; place-items: center;
@@ -1164,7 +1251,8 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 10px;
+    min-width: 0;
 }
 .void-god-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
 .void-god-title {
@@ -1182,9 +1270,10 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     color: rgba(165, 140, 97, .82);
 }
 .void-god-x {
-    flex: none;
+    flex: 0 0 44px;
     width: 44px; height: 44px;
-    margin: 0 0 0 auto;
+    margin: 0;
+    margin-inline-start: auto;
     display: grid; place-items: center;
     padding: 0;
     border: 0; border-radius: 50%;
@@ -1229,8 +1318,8 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-quota__text { color: rgba(119, 123, 120, .9); }
 .void-god-quota.is-exhausted .void-god-quota__text { color: rgba(201, 176, 137, .9); }
 
-/* A quiet presence: five glyphs on one grid, none selected by default and
-   none stored anywhere. */
+/* A quiet presence: five fixed glyphs on one grid, none selected by default.
+   The chosen name travels with the letter; no identity does. */
 .void-god-presence {
     margin: 0; padding: 0;
     border: 0;

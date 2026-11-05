@@ -183,6 +183,8 @@
 
   var panel = null;
   var panelText = null;
+  var panelPresence = null;
+  var PRESENCE_LABELS = { human: 'Human', moon: 'Moon', root: 'Root', unknown: 'Unknown' };
   var panelTag = null;
   var panelMeta = null;
   var panelLifespan = null;
@@ -1547,7 +1549,14 @@
     translateRing.appendChild(translateGlyph);
     panelTranslate.appendChild(translateRing);
 
+    /* The writer's chosen glyph, not the viewer's state: decorative, inert,
+       and reset for every letter before it is shown. */
+    panelPresence = make('span', 'void-god-msg-presence');
+    panelPresence.setAttribute('role', 'img');
+    panelPresence.hidden = true;
+
     head.appendChild(panelTranslate);
+    head.appendChild(panelPresence);
     head.appendChild(titles);
     head.appendChild(x);
 
@@ -1682,6 +1691,23 @@
     return Array.from(text);
   }
 
+  function renderPresence(value) {
+    if (!panelPresence) return;
+    var kind = typeof value === 'string' && Object.prototype.hasOwnProperty.call(PRESENCE_LABELS, value)
+      ? value : 'none';
+    while (panelPresence.firstChild) panelPresence.removeChild(panelPresence.firstChild);
+    if (kind === 'none') {
+      panelPresence.hidden = true;
+      panelPresence.removeAttribute('aria-label');
+      panelPresence.removeAttribute('title');
+      return;
+    }
+    panelPresence.appendChild(presenceSvg(kind));
+    panelPresence.setAttribute('aria-label', 'Symbolic presence: ' + PRESENCE_LABELS[kind]);
+    panelPresence.title = PRESENCE_LABELS[kind] + ' presence';
+    panelPresence.hidden = false;
+  }
+
   function maskSecretText(text) {
     var parts = secretGraphemes(typeof text === 'string' ? text : '');
     var out = '';
@@ -1771,6 +1797,7 @@
   function renderMessage(msg) {
     resetTranslation();
     voteBusy = false;
+    renderPresence(msg.presence);
     setPanelText(msg.text, msg.secret_ink === true);
     if (msg.lang) panelText.setAttribute('lang', msg.lang);
     else panelText.removeAttribute('lang');
@@ -2377,6 +2404,7 @@
     panelRequestToken++;
     closeSharePop(false);
     resetTranslation({ release: true });
+    renderPresence('none');
     setReadingMode(false);
     if (!preserveReaderState) restoreMusicPresentation();
     voteBusy = false;
@@ -2400,6 +2428,7 @@
     setReadingMode(false);
     restoreMusicPresentation();
     currentMessage = null;
+    renderPresence('none');
     voteBusy = false;
     clearLifespanTimer();
     panel.classList.remove('is-on', 'is-loading-letter');
@@ -3712,9 +3741,8 @@
     composeQuotaText = make('span', 'void-god-quota__text', '');
     composeQuota.appendChild(composeQuotaText);
 
-    /* Presence is a symbolic cue for the writer alone. It is never stored,
-       sent, or attached to the letter, so the layout stays honest about
-       anonymity. */
+    /* Presence is a symbolic mark, stored with the letter for its lifetime.
+       It carries no identity: only one of five fixed glyph names travels. */
     var presence = make('fieldset', 'void-god-presence');
     presence.appendChild(make('legend', 'void-god-presence__legend', 'A quiet presence \u00B7 optional'));
     var presenceRow = make('div', 'void-god-presence__row');
@@ -3742,7 +3770,7 @@
       if (presenceOpts[pi][0] === 'none') presenceNone = pRadio;
     }
     presence.appendChild(presenceRow);
-    presence.appendChild(make('p', 'void-god-presence__note', 'Only for this moment. Letters stay anonymous.'));
+    presence.appendChild(make('p', 'void-god-presence__note', 'A quiet mark. Letters stay anonymous.'));
 
     var label = make('label', 'void-god-sr', 'Your letter');
     label.setAttribute('for', 'void-god-text');
@@ -4016,10 +4044,16 @@
     return checked ? checked.value : '7d';
   }
 
+  function currentPresence() {
+    var checked = composeForm && composeForm.querySelector('input[name="void-god-presence"]:checked');
+    return checked ? checked.value : 'none';
+  }
+
   function submitRemote(payload) {
     if (!api) return Promise.resolve({ kind: 'network' });
     var pending = uncertainSubmission || api.begin(
-      payload.text, payload.expiry, detectLang(payload.text), payload.secret_ink === true
+      payload.text, payload.expiry, detectLang(payload.text), payload.secret_ink === true,
+      payload.presence
     );
     return api.submit(pending);
   }
@@ -4033,6 +4067,10 @@
     }
     if (ackEl) ackEl.disabled = !!uncertainSubmission;
     if (secretEl) secretEl.disabled = !!uncertainSubmission;
+    if (composeForm) {
+      var presenceOptions = composeForm.querySelectorAll('input[name="void-god-presence"]');
+      for (var j = 0; j < presenceOptions.length; j++) presenceOptions[j].disabled = !!uncertainSubmission;
+    }
     updateState();
   }
 
@@ -4048,7 +4086,8 @@
     var payload = {
       text: composer.value,
       expiry: currentExpiry(),
-      secret_ink: !!(secretEl && secretEl.checked)
+      secret_ink: !!(secretEl && secretEl.checked),
+      presence: currentPresence()
     };
     source.submit(payload).then(function (result) {
       clearTimeout(connectionTimer);
