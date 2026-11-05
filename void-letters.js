@@ -257,6 +257,13 @@
   var noticeEl = null;
   var successEl = null;
   var xShareBtn = null;
+  var publicShareBtn = null;
+  var publishedShareMenu = null;
+  var publishedShareItems = [];
+  var publishedShareStatus = null;
+  var publishedShareOpen = false;
+  var publishedShareTimer = 0;
+  var publishedText = '';
   var published = false;
   var shareUrl = null;
   var publishedBase = '';
@@ -2382,6 +2389,20 @@
     return s;
   }
 
+  function buildShareItem(spec) {
+    var item = make('button', 'void-god-share-pop__item');
+    item.type = 'button';
+    item.setAttribute('role', 'menuitem');
+    item.setAttribute('tabindex', '-1');
+    item.setAttribute('data-share', spec.key);
+    if (spec.nativeOnly) item.setAttribute('data-native', '1');
+    var ico = make('span', 'void-god-share-pop__ico');
+    ico.appendChild(shareIconNode(spec.icon));
+    item.appendChild(ico);
+    item.appendChild(make('span', 'void-god-share-pop__label', spec.label));
+    return item;
+  }
+
   function buildSharePop(host) {
     if (sharePop || !host) return;
     sharePop = make('div', 'void-god-share-pop');
@@ -2390,17 +2411,7 @@
     sharePop.setAttribute('role', 'menu');
     sharePop.setAttribute('aria-label', 'Share this letter');
     for (var i = 0; i < SHARE_ITEMS.length; i++) {
-      var spec = SHARE_ITEMS[i];
-      var item = make('button', 'void-god-share-pop__item');
-      item.type = 'button';
-      item.setAttribute('role', 'menuitem');
-      item.setAttribute('tabindex', '-1');
-      item.setAttribute('data-share', spec.key);
-      if (spec.nativeOnly) item.setAttribute('data-native', '1');
-      var ico = make('span', 'void-god-share-pop__ico');
-      ico.appendChild(shareIconNode(spec.icon));
-      item.appendChild(ico);
-      item.appendChild(make('span', 'void-god-share-pop__label', spec.label));
+      var item = buildShareItem(SHARE_ITEMS[i]);
       sharePopItems.push(item);
       sharePop.appendChild(item);
     }
@@ -2597,6 +2608,156 @@
     }, function () {
       feedback('Could not copy \u2014 select the message text and copy it.', false);
     });
+  }
+
+  /* ---- اشتراکِ عمومیِ نامهٔ تازه‌نوشته: همان آیتم‌ها و رفتارهای منوی پنل،
+     اما با لینک/متنِ همان نامه‌ای که همین حالا ثبت شده. ---- */
+  function publishedShareFocusable() {
+    var list = [];
+    for (var i = 0; i < publishedShareItems.length; i++) {
+      var item = publishedShareItems[i];
+      if (!item.disabled && !item.hidden) list.push(item);
+    }
+    return list;
+  }
+
+  function syncPublishedShareMenu() {
+    var canNative = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+    for (var i = 0; i < publishedShareItems.length; i++) {
+      var item = publishedShareItems[i];
+      var spec = SHARE_ITEMS[i];
+      if (spec.nativeOnly) item.hidden = !canNative;
+      var blocked = (spec.needsLink && !shareUrl) || (spec.nativeOnly && !canNative);
+      item.disabled = blocked;
+      item.setAttribute('aria-disabled', blocked ? 'true' : 'false');
+      item.title = blocked ? 'No public link for this letter' : '';
+    }
+  }
+
+  function openPublishedShare() {
+    if (!publishedShareMenu || !publicShareBtn || !published || !shareUrl || publishedShareOpen) return;
+    syncPublishedShareMenu();
+    publishedShareOpen = true;
+    clearTimeout(publishedShareTimer);
+    publishedShareMenu.hidden = false;
+    publicShareBtn.setAttribute('aria-expanded', 'true');
+    /* click, not pointerdown: the menu is in flow, so closing it on press moves
+       the footer buttons before release and swallows a click on Share on X. */
+    document.addEventListener('click', onPublishedSharePointer, true);
+    requestAnimationFrame(function () {
+      if (!publishedShareOpen) return;
+      var first = publishedShareFocusable()[0];
+      if (first) first.focus({ preventScroll: true });
+    });
+  }
+
+  function closePublishedShare(restoreFocus) {
+    if (!publishedShareOpen) return;
+    publishedShareOpen = false;
+    document.removeEventListener('click', onPublishedSharePointer, true);
+    if (publishedShareMenu) publishedShareMenu.hidden = true;
+    if (publicShareBtn) {
+      publicShareBtn.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) {
+        try { publicShareBtn.focus({ preventScroll: true }); } catch (e) {}
+      }
+    }
+  }
+
+  function onPublishedSharePointer(e) {
+    if (!publishedShareOpen) return;
+    if (publishedShareMenu && publishedShareMenu.contains(e.target)) return;
+    if (publicShareBtn && publicShareBtn.contains(e.target)) return;
+    closePublishedShare(false);
+  }
+
+  function onPublishedShareKey(e) {
+    var list = publishedShareFocusable();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      closePublishedShare(true);
+      return;
+    }
+    if (e.key === 'Tab') { closePublishedShare(false); return; }
+    var i = list.indexOf(document.activeElement);
+    var next = -1;
+    if (e.key === 'ArrowDown') next = (i + 1) % list.length;
+    else if (e.key === 'ArrowUp') next = (i - 1 + list.length) % list.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = list.length - 1;
+    if (next >= 0 && list[next]) {
+      e.preventDefault();
+      list[next].focus({ preventScroll: true });
+    }
+  }
+
+  function publishedShareFeedback(label) {
+    if (!publishedShareStatus) return;
+    clearTimeout(publishedShareTimer);
+    publishedShareStatus.textContent = label;
+    publishedShareStatus.hidden = false;
+    publishedShareTimer = setTimeout(function () {
+      publishedShareTimer = 0;
+      if (!publishedShareStatus) return;
+      publishedShareStatus.hidden = true;
+      publishedShareStatus.textContent = '';
+    }, 2600);
+  }
+
+  function publishedShareWindow(url) {
+    closePublishedShare(false);
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e) {}
+  }
+
+  function sharePublishedNative() {
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function' || !shareUrl) return;
+    var payload = { title: 'A letter from the galaxy', text: xShareText(publishedText, 'letter'), url: shareUrl };
+    try {
+      navigator.share(payload).then(function () {
+        closePublishedShare(false);
+      }, function (err) {
+        closePublishedShare(false);
+        if (!err || err.name !== 'AbortError') {
+          publishedShareFeedback('Sharing was not available \u2014 copy the link instead.');
+        }
+      });
+    } catch (e) { closePublishedShare(false); }
+  }
+
+  function publishedShareAction(key) {
+    if (!published || !shareUrl) return;
+    var body = publishedText ? publishedText + '\n\n' : '';
+    if (key === 'copy-link') {
+      copyText(shareUrl).then(function () {
+        closePublishedShare(false);
+        publishedShareFeedback('Link copied.');
+      }, function () {
+        closePublishedShare(false);
+        publishedShareFeedback('Could not copy the link \u2014 select the URL and copy it.');
+      });
+    } else if (key === 'copy-text') {
+      if (!publishedText) {
+        closePublishedShare(false);
+        publishedShareFeedback('The letter text is no longer in this window \u2014 copy the link instead.');
+        return;
+      }
+      copyText(publishedText).then(function () {
+        closePublishedShare(false);
+        publishedShareFeedback('Copied to clipboard.');
+      }, function () {
+        closePublishedShare(false);
+        publishedShareFeedback('Could not copy automatically \u2014 select the letter text and copy it.');
+      });
+    } else if (key === 'whatsapp') {
+      if (!shareUrl) return;
+      publishedShareWindow('https://wa.me/?text=' + encodeURIComponent(body + shareUrl));
+    } else if (key === 'telegram') {
+      if (!shareUrl) return;
+      publishedShareWindow('https://t.me/share/url?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(publishedText));
+    } else if (key === 'native') {
+      sharePublishedNative();
+    }
   }
 
   /* ==================================================================
@@ -3290,6 +3451,13 @@
      ================================================================== */
   function closeCompose() {
     if (!compose || !compose.open) return;
+    closePublishedShare(false);
+    clearTimeout(publishedShareTimer);
+    publishedShareTimer = 0;
+    if (publishedShareStatus) {
+      publishedShareStatus.hidden = true;
+      publishedShareStatus.textContent = '';
+    }
     compose.close();
     if (quillBtn) quillBtn.setAttribute('aria-expanded', 'false');
     restoreFocus(quillBtn);
@@ -3319,6 +3487,18 @@
     composeForm.classList.remove('is-published');
     successEl.hidden = true;
     xShareBtn.disabled = true;
+    publicShareBtn.disabled = true;
+    publicShareBtn.setAttribute('aria-expanded', 'false');
+    publicShareBtn.setAttribute('aria-label', 'Sharing is not available yet');
+    publicShareBtn.title = 'Public sharing unlocks once the letter has its public page';
+    closePublishedShare(false);
+    clearTimeout(publishedShareTimer);
+    publishedShareTimer = 0;
+    if (publishedShareStatus) {
+      publishedShareStatus.hidden = true;
+      publishedShareStatus.textContent = '';
+    }
+    publishedText = '';
     published = false;
     shareUrl = null;
     publishedBase = '';
@@ -3449,7 +3629,32 @@
     successEl.appendChild(successTitle);
     successNote = make('p', 'void-god-published__note', '');
     successEl.appendChild(successNote);
+    publishedShareMenu = make('div', 'void-god-published__menu');
+    publishedShareMenu.id = 'void-god-published-share';
+    publishedShareMenu.hidden = true;
+    publishedShareMenu.setAttribute('role', 'menu');
+    publishedShareMenu.setAttribute('aria-label', 'Public share');
+    for (var pi = 0; pi < SHARE_ITEMS.length; pi++) {
+      var pitem = buildShareItem(SHARE_ITEMS[pi]);
+      publishedShareItems.push(pitem);
+      publishedShareMenu.appendChild(pitem);
+    }
+    successEl.appendChild(publishedShareMenu);
+    publishedShareStatus = make('p', 'void-god-published__status', '');
+    publishedShareStatus.id = 'void-god-published-status';
+    publishedShareStatus.setAttribute('role', 'status');
+    publishedShareStatus.setAttribute('aria-live', 'polite');
+    publishedShareStatus.hidden = true;
+    successEl.appendChild(publishedShareStatus);
     var okFoot = make('div', 'void-god-foot');
+    publicShareBtn = make('button', 'void-god-btn', 'Public share');
+    publicShareBtn.type = 'button';
+    publicShareBtn.id = 'void-god-public-share';
+    publicShareBtn.disabled = true;
+    publicShareBtn.setAttribute('aria-haspopup', 'menu');
+    publicShareBtn.setAttribute('aria-expanded', 'false');
+    publicShareBtn.setAttribute('aria-label', 'Sharing is not available yet');
+    publicShareBtn.title = 'Public sharing unlocks once the letter has its public page';
     xShareBtn = make('button', 'void-god-btn', 'Share on X');
     xShareBtn.type = 'button';
     xShareBtn.id = 'void-god-x-share';
@@ -3457,6 +3662,7 @@
     xShareBtn.title = 'Sharing unlocks once the letter has its public page';
     var done = make('button', 'void-god-btn void-god-btn--primary', 'Done');
     done.type = 'button';
+    okFoot.appendChild(publicShareBtn);
     okFoot.appendChild(xShareBtn);
     okFoot.appendChild(done);
     successEl.appendChild(okFoot);
@@ -3482,8 +3688,18 @@
     cancel.addEventListener('click', closeCompose);
     done.addEventListener('click', closeCompose);
     xShareBtn.addEventListener('click', onShareX);
+    publicShareBtn.addEventListener('click', function () {
+      if (publishedShareOpen) closePublishedShare(true);
+      else openPublishedShare();
+    });
+    publishedShareMenu.addEventListener('click', function (e) {
+      var item = e.target && e.target.closest ? e.target.closest('[data-share]') : null;
+      if (item) publishedShareAction(item.getAttribute('data-share'));
+    });
+    publishedShareMenu.addEventListener('keydown', onPublishedShareKey);
     compose.addEventListener('cancel', function (e) {
       e.preventDefault();
+      if (publishedShareOpen) { closePublishedShare(true); return; }
       closeCompose();
     });
     /* Backdrop clicks deliberately do not close the composer: an accidental click
@@ -3597,10 +3813,22 @@
     setUncertainSubmission(null);
     published = true;
     shareUrl = null;
+    publishedText = composer.value;
     publishedLang = detectShareLang(composer.value);
+    closePublishedShare(false);
+    clearTimeout(publishedShareTimer);
+    publishedShareTimer = 0;
+    if (publishedShareStatus) {
+      publishedShareStatus.hidden = true;
+      publishedShareStatus.textContent = '';
+    }
     xShareBtn.disabled = true;
     xShareBtn.title = 'Sharing unlocks once the letter has its public page';
     xShareBtn.setAttribute('aria-label', 'Sharing is not available yet');
+    publicShareBtn.disabled = true;
+    publicShareBtn.setAttribute('aria-expanded', 'false');
+    publicShareBtn.setAttribute('aria-label', 'Sharing is not available yet');
+    publicShareBtn.title = 'Public sharing unlocks once the letter has its public page';
     successTitle.textContent = result.kind === 'recovered'
       ? 'This letter was already sent'
       : 'Your letter is in the galaxy';
@@ -3626,8 +3854,8 @@
 
   function shareNote(unlocked) {
     successNote.textContent = publishedBase + (unlocked
-      ? 'Share it on X so someone can find it.'
-      : 'Sharing on X unlocks once the live service can serve this letter.');
+      ? 'Share it publicly or on X so someone can find it.'
+      : 'Sharing unlocks once the live service can serve this letter.');
   }
 
   /* لینک فقط وقتی باز می‌شود که خودِ سرویس همان نامه را با همین شناسه برگرداند.
@@ -3643,6 +3871,9 @@
       xShareBtn.disabled = false;
       xShareBtn.title = 'Share this letter on X';
       xShareBtn.setAttribute('aria-label', 'Share this letter on X');
+      publicShareBtn.disabled = false;
+      publicShareBtn.title = 'Share this letter publicly';
+      publicShareBtn.setAttribute('aria-label', 'Share this letter publicly');
     }, function () {});
   }
 
@@ -3650,6 +3881,7 @@
      و هرگز متن نامه را در بر نمی‌گیرد؛ فقط زبانِ نامه انتخابش می‌کند. */
   function onShareX() {
     if (!published || !shareUrl) return;
+    closePublishedShare(false);
     var copy = X_SHARE_COPY[publishedLang] || X_SHARE_COPY.en;
     var text = copy.letter + ' ' + copy.likes;
     var url = X_INTENT + encodeURIComponent(text) + '&url=' + encodeURIComponent(shareUrl);
@@ -3852,6 +4084,7 @@
       e.stopPropagation();
       if (translatePopOpen) closeTranslatePop(true);
       else if (sharePopOpen) closeSharePop(true);
+      else if (publishedShareOpen) closePublishedShare(true);
       else if (compose && compose.open) closeCompose();
       else if (panelOpen) closePanel({ dissolve: true, focus: true });
       else closeStats(true);

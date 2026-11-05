@@ -1465,6 +1465,26 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     line-height: 1.55;
     color: rgba(235, 240, 245, .68);
 }
+/* اشتراکِ عمومیِ نامهٔ تازه: همان آیتم‌های منوی پنل، درون پنجرهٔ ثبت. */
+.void-god-published__menu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid rgba(235, 240, 245, .16);
+    border-radius: 12px;
+    background:
+        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
+        rgba(9, 12, 18, .93);
+}
+.void-god-published__menu[hidden] { display: none; }
+.void-god-published__status {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: rgba(235, 240, 245, .64);
+}
+.void-god-published__status[hidden] { display: none; }
 
 /* حالت quiet مخفی‌سازیِ نشانگر را روی کل صفحه اعمال می‌کند؛ متن و دکمه‌های
    پنجره/پنلِ باز باید نشانگرِ عادی داشته باشند. */
@@ -1495,6 +1515,12 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     .void-god-form { padding: 16px 15px 14px; gap: 10px; }
     .void-god-text { min-height: 110px; }
     .void-god-foot .void-god-btn { flex: 1; }
+}
+
+@media (max-width: 420px) {
+    /* سه دکمهٔ نمای ثبت (اشتراک عمومی، X، Done) در یک ردیف جای نمی‌گیرند. */
+    .void-god-published .void-god-foot { flex-wrap: wrap; }
+    .void-god-published .void-god-foot .void-god-btn { flex: 1 1 calc(50% - 4px); }
 }
 
 @media (max-width: 340px) {
