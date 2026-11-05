@@ -468,6 +468,19 @@
       color: rgba(250, 252, 255, .96);
     }
     .void-golden-modal__empty { padding: 18px 8px; color: rgba(235, 240, 245, .62); }
+    .void-golden-modal__retry {
+      margin-top: 10px;
+      padding: 2px 0;
+      border: 0;
+      background: none;
+      color: rgba(251, 191, 36, .86);
+      font: inherit;
+      font-size: 12px;
+      letter-spacing: .01em;
+      cursor: pointer;
+    }
+    .void-golden-modal__retry:hover { color: rgba(255, 214, 120, .98); }
+    .void-golden-modal__retry:focus-visible { outline: 1px solid rgba(235, 240, 245, .7); outline-offset: 3px; border-radius: 4px; }
     /* One quiet line inside the selector only: why online tracks can fail to connect. */
     .void-golden-modal__net {
       margin: 0;
@@ -825,7 +838,7 @@
     <div class="void-golden-modal__panel">
       <div class="void-golden-modal__head">
         <h2 id="void-golden-modal-title" class="void-golden-modal__title">Golden Folder</h2>
-        <span id="void-golden-total" class="void-golden-modal__total">0 tracks</span>
+        <span id="void-golden-total" class="void-golden-modal__total">Loading…</span>
       </div>
       <div class="void-golden-modal__tools">
         <button id="void-golden-select-all" class="void-golden-modal__all" type="button">Select all</button>
@@ -930,7 +943,6 @@
       else window.addEventListener('load', function () { requestAnimationFrame(boot); }, { once: true });
     })();
   </script>
-  <script src="golden-folder.js"></script>
   <script>
     /* Golden Folder — a list-only selector on top of the one shared player. Selected
        tracks go through VoidMusic.add (same queue, same native streaming); there is
@@ -940,12 +952,11 @@
 
       if (/[?&]admin=(?:1|true)(?:&|#|$)/.test(location.search)) return;
 
-      /* The static file next to this page is the fallback. When the letters
-         worker answers GET /tracks (after the admin migration is applied), the
-         keeper-managed playlist replaces it without touching the player. */
-      var STATIC = Array.isArray(window.GOLDEN_FOLDER_TRACKS) ? window.GOLDEN_FOLDER_TRACKS : [];
-      var DATA = STATIC.slice();
+      /* GET /tracks is the only inventory. There is deliberately no hardcoded
+         fallback: a failed load says so instead of showing a second catalogue. */
+      var DATA = [];
       var URLS = new Set();
+      var fetching = false;
       function indexUrls() {
         URLS.clear();
         for (var i = 0; i < DATA.length; i++) if (DATA[i] && DATA[i].url) URLS.add(DATA[i].url);
@@ -1257,18 +1268,62 @@
         return out;
       }
 
+      /* A failed load is stated plainly; it never stands in a second, stale
+         catalogue. Retry re-runs the same request. */
+      function renderNotice(message, withRetry) {
+        listEl.textContent = '';
+        boxes = [];
+        rows = [];
+        var li = document.createElement('li');
+        li.className = 'void-golden-modal__empty';
+        li.textContent = message;
+        if (withRetry) {
+          var retry = document.createElement('button');
+          retry.type = 'button';
+          retry.className = 'void-golden-modal__retry';
+          retry.textContent = 'Try again';
+          retry.addEventListener('click', function () { loadManagedTracks(); });
+          li.appendChild(document.createElement('br'));
+          li.appendChild(retry);
+        }
+        listEl.appendChild(li);
+        syncSelection();
+      }
+
+      function showLoading() {
+        totalEl.textContent = 'Loading\u2026';
+        renderNotice('Loading the Golden Folder\u2026', false);
+      }
+
+      function showFailure() {
+        DATA = [];
+        indexUrls();
+        totalEl.textContent = 'Unavailable';
+        renderNotice('The Golden Folder could not be loaded.', true);
+      }
+
       function applyTracks(list) {
-        if (dialog.open) { setTimeout(loadManagedTracks, 800); return; }
+        var checked = {};
+        for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) checked[boxes[i].value] = true;
         DATA = list;
         indexUrls();
         buildList();
+        for (var j = 0; j < boxes.length; j++) if (checked[boxes[j].value]) boxes[j].checked = true;
         syncSelection();
         syncPlaying();
         settleCatalogue();
       }
 
       function loadManagedTracks() {
-        if (typeof window.fetch !== 'function') { settleCatalogue(); return; }
+        if (fetching) return;
+        fetching = true;
+        showLoading();
+        if (typeof window.fetch !== 'function') {
+          fetching = false;
+          showFailure();
+          settleCatalogue();
+          return;
+        }
         var api = window.VoidLettersApi;
         var base = api && typeof api.base === 'string' ? api.base : 'https://void-galaxy-letters.minoodar.workers.dev';
         var controller = typeof AbortController === 'function' ? new AbortController() : null;
@@ -1285,10 +1340,19 @@
           if (!res || !res.ok) return null;
           return res.json();
         }).then(function (payload) {
+          fetching = false;
           var list = normalizeTracks(payload);
           if (list) applyTracks(list);
-          else settleCatalogue();
-        }, function () { clearTimeout(timer); settleCatalogue(); });
+          else {
+            showFailure();
+            settleCatalogue();
+          }
+        }, function () {
+          clearTimeout(timer);
+          fetching = false;
+          showFailure();
+          settleCatalogue();
+        });
       }
 
       /* One read-only window onto the settled catalogue for the invitation layer.
@@ -1336,8 +1400,7 @@
         }
       };
 
-      buildList();
-      syncSelection();
+      showLoading();
       loadManagedTracks();
 
       link.addEventListener('click', function (e) {

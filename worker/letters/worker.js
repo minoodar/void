@@ -1341,7 +1341,11 @@ async function listTracks(env, cors, admin) {
   const headers = admin
     ? adminHeaders(cors)
     : Object.assign({ 'Cache-Control': 'public, max-age=60' }, cors.headers);
-  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
+  /* A failure must never be cached alongside the 60-second success response. */
+  const failureHeaders = admin
+    ? adminHeaders(cors)
+    : Object.assign({ 'Cache-Control': 'no-store' }, cors.headers);
+  if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, failureHeaders);
 
   try {
     const result = await env.DB.prepare(
@@ -1361,7 +1365,7 @@ async function listTracks(env, cors, admin) {
     return json({ ok: true, tracks }, 200, headers);
   } catch (e) {
     if (isMissingTracksTable(e)) {
-      return json({ ok: false, error: 'tracks_unavailable' }, 503, headers);
+      return json({ ok: false, error: 'tracks_unavailable' }, 503, failureHeaders);
     }
     throw e;
   }

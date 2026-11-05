@@ -1616,9 +1616,11 @@ await test('a missing tracks table fails closed with tracks_unavailable', async 
   const publicList = await call(env, '/tracks', { ip: nextIp() });
   equal(publicList.status, 503, 'public status');
   equal(publicList.data.error, 'tracks_unavailable', 'public error');
+  equal(publicList.headers.get('cache-control'), 'no-store', 'public failure never cached');
   const adminList = await call(env, '/admin/tracks', { origin: null, headers: adminAuth() });
   equal(adminList.status, 503, 'admin status');
   equal(adminList.data.error, 'tracks_unavailable', 'admin error');
+  equal(adminList.headers.get('cache-control'), 'no-store', 'admin failure never cached');
   const created = await call(env, '/admin/tracks', {
     method: 'POST', origin: null, headers: adminAuth(), body: trackBody()
   });
