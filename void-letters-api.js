@@ -162,6 +162,7 @@
         text: p.text,
         expiry: p.expiry,
         lang: typeof p.lang === 'string' ? p.lang : null,
+        secret_ink: p.secret_ink === true,
         state: typeof p.state === 'string' ? p.state : 'prepared'
       } };
     } catch (e) { return { available: false, pending: null }; }
@@ -199,6 +200,7 @@
       text: pending.text,
       expiry: pending.expiry,
       lang: pending.lang || null,
+      secret_ink: pending.secret_ink === true,
       state: state
     });
   }
@@ -206,14 +208,19 @@
   /* Reuses the stored UUID only for the exact same payload; any edit is a new
      letter and gets a new id. The record is written before the request starts
      so a reload in the same tab can still retry safely. */
-  function begin(text, expiry, lang) {
+  function begin(text, expiry, lang, secretInk) {
     var normalizedLang = typeof lang === 'string' && lang ? lang : null;
+    var normalizedSecret = secretInk === true;
     var read = readPending();
     if (!read.available) return { kind: 'storage_unavailable' };
     var stored = read.pending;
-    if (stored && stored.text === text && stored.expiry === expiry && stored.lang === normalizedLang) return stored;
+    if (stored && stored.text === text && stored.expiry === expiry && stored.lang === normalizedLang &&
+        stored.secret_ink === normalizedSecret) return stored;
     if (stored && (stored.state === 'ambiguous' || stored.state === 'in_flight')) return { kind: 'unresolved_submission' };
-    var pending = { request_id: newRequestId(), text: text, expiry: expiry, lang: normalizedLang, state: 'prepared' };
+    var pending = {
+      request_id: newRequestId(), text: text, expiry: expiry, lang: normalizedLang,
+      secret_ink: normalizedSecret, state: 'prepared'
+    };
     if (!pendingStorageReady(pending)) return { kind: 'storage_unavailable' };
     return pending;
   }
@@ -225,12 +232,13 @@
     if (pending && pending.kind) return Promise.resolve({ kind: pending.kind });
     if (!pending || !UUID_V4_REGEX.test(pending.request_id || '') || !pendingStorageReady({
       request_id: pending.request_id, text: pending.text, expiry: pending.expiry,
-      lang: pending.lang || null, state: 'in_flight'
+      lang: pending.lang || null, secret_ink: pending.secret_ink === true, state: 'in_flight'
     })) return Promise.resolve({ kind: 'storage_unavailable' });
     inFlight = true;
     setPendingState(pending, 'in_flight');
     var payload = { text: pending.text, expiry: pending.expiry, request_id: pending.request_id };
     if (pending.lang) payload.lang = pending.lang;
+    if (pending.secret_ink === true) payload.secret_ink = true;
     return request(BASE + '/letters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -288,6 +296,7 @@
           seq: seq,
           lang: typeof letter.lang === 'string' ? letter.lang : null,
           text: letter.body,
+          secret_ink: letter.secret_ink === true || Number(letter.secret_ink) === 1,
           created_at: num(letter.created_at),
           expires_at: num(letter.expires_at),
           votes_like: countOf(letter.votes_like),
@@ -450,6 +459,7 @@
             id: raw.id,
             lang: typeof raw.lang === 'string' ? raw.lang : null,
             text: raw.text,
+            secret_ink: raw.secret_ink === true || Number(raw.secret_ink) === 1,
             created_at: num(raw.created_at),
             expires_at: num(raw.expires_at),
             votes_like: countOf(raw.votes_like),

@@ -232,6 +232,12 @@
   var panelFeedback = null;
   var panelPrevious = null;
   var panelNext = null;
+  var secretHint = null;
+  var secretMode = false;
+  var secretRevealed = false;
+  var secretHintSeen = false;
+  var secretFullText = '';
+  var maskSegmenter = null;
   var lifespanTimer = 0;
   var voteBusy = false;
   var panelOpen = false;
@@ -255,6 +261,7 @@
   var countEl = null;
   var hintEl = null;
   var ackEl = null;
+  var secretEl = null;
   var submitBtn = null;
   var noticeEl = null;
   var successEl = null;
@@ -1555,6 +1562,11 @@
     shareGlyph.appendChild(svgNode('path', { d: 'M8.9 10.9 15.1 7.1M8.9 13.1 15.1 16.9' }));
     panelShareMenu.appendChild(shareGlyph);
     messageBody.appendChild(panelText);
+    secretHint = make('p', 'void-god-secret-hint', 'Tap the stars to reveal');
+    secretHint.id = 'void-god-secret-hint';
+    secretHint.hidden = true;
+    secretHint.setAttribute('aria-hidden', 'true');
+    messageBody.appendChild(secretHint);
 
     panelMeta = make('p', 'void-god-msg-meta');
     panelMeta.id = 'void-god-panel-meta';
@@ -1642,12 +1654,116 @@
     panelDislike.addEventListener('click', function () { onVote('dislike'); });
     panelPrevious.addEventListener('click', function () { navigateLetter(-1); });
     panelNext.addEventListener('click', function () { navigateLetter(1); });
+    panelText.addEventListener('click', onSecretTextClick);
+    panelText.addEventListener('keydown', onSecretTextKey);
+  }
+
+  /* ---- Secret Ink: grapheme-safe masking, revealed in place ----
+     The Worker always stores and serves the original text; this surface only
+     decides what is painted. Whitespace and line breaks survive masking so the
+     shape of a paragraph still reads as a paragraph. */
+  function secretGraphemes(text) {
+    try {
+      if (!maskSegmenter && typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        maskSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+      }
+      if (maskSegmenter) {
+        return Array.from(maskSegmenter.segment(text), function (part) { return part.segment; });
+      }
+    } catch (e) {}
+    return Array.from(text);
+  }
+
+  function maskSecretText(text) {
+    var parts = secretGraphemes(typeof text === 'string' ? text : '');
+    var out = '';
+    for (var i = 0; i < parts.length; i++) {
+      out += /^\s+$/.test(parts[i]) ? parts[i] : '\u2022';
+    }
+    return out;
+  }
+
+  function paintPanelText() {
+    if (!panelText) return;
+    var concealed = secretMode && !secretRevealed;
+    var top = panelText.scrollTop;
+    panelText.textContent = concealed ? maskSecretText(secretFullText) : secretFullText;
+    panelText.scrollTop = top;
+    panelText.classList.toggle('is-secret-ink', secretMode);
+    panelText.classList.toggle('is-concealed', concealed);
+    if (secretMode) {
+      panelText.tabIndex = 0;
+      panelText.setAttribute('role', 'button');
+      panelText.setAttribute('aria-pressed', concealed ? 'false' : 'true');
+      panelText.setAttribute('aria-label', concealed
+        ? 'Secret letter, hidden. Activate to reveal.'
+        : 'Secret letter revealed. Activate to hide.');
+    } else {
+      panelText.removeAttribute('tabindex');
+      panelText.removeAttribute('role');
+      panelText.removeAttribute('aria-pressed');
+      panelText.removeAttribute('aria-label');
+    }
+    if (secretHint) secretHint.hidden = !concealed || secretHintSeen;
+  }
+
+  function setPanelText(text, secret) {
+    secretFullText = typeof text === 'string' ? text : '';
+    secretMode = secret === true;
+    secretRevealed = false;
+    secretHintSeen = false;
+    paintPanelText();
+  }
+
+  /* Translation replaces what is shown, not whether it is hidden. */
+  function updatePanelText(text) {
+    secretFullText = typeof text === 'string' ? text : '';
+    paintPanelText();
+  }
+
+  function clearSecretText() {
+    secretMode = false;
+    secretRevealed = false;
+    secretHintSeen = false;
+    secretFullText = '';
+    if (panelText) {
+      panelText.classList.remove('is-secret-ink', 'is-concealed');
+      panelText.removeAttribute('tabindex');
+      panelText.removeAttribute('role');
+      panelText.removeAttribute('aria-pressed');
+      panelText.removeAttribute('aria-label');
+    }
+    if (secretHint) secretHint.hidden = true;
+  }
+
+  function toggleSecretReveal() {
+    if (!secretMode) return;
+    secretRevealed = !secretRevealed;
+    if (secretRevealed) secretHintSeen = true;
+    paintPanelText();
+  }
+
+  function onSecretTextClick(e) {
+    if (!secretMode) return;
+    var sel = window.getSelection ? window.getSelection() : null;
+    if (sel && !sel.isCollapsed && panelText && panelText.contains(sel.anchorNode)) return;
+    e.stopPropagation();
+    toggleSecretReveal();
+  }
+
+  function onSecretTextKey(e) {
+    if (!secretMode) return;
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar' || e.key === 'Space' || e.code === 'Space') {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSecretReveal();
+    }
   }
 
   function renderMessage(msg) {
     resetTranslation();
     voteBusy = false;
-    panelText.textContent = msg.text;
+    setPanelText(msg.text, msg.secret_ink === true);
     if (msg.lang) panelText.setAttribute('lang', msg.lang);
     else panelText.removeAttribute('lang');
     translateOriginalLang = msg.lang || null;
@@ -1907,6 +2023,7 @@
      styling stay untouched while the feed loads, is empty, or fails. */
   function showPanelState(state) {
     resetTranslation();
+    clearSecretText();
     currentMessage = null;
     voteBusy = false;
     clearLifespanTimer();
@@ -2606,7 +2723,8 @@
 
   function shareFallback() {
     if (!currentMessage) return;
-    copyText(currentMessage.text).then(function () {
+    var text = secretMode && !secretRevealed ? maskSecretText(secretFullText) : currentMessage.text;
+    copyText(text).then(function () {
       feedback('This message has no public link yet \u2014 it was copied instead.', true);
     }, function () {
       feedback('Could not copy \u2014 select the message text and copy it.', false);
@@ -3330,7 +3448,7 @@
     translateState = 'translated';
     translateTargetLang = target;
     if (!translateOriginalLang) translateOriginalLang = msg.lang || null;
-    panelText.textContent = text;
+    updatePanelText(text);
     panelText.setAttribute('lang', target);
     syncTranslateButton();
     syncTranslatePop();
@@ -3400,7 +3518,7 @@
   function showOriginalLetter() {
     if (!currentMessage || translateState !== 'translated') return;
     closeTranslatePop(true);
-    panelText.textContent = currentMessage.text;
+    updatePanelText(currentMessage.text);
     if (translateOriginalLang) panelText.setAttribute('lang', translateOriginalLang);
     else panelText.removeAttribute('lang');
     translateState = 'original';
@@ -3481,6 +3599,7 @@
       var saved = api.loadPending();
       if (saved && (saved.state === 'ambiguous' || saved.state === 'in_flight')) {
         composer.value = saved.text;
+        if (secretEl) secretEl.checked = saved.secret_ink === true;
         var savedExpiry = composeForm.querySelectorAll('input[name="void-god-expiry"]');
         for (var si = 0; si < savedExpiry.length; si++) savedExpiry[si].checked = savedExpiry[si].value === saved.expiry;
         ackEl.checked = true;
@@ -3508,6 +3627,7 @@
     publishedLang = null;
     sending = false;
     if (!uncertainSubmission) ackEl.checked = false;
+    if (!uncertainSubmission && secretEl) secretEl.checked = false;
     noticeEl.hidden = !uncertainSubmission;
     noticeEl.textContent = '';
     if (uncertainSubmission) notice('We could not confirm whether your letter arrived. Press Check submission to safely try again.');
@@ -3599,6 +3719,25 @@
       row.appendChild(opt);
     }
     fs.appendChild(row);
+
+    /* Secret Ink stays inside the fade fieldset: one compact row, off by
+       default, with the explanation available on hover and to screen readers. */
+    var secretLab = make('label', 'void-god-secret');
+    secretLab.title = 'Readers can reveal your words with one click.';
+    secretEl = document.createElement('input');
+    secretEl.type = 'checkbox';
+    secretEl.id = 'void-god-secret-ink';
+    secretEl.setAttribute('aria-label', 'Secret Ink');
+    secretEl.setAttribute('aria-describedby', 'void-god-secret-hint');
+    secretLab.appendChild(secretEl);
+    var secretStar = make('span', 'void-god-secret__star', '\u2733');
+    secretStar.setAttribute('aria-hidden', 'true');
+    secretLab.appendChild(secretStar);
+    secretLab.appendChild(make('span', 'void-god-secret__text', 'Secret Ink'));
+    var secretMicro = make('span', 'void-god-secret__micro', 'Let your words hide among the stars.');
+    secretMicro.id = 'void-god-secret-hint';
+    secretLab.appendChild(secretMicro);
+    fs.appendChild(secretLab);
 
     var ackLab = make('label', 'void-god-ack');
     ackEl = document.createElement('input');
@@ -3725,7 +3864,9 @@
 
   function submitRemote(payload) {
     if (!api) return Promise.resolve({ kind: 'network' });
-    var pending = uncertainSubmission || api.begin(payload.text, payload.expiry, detectLang(payload.text));
+    var pending = uncertainSubmission || api.begin(
+      payload.text, payload.expiry, detectLang(payload.text), payload.secret_ink === true
+    );
     return api.submit(pending);
   }
 
@@ -3737,6 +3878,7 @@
       for (var i = 0; i < options.length; i++) options[i].disabled = !!uncertainSubmission;
     }
     if (ackEl) ackEl.disabled = !!uncertainSubmission;
+    if (secretEl) secretEl.disabled = !!uncertainSubmission;
     updateState();
   }
 
@@ -3749,7 +3891,11 @@
     connectionTimer = setTimeout(function () {
       if (sending) notice('Connecting to the galaxy\u2026 Please wait.');
     }, 900);
-    var payload = { text: composer.value, expiry: currentExpiry() };
+    var payload = {
+      text: composer.value,
+      expiry: currentExpiry(),
+      secret_ink: !!(secretEl && secretEl.checked)
+    };
     source.submit(payload).then(function (result) {
       clearTimeout(connectionTimer);
       sending = false;
