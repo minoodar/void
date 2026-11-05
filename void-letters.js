@@ -47,6 +47,8 @@
   var X_PANEL_TEXT = 'A star is burning in the Void. \u2726 Read it before it fades:';
   var X_PANEL_TEXT_FA = '\u0633\u062a\u0627\u0631\u0647\u200c\u0627\u06cc \u062f\u0631 \u06a9\u0647\u06a9\u0634\u0627\u0646 \u0645\u06cc\u200c\u062f\u0631\u062e\u0634\u062f. \u2726 \u067e\u06cc\u0634 \u0627\u0632 \u0622\u0646\u06a9\u0647 \u0645\u062d\u0648 \u0634\u0648\u062f \u0628\u062e\u0648\u0627\u0646\u06cc\u062f\u0634:';
   var X_INTENT = 'https://twitter.com/intent/tweet?text=';
+  /* فاصلهٔ تلاش‌های تأییدِ خواندنِ نامه پس از ثبت؛ اولین تلاش بی‌درنگ است. */
+  var SHARE_VERIFY_DELAYS = [0, 2000, 6000];
   var X_SHARE_COPY = {
     en: { panel: X_PANEL_TEXT, letter: X_LETTER_TEXT, likes: "Every like adds 24 hours to this message's life. Help keep it alive in the galaxy." },
     fa: { panel: X_PANEL_TEXT_FA, letter: X_LETTER_TEXT_FA, likes: 'هر لایک ۲۴ ساعت به عمر این پیام اضافه می‌کند. کمک کنید در کهکشان زنده بماند.' },
@@ -265,6 +267,7 @@
   var publishedShareTimer = 0;
   var publishedText = '';
   var published = false;
+  var shareVerifySeq = 0;
   var shareUrl = null;
   var publishedBase = '';
   var publishedLang = null;
@@ -3859,22 +3862,39 @@
   }
 
   /* لینک فقط وقتی باز می‌شود که خودِ سرویس همان نامه را با همین شناسه برگرداند.
-     ورکرِ منتشرنشده ۴۰۴ می‌دهد و دکمه قفل می‌ماند تا لینک مرده ساخته نشود. */
+     ورکرِ منتشرنشده ۴۰۴ می‌دهد و دکمه قفل می‌ماند تا لینک مرده ساخته نشود.
+     خواندنِ بلافاصله ممکن است پیش از دیده‌شدنِ نامه یا در شبکهٔ کند شکست بخورد؛
+     پس سه تلاش با فاصله انجام می‌شود و قفل فقط پس از شکستِ هر سه می‌ماند. */
   function unlockShare(id) {
     if (!api || typeof api.getLetter !== 'function' || typeof api.letterUrl !== 'function') return;
     var url = api.letterUrl(id);
     if (!url) return;
-    api.getLetter(id).then(function (res) {
-      if (!published || res.status !== 'ok' || res.letter.id !== id) return;
-      shareUrl = url;
-      shareNote(true);
-      xShareBtn.disabled = false;
-      xShareBtn.title = 'Share this letter on X';
-      xShareBtn.setAttribute('aria-label', 'Share this letter on X');
-      publicShareBtn.disabled = false;
-      publicShareBtn.title = 'Share this letter publicly';
-      publicShareBtn.setAttribute('aria-label', 'Share this letter publicly');
-    }, function () {});
+    var token = ++shareVerifySeq;
+    var attempt = 0;
+    function verify() {
+      if (!published || shareUrl || token !== shareVerifySeq || !api) return;
+      api.getLetter(id).then(function (res) {
+        if (!published || shareUrl || token !== shareVerifySeq) return;
+        if (res.status === 'ok' && res.letter.id === id) {
+          shareUrl = url;
+          shareNote(true);
+          xShareBtn.disabled = false;
+          xShareBtn.title = 'Share this letter on X';
+          xShareBtn.setAttribute('aria-label', 'Share this letter on X');
+          publicShareBtn.disabled = false;
+          publicShareBtn.title = 'Share this letter publicly';
+          publicShareBtn.setAttribute('aria-label', 'Share this letter publicly');
+          return;
+        }
+        retry();
+      }, retry);
+    }
+    function retry() {
+      attempt += 1;
+      if (attempt >= SHARE_VERIFY_DELAYS.length) return;
+      setTimeout(verify, SHARE_VERIFY_DELAYS[attempt]);
+    }
+    verify();
   }
 
   /* اشتراک در X: فقط با اقدام صریحِ کاربر و فقط پس از ثبت واقعی. متنِ ثابت است
