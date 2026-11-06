@@ -884,6 +884,63 @@ await test('legacy letters without a presence column value read as none', async 
   equal(one.data.text, 'from before presence', 'legacy body untouched');
 });
 
+await test('/site/updates reports presence for every marked, missing and invalid row', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const idOf = (name) => name.padEnd(32, '0');
+  const marked = ['human', 'moon', 'root', 'unknown'];
+  let offset = 0;
+  for (const name of marked.concat(['none', 'legacy', 'invalid'])) {
+    offset += 1;
+    insertLetter(env, idOf(name), {
+      body: 'a ' + name + ' letter', created_at: now - 600 + offset, expires_at: now + 3600
+    });
+  }
+  for (const name of marked.concat(['invalid'])) {
+    env.__raw.prepare('UPDATE letters SET presence = ? WHERE id = ?')
+      .run(name === 'invalid' ? 'dragon' : name, idOf(name));
+  }
+
+  const res = await call(env, '/site/updates', { ip: nextIp() });
+  equal(res.status, 200, 'site updates status');
+  equal(res.data.ok, true, 'site updates ok');
+  equal(res.data.letters.length, 7, 'every active letter is returned');
+  const byId = new Map(res.data.letters.map((letter) => [letter.id, letter]));
+  for (const kind of marked) equal(byId.get(idOf(kind)).presence, kind, 'updates keeps ' + kind);
+  equal(byId.get(idOf('none')).presence, 'none', 'updates none');
+  equal(byId.get(idOf('legacy')).presence, 'none', 'legacy SQL NULL is none');
+  equal(byId.get(idOf('invalid')).presence, 'none', 'invalid stored value is none');
+  for (const letter of res.data.letters) {
+    assert(Object.prototype.hasOwnProperty.call(letter, 'presence'), 'presence field missing for ' + letter.id);
+  }
+  equal(res.data.next_after, res.data.letters[0].seq, 'cursor is the newest seq');
+});
+
+await test('/site/updates?after= keeps presence on letters that arrive later', async () => {
+  const env = createEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const firstId = 'a'.repeat(32);
+  insertLetter(env, firstId, { body: 'first', created_at: now - 60, expires_at: now + 3600 });
+  env.__raw.prepare('UPDATE letters SET presence = ? WHERE id = ?').run('human', firstId);
+
+  const baseline = await call(env, '/site/updates', { ip: nextIp() });
+  equal(baseline.data.letters[0].presence, 'human', 'baseline letter keeps its mark');
+  const cursor = baseline.data.next_after;
+
+  insertLetter(env, 'b'.repeat(32), { body: 'later moon', created_at: now, expires_at: now + 3600 });
+  env.__raw.prepare('UPDATE letters SET presence = ? WHERE id = ?').run('moon', 'b'.repeat(32));
+  insertLetter(env, 'c'.repeat(32), { body: 'later plain', created_at: now + 1, expires_at: now + 3600 });
+
+  const after = await call(env, '/site/updates?after=' + cursor, { ip: nextIp() });
+  equal(after.status, 200, 'after status');
+  equal(after.data.letters.length, 2, 'only letters newer than the cursor');
+  assert(!after.data.letters.some((letter) => letter.id === firstId), 'cursor letter repeated');
+  equal(after.data.letters[0].id, 'b'.repeat(32), 'ascending order');
+  equal(after.data.letters[0].presence, 'moon', 'new moon letter keeps its mark');
+  equal(after.data.letters[1].presence, 'none', 'new unmarked letter is none');
+  equal(after.data.next_after, after.data.letters[1].seq, 'cursor advances to the newest seq');
+});
+
 await test('an idempotent retry keeps the first letter and its presence', async () => {
   const env = createEnv();
   const ip = nextIp();

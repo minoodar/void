@@ -11,7 +11,9 @@
 <div id="void-music-root" style="position:fixed;inset:0"></div>
 
 <!-- Controlled transport: no request ever leaves this page.
-     ?letter=<id> opens one letter, ?dir=rtl mirrors the document. -->
+     ?letter=<id> opens one letter, ?dir=rtl mirrors the document.
+     ?updates=1 serves an empty history page and delivers one marked letter
+     only through /site/updates, proving the foreground-refresh copy renders. -->
 <script>
 (function () {
   var params = new URLSearchParams(window.location.search);
@@ -20,6 +22,7 @@
     document.documentElement.dir = 'rtl';
   }
   var now = Math.floor(Date.now() / 1000);
+  var updatesMode = params.get('updates') === '1' && !params.get('letter');
   /* Feed order: the deep-linked moon letter is not part of the feed, so the
      reader's Next control walks human → root → unknown → none → invalid. */
   var letters = [
@@ -60,7 +63,13 @@
       created_at: now - 600, expires_at: now + 30 * 86400, votes_like: 3, votes_dislike: 0
     }
   ];
-  window.__state = { letters: letters, calls: [] };
+  window.__state = { letters: letters, calls: [], updatesMode: updatesMode };
+  var updatesLetter = {
+    seq: 7, id: '77777777777777777777777777777777',
+    body: 'This letter arrived only through the foreground updates feed, and its mark must still render.',
+    lang: 'en', presence: 'moon',
+    created_at: now - 60, expires_at: now + 7 * 86400, votes_like: 0, votes_dislike: 0
+  };
 
   function shape(letter) {
     return {
@@ -81,7 +90,7 @@
         headers: { 'Content-Type': 'application/json' }
       }));
     }
-    if (u.indexOf('/letters/count') > -1) return res(200, { active: letters.length });
+    if (u.indexOf('/letters/count') > -1) return res(200, { active: updatesMode ? 1 : letters.length });
     if (u.indexOf('/letters/quota') > -1) {
       return res(200, {
         ok: true, limit: 3, used: 0, remaining: 3,
@@ -94,7 +103,10 @@
     }
     if (u.indexOf('/site/updates') > -1) {
       return res(200, {
-        ok: true, letters: [], next_after: 6, active: letters.length,
+        ok: true,
+        letters: updatesMode ? [shape(updatesLetter)] : [],
+        next_after: updatesMode ? updatesLetter.seq : 6,
+        active: updatesMode ? 1 : letters.length,
         unique_visitors: 12, total_sessions: 20, returning_ratio: 0.4
       });
     }
@@ -108,7 +120,10 @@
       return res(503, { ok: false, error: 'fixture_read_only' });
     }
     if (u.indexOf('/letters?') > -1) {
-      return res(200, { letters: letters.map(shape), next_before: null });
+      return res(200, {
+        letters: updatesMode ? [] : letters.map(shape),
+        next_before: null
+      });
     }
     var byId = /\/letters\/([0-9a-f]{32})$/.exec(u);
     if (byId) {

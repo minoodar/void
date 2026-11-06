@@ -515,6 +515,77 @@ await test('the feed maps presence from each letter and defaults it to none', as
   equal((await feed.next()).letter.presence, 'none', 'NULL presence is none');
 });
 
+await test('updates-first merging keeps the mark delivered by /site/updates', async () => {
+  const updatesPayload = {
+    ok: true,
+    letters: [
+      { seq: 5, id: 'moon5', body: 'new moon', presence: 'moon', created_at: 5, expires_at: 999 },
+      { seq: 4, id: 'plain4', body: 'new plain', created_at: 4, expires_at: 999 }
+    ],
+    next_after: 5, active: 6, unique_visitors: 1, total_sessions: 1, returning_ratio: 0
+  };
+  const env = makeEnv((url) => url.includes('/site/updates') ? response(200, updatesPayload) : response(200, {
+    letters: [
+      { seq: 5, id: 'moon5', body: 'new moon', presence: 'moon', created_at: 5, expires_at: 999 },
+      { seq: 4, id: 'plain4', body: 'new plain', created_at: 4, expires_at: 999 },
+      { seq: 1, id: 'older1', body: 'older', presence: 'human', created_at: 1, expires_at: 999 }
+    ],
+    next_before: null
+  }));
+  const feed = env.window.VoidLettersApi.createFeed();
+  await feed.refreshLatest();
+  await feed.prefetch();
+
+  const first = await feed.next();
+  const second = await feed.next();
+  const third = await feed.next();
+  equal(first.letter.id, 'moon5', 'updates-first copy is rendered first');
+  equal(first.letter.presence, 'moon', 'the updates copy keeps its mark');
+  equal(second.letter.id, 'plain4');
+  equal(second.letter.presence, 'none', 'an unmarked update is none');
+  equal(third.letter.id, 'older1', 'the older page letter still arrives once');
+  equal(third.letter.presence, 'human', 'the merged page copy keeps its mark');
+});
+
+await test('a later refresh delivers presence for a newly arrived letter', async () => {
+  const fresh = [];
+  const env = makeEnv((url) => url.includes('/site/updates') ? response(200, {
+    ok: true, letters: fresh.slice(), next_after: fresh.length ? 2 : 1,
+    active: 2, unique_visitors: 1, total_sessions: 1, returning_ratio: 0
+  }) : response(200, {
+    letters: [{ seq: 1, id: 'first1', body: 'first', presence: 'human', created_at: 1, expires_at: 999 }],
+    next_before: null
+  }));
+  const feed = env.window.VoidLettersApi.createFeed();
+  await feed.prefetch();
+  equal((await feed.next()).letter.presence, 'human', 'initial letter keeps its mark');
+
+  fresh.push({ seq: 2, id: 'root2', body: 'later root', presence: 'root', created_at: 2, expires_at: 999 });
+  const refreshed = await feed.refreshLatest();
+  equal(refreshed.added, 1, 'the new letter is merged');
+  const updatesCall = env.calls.find((call) => call.url.includes('/site/updates'));
+  assert(updatesCall.url.includes('after=1'), 'refresh must resume after the newest known seq: ' + updatesCall.url);
+
+  const later = await feed.next();
+  equal(later.letter.id, 'root2');
+  equal(later.letter.presence, 'root', 'a refreshed letter keeps its mark');
+});
+
+await test('updates without a usable presence degrade to none', async () => {
+  const env = makeEnv((url) => url.includes('/site/updates') ? response(200, {
+    ok: true,
+    letters: [
+      { seq: 2, id: 'legacy2', body: 'legacy', created_at: 2, expires_at: 999 },
+      { seq: 1, id: 'hostile1', body: 'hostile', presence: 'dragon', created_at: 1, expires_at: 999 }
+    ],
+    next_after: 2, active: 2, unique_visitors: 1, total_sessions: 1, returning_ratio: 0
+  }) : response(200, { letters: [], next_before: null }));
+  const feed = env.window.VoidLettersApi.createFeed();
+  await feed.refreshLatest();
+  equal((await feed.next()).letter.presence, 'none', 'a missing updates presence is none');
+  equal((await feed.next()).letter.presence, 'none', 'an invalid updates presence is none');
+});
+
 await test('the single-letter response maps presence and rejects unknown names', async () => {
   const id = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
   const marked = makeEnv(() => response(200, {

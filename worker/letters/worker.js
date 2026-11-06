@@ -1038,7 +1038,7 @@ async function siteUpdates(url, env, cors) {
 
   const now = Math.floor(Date.now() / 1000);
   const letterColumns =
-    'SELECT l.seq, l.id, l.body, l.lang, l.secret_ink, l.created_at, l.expires_at, ' +
+    'SELECT l.seq, l.id, l.body, l.lang, l.secret_ink, l.presence, l.created_at, l.expires_at, ' +
     "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'like') AS votes_like, " +
     "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'dislike') AS votes_dislike " +
     'FROM letters l ';
@@ -1056,7 +1056,10 @@ async function siteUpdates(url, env, cors) {
     )
   ]);
   const letters = ((rows[0] && rows[0].results) || []).map(function (row) {
-    return Object.assign({}, row, { secret_ink: Number(row.secret_ink) === 1 });
+    return Object.assign({}, row, {
+      secret_ink: Number(row.secret_ink) === 1,
+      presence: presenceOf(row.presence)
+    });
   });
   const latestSeq = Number(rows[1] && rows[1].results && rows[1].results[0] && rows[1].results[0].latest_seq) || 0;
   const active = Number(rows[2] && rows[2].results && rows[2].results[0] && rows[2].results[0].active) || 0;
