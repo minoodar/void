@@ -115,6 +115,7 @@
   const SHUFFLE_DEFAULT = false, SHUF_KEY = 'voidMusic.shuffle';
   try { const sv = localStorage.getItem(SHUF_KEY); S.shuffle = sv === null ? SHUFFLE_DEFAULT : sv === '1'; } catch (e) { S.shuffle = SHUFFLE_DEFAULT; }
   let root, dock, els = {};
+  let visualMode = 'pending', fallbackArtTimer = 0, fallbackArtSeq = 0;
 
   /* ------------------------------------------------------------------ */
   /* ابزارها                                                              */
@@ -1021,6 +1022,33 @@
     root = el('div', '', { id: 'void-music-root', role: 'region', hidden: '' });
     root.classList.add('vm-root-meta-empty');
 
+    // HTML/CSS scene used only when the WebGL visualizer is unavailable.
+    let fallbackScene = null;
+    try {
+      fallbackScene = el('div', 'vm-fallback-scene', { 'aria-hidden': 'true' });
+      const fallbackStars = el('div', 'vm-fallback-stars');
+      els.fallbackHole = el('div', 'vm-fallback-hole');
+      els.fallbackArt = el('img', 'vm-fallback-art', { alt: '', decoding: 'async' });
+      els.fallbackHole.appendChild(els.fallbackArt);
+      fallbackScene.append(fallbackStars, els.fallbackHole);
+      els.fallbackArt.addEventListener('load', function () { showFallbackArtwork(Number(els.fallbackArt.dataset.vmArtGeneration)); });
+      els.fallbackArt.addEventListener('error', function () {
+        if (Number(els.fallbackArt.dataset.vmArtGeneration) !== fallbackArtSeq) return;
+        clearTimeout(fallbackArtTimer); fallbackArtTimer = 0;
+        els.fallbackArt.classList.remove('is-active');
+      });
+      els.fallbackScene = fallbackScene;
+    } catch (e) {
+      fallbackScene = null; els.fallbackScene = null; els.fallbackHole = null; els.fallbackArt = null;
+      visualMode = 'essential';
+      try {
+        els.fallbackArt = el('img', 'vm-fallback-art vm-essential-art', { alt: '', decoding: 'async' });
+        els.fallbackArt.addEventListener('load', function () { showFallbackArtwork(Number(els.fallbackArt.dataset.vmArtGeneration)); });
+        els.fallbackArt.addEventListener('error', function () { els.fallbackArt.classList.remove('is-active'); });
+        root.appendChild(els.fallbackArt);
+      } catch (er) { els.fallbackArt = null; }
+    }
+
     // ردیفِ نمایش فقط نام: تصویرِ آلبوم جایی در این ردیف ندارد تا متن و ستاره‌ها روی محورِ مرکزی بمانند.
     els.meta = el('div', 'vm-meta is-blank');
     const tx = el('div', 'vm-text');
@@ -1119,6 +1147,7 @@
     els.folder = el('input', 'vm-sr', { type: 'file', webkitdirectory: '', multiple: '', tabindex: '-1', 'aria-hidden': 'true' });
 
     dock.append(els.arc, els.seek, els.time, els.clock, els.vol, els.prev, els.play, els.next, els.queueBtn, els.open, els.openLabel, els.volPop, els.queuePop, els.soundPop, els.toast);
+    if (fallbackScene) root.appendChild(fallbackScene);
     root.append(els.meta, els.stars, dock, els.corner, els.file, els.folder);
     document.body.appendChild(root);
     clockWatch(true);
@@ -1304,6 +1333,7 @@
   let artTrackId = null;
   let artEndTok = -1;       // توکنِ پخشی که پنجرهٔ پایانی‌اش اجرا شده
   function flashArtwork(url, restart) {
+    updateFallbackArtwork(url, restart);
     const viz = window.VoidMusicViz;
     if (!viz || typeof viz.artwork !== 'function' || typeof url !== 'string' || !url) return;
     const same = !restart && !!S.curId && artTrackId === S.curId;
@@ -1311,6 +1341,65 @@
     viz.artwork(url, { replace: same, restart: !!restart });
   }
   function replayArtwork() { if (artSrc) flashArtwork(artSrc, true); }
+
+  function showFallbackArtwork(seq) {
+    const img = els.fallbackArt;
+    if (!img || seq !== fallbackArtSeq || !img.naturalWidth) return;
+    if (visualMode !== 'lightweight' && visualMode !== 'essential') return;
+    clearTimeout(fallbackArtTimer);
+    img.classList.remove('is-active');
+    void img.offsetWidth;
+    img.classList.add('is-active');
+    let staticArtwork = visualMode === 'essential';
+    try { staticArtwork = staticArtwork || window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (staticArtwork) return;
+    fallbackArtTimer = setTimeout(function () {
+      if (seq === fallbackArtSeq) img.classList.remove('is-active');
+      fallbackArtTimer = 0;
+    }, ART_WIN_S * 1000);
+  }
+
+  function updateFallbackArtwork(url) {
+    const img = els.fallbackArt;
+    if (!img) return;
+    const src = typeof url === 'string' ? url : '';
+    const seq = ++fallbackArtSeq;
+    clearTimeout(fallbackArtTimer); fallbackArtTimer = 0;
+    img.classList.remove('is-active');
+    if (!src) { img.removeAttribute('src'); return; }
+    img.dataset.vmArtGeneration = String(seq);
+    if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+    if (visualMode === 'lightweight' || visualMode === 'essential') {
+      if (img.complete && img.naturalWidth) showFallbackArtwork(seq);
+    }
+  }
+
+  function setVisualMode(mode) {
+    if (mode !== 'full' && mode !== 'lightweight' && mode !== 'essential') return false;
+    if (mode === 'lightweight') {
+      const css = window.CSS;
+      if (!els.fallbackScene || !css || typeof css.supports !== 'function' ||
+          !css.supports('background-image', 'radial-gradient(circle, #000, transparent)') ||
+          !css.supports('aspect-ratio', '1')) mode = 'essential';
+    }
+    visualMode = mode;
+    if (!root || !S.built) return true;
+    root.classList.remove('vm-visual-lightweight', 'vm-visual-essential', 'vm-fallback-missing');
+    if (mode === 'lightweight') root.classList.add('vm-visual-lightweight');
+    else if (mode === 'essential') {
+      root.classList.add('vm-visual-essential');
+      if (!els.fallbackScene) root.classList.add('vm-fallback-missing');
+    }
+    if (mode === 'full') {
+      clearTimeout(fallbackArtTimer); fallbackArtTimer = 0;
+      if (els.fallbackArt) els.fallbackArt.classList.remove('is-active');
+      if (artSrc) flashArtwork(artSrc, true);
+    } else if (artSrc) updateFallbackArtwork(artSrc);
+    const note = document.getElementById('void-gl-note');
+    if (note && note.parentNode) note.parentNode.removeChild(note);
+    return true;
+  }
+
   /* عنوان فقط وقتی تصویرِ آلبوم دارد دکمه می‌شود؛ متنِ خودِ عنوان نامِ دسترس‌پذیر می‌ماند. */
   function setTitleArt(on, title) {
     if (!els.title) return;
@@ -1328,12 +1417,16 @@
   function artHoverReset() { artHover = false; }
   function artHoverCheck(e) {
     const viz = window.VoidMusicViz;
-    if (!artSrc || !viz || typeof viz.holeHit !== 'function') { artHover = false; return; }
-    const over = viz.holeHit(e.clientX, e.clientY, 12);
+    if (!artSrc) { artHover = false; return; }
+    let over = false;
+    if ((visualMode === 'lightweight' || visualMode === 'essential') && els.fallbackHole) {
+      const r = els.fallbackHole.getBoundingClientRect();
+      over = e.clientX >= r.left - 12 && e.clientX <= r.right + 12 && e.clientY >= r.top - 12 && e.clientY <= r.bottom + 12;
+    } else if (viz && typeof viz.holeHit === 'function') over = viz.holeHit(e.clientX, e.clientY, 12);
     if (over === artHover) return;
     artHover = over;
     if (!over) return;
-    const st = typeof viz.artworkState === 'function' ? viz.artworkState() : null;
+    const st = viz && typeof viz.artworkState === 'function' ? viz.artworkState() : null;
     if (!st || !st.on) flashArtwork(artSrc, true);
   }
   function setMeta(title, artist, coverUrl, onApplied) {
@@ -1345,7 +1438,7 @@
       renderStars();
       artSrc = coverUrl || null;
       setTitleArt(!!artSrc, title);
-      if (artSrc) flashArtwork(artSrc);
+      if (artSrc) flashArtwork(artSrc); else updateFallbackArtwork(null);
       els.meta.classList.toggle('is-blank', !title);
       els.meta.classList.remove('is-out');
       if (title) document.title = '\u266A ' + title;
@@ -2448,6 +2541,7 @@
   function enter() {
     if (S.open) return;
     build();
+    if (!window.VoidMusicViz || !window.WebGL2RenderingContext) setVisualMode('lightweight');
     try { const w0 = document.querySelector(S.widgetSel || '#ai-orbit-root'); S.widgetWasVisible = !w0 || getComputedStyle(w0).display !== 'none'; } catch (e) { S.widgetWasVisible = true; }
     S.open = true;
     S.savedTitle = document.title;
@@ -2612,6 +2706,7 @@
     enter: enter, exit: exit, toggle: toggle, next: next, prev: prev,
     add: addEntries, addFolder: addFolderHandle, readMeta: readMeta, relabel: relabel,
     isOpen: function () { return S.open; },
+    setVisualMode: setVisualMode,
     attachWeb: attachWeb, detachWeb: detachWeb, setWebMeta: setWebMeta, setWebChip: setWebChip, toast: toast,
     getLocalAudio: function () { return S.localAudio; }, isWeb: function () { return !!S.web; },
     // وضعیتِ سه‌محورِ منابعِ وب (detected / playing / connected) — برای بازرسیِ دستی و آزمون

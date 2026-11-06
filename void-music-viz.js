@@ -388,6 +388,7 @@
     return function (arg) {
       try { return fn(arg); } catch (e) {
         errPush(runningOf() && !rafOf() ? tag + ' LOOP-LOST:rAF-not-re-armed' : tag, e);
+        if (tag === 'raf:galaxy-frame') failVisualizer('runtime render failure', e);
         throw e;
       }
     };
@@ -596,7 +597,7 @@
     // پس Motion-Reduce یک فریمِ «زنده ولی بی‌جنبش» می‌بیند، نه انیمیشنِ تیک‌تیک‌ی ۳ ثانیه‌ای.
     V.idleE = V.haloE = idle ? idleHaloEnergy() : 0;
     V.sceneStill++;
-    try { draw(performance.now() / 1000); } catch (e) { return false; }
+    try { draw(performance.now() / 1000); } catch (e) { failVisualizer('runtime render failure', e); return false; }
     return true;
   }
   /* §IDLE بیدار-کنندهٔ حالت: حلقهٔ رندر در idleِ معمولی خودش می‌ایستد (و باید بایستد). تنها جایی
@@ -2406,6 +2407,15 @@ void main(){
     return buf;
   }
 
+  function failVisualizer(reason, error) {
+    if (V.dead) return;
+    V.visualFailure = reason + (error && error.message ? ': ' + error.message : '');
+    V.dead = true;
+    stopLoop(false);
+    try { if (VM.setVisualMode) VM.setVisualMode('lightweight'); } catch (e) {}
+    teardownGL();
+  }
+
   function initGL() {
     if (V.ok) return true;
     if (V.dead) return false;
@@ -2420,9 +2430,12 @@ void main(){
       V.canvas = cv; V.gl = gl;
       // GPU reset / از دست رفتنِ context: بوم را از نو می‌سازیم (هندسه از seedِ همان نشست دوباره ساخته می‌شود)
       cv.addEventListener('webglcontextlost', function (e) {
-        e.preventDefault(); V.ok = false; stopLoop(false);
+        e.preventDefault();
+        if (cv.__vmRetiring) return;
+        V.ok = false; V.dead = true; V.visualFailure = 'WebGL context lost'; stopLoop(false);
+        try { if (VM.setVisualMode) VM.setVisualMode('lightweight'); } catch (er) {}
         setTimeout(guard(function () {
-          teardownGL(); V.dead = false;
+          teardownGL(); V.dead = false; V.visualFailure = '';
           if (V.playing && VM.isOpen() && initGL()) startLoop();
         }, 'to:ctx-restore-400ms'), 400);
       });
@@ -2435,7 +2448,7 @@ void main(){
       G.dots = program(gl, VS_DOTS, FS_OCCLUDED_DOTS, ['uView', 'uCenter', 'uScale', 'uSin', 'uTilt', 'uPx', 'uHalf', 'uDiskBreath', 'uHoleR', 'uPhase', 'uReveal', 'uLum', 'uTime', 'uPulseR', 'uPulseA', 'uDim', 'uMid', 'uHigh', 'uStructure', 'uChroma', 'uPal', 'uAur', 'uAurMix', 'uTint', 'uDive', 'uTravel', 'uCull', 'uOccl']);
       G.aurDots = program(gl, VS_AUR_DOTS, FS_AUR_DOTS, ['uView', 'uCenter', 'uScale', 'uSin', 'uTilt', 'uPx', 'uHalf', 'uDiskBreath', 'uPhase', 'uTime', 'uLevel', 'uLum', 'uLow', 'uMid', 'uHigh', 'uDim', 'uChroma', 'uHoleR', 'uTint']);
       G.hor = program(gl, VS_TRI, FS_HORIZON, ['uCanvas', 'uPx', 'uCenter', 'uScale', 'uHoleR', 'uLevel', 'uLum', 'uTime', 'uEnergy', 'uBass', 'uFlare', 'uAxis', 'uTint', 'uArt', 'uArtAmt', 'uArtDim']);
-    } catch (e) { teardownGL(); V.dead = true; return false; }
+    } catch (e) { failVisualizer('WebGL setup or shader failure', e); return false; }
     // §ENCHANT برنامهٔ شیدرِ هاله در try جدا: اگر روی یک GPU کامپایل نشد، فقط همین افکت خاموش می‌شود
     try { G.ench = !CFG.enchant ? null : program(V.gl, VS_TRI, FS_ENCHANT, ['uCanvas', 'uPx', 'uCenter', 'uScale', 'uHoleR', 'uTime', 'uFlow', 'uAura', 'uSwell', 'uSqueeze', 'uR1', 'uA1', 'uR2', 'uA2']); } catch (e) { G.ench = null; }
     try {
@@ -2489,6 +2502,7 @@ void main(){
       gl.bindVertexArray(null);
 
       G.tex = gl.createTexture(); G.fbo = gl.createFramebuffer();
+      if (!G.tex || !G.fbo) throw new Error('framebuffer resources unavailable');
       // §ARTWORK بافتِ جایگزینِ ۱×۱ تا یونیفرمِ uArt هرگز بی‌بافت نماند
       G.artTex = gl.createTexture();
       gl.activeTexture(gl.TEXTURE2);
@@ -2502,8 +2516,10 @@ void main(){
       V.ok = true;
       syncQualityMode();
       resizeGL();
+      V.visualFailure = '';
+      try { if (VM.setVisualMode) VM.setVisualMode('full'); } catch (e) {}
       return true;
-    } catch (e) { teardownGL(); V.dead = true; return false; }
+    } catch (e) { failVisualizer(/framebuffer/i.test(String(e && e.message)) ? 'framebuffer initialization failure' : 'WebGL setup failure', e); return false; }
   }
 
   // فقط هدفِ رندر (بوم/بافتِ شفق) را با مقیاسِ تازه می‌سازد؛ چیدمان و پودر دست‌نخورده می‌مانند.
@@ -2519,7 +2535,9 @@ void main(){
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, G.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, G.tex, 0);
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) throw new Error('framebuffer incomplete: ' + status);
     G.auroraValid = false;
   }
 
@@ -2542,6 +2560,7 @@ void main(){
   }
 
   function teardownGL() {
+    if (V.canvas) V.canvas.__vmRetiring = true;
     try { if (V.gl) { const x = V.gl.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); } } catch (e) {}
     try { if (V.canvas && V.canvas.parentNode) V.canvas.parentNode.removeChild(V.canvas); } catch (e) {}
     V.canvas = null; V.gl = null; V.ok = false; G = null;
@@ -3234,6 +3253,7 @@ void main(){
   /* ---------- رسم ---------- */
   function draw(nowS) {
     const gl = V.gl;
+    if (!gl || (typeof gl.isContextLost === 'function' && gl.isContextLost())) throw new Error('WebGL context lost during render');
     const rm = reduced();
     const La = V.L.aurora, Lg = V.L.galaxy;
     // §SHOW کرومایِ آپلودشده: در حالت‌های عینی همان A.chroma است؛ فقط در ambientِ با نمایش روشن،
@@ -3811,7 +3831,12 @@ void main(){
       // صدا از گرافِ Web Audio می‌گذرد؛ context هیچ‌وقت نباید وقتی موزیک پخش می‌شود معلق بماند
       if (A.ok && A.ctx.state !== 'running') { try { await A.ctx.resume(); } catch (er) {} }
       if (!VM.isOpen()) { miniKick(); return; }       // خارج از Music Mode: فقط صدا + ویژولایزرِ کوچکِ orb
-      if (!V.ok && !initGL()) return;
+      if (!V.ok && !initGL()) {
+        // Keep the audio graph, output gain, and EQ available when only WebGL failed.
+        await ensureGraph();
+        if (V.playing && A.ok && A.ctx.state !== 'running') { try { await A.ctx.resume(); } catch (er) {} }
+        return;
+      }
       beginCosmicSession();
       startCinematicOpening();
       await ensureGraph();
@@ -3836,7 +3861,7 @@ void main(){
   window.addEventListener('voidmusic:mode', function (e) {
     if (e.detail && e.detail.open) {
       clearTimeout(V.tdT);
-      if (V.ok) { try { resizeGL(); } catch (er) {} }                 // اگر context هنوز زنده است، همان را به‌کار ببر (ورودِ فوری، بدونِ کامپایلِ دوبارهٔ شیدرها)
+      if (V.ok) { try { resizeGL(); } catch (er) { failVisualizer('framebuffer resize failure', er); } } // اگر context هنوز زنده است، همان را به‌کار ببر (ورودِ فوری، بدونِ کامپایلِ دوبارهٔ شیدرها)
       // برگشت به Music Mode وقتی موزیک همچنان پخش می‌شود → نمایش دوباره شروع شود
       const a = VM.getAudio();
       if (playSignal(a)) {
@@ -3847,6 +3872,10 @@ void main(){
           beginCosmicSession();
           startCinematicOpening();
           ensureGraph().then(function () { if (V.playing && VM.isOpen()) startLoop(); });
+        } else {
+          ensureGraph().then(function () {
+            if (V.playing && A.ok && A.ctx.state !== 'running') return A.ctx.resume();
+          }).catch(function () {});
         }
       } else if (VM.getState && VM.getState().current) {
         // آهنگ بارگذاری شده ولی در مکث: ردِ کم‌نورِ سیاه‌چاله همچنان در صحنه باشد
@@ -3859,7 +3888,7 @@ void main(){
           if (CFG.scene) { scenePoll(); V.vstate = visualState(); awake = V.vstate === 'source'; }
           if (awake) { V.awakenX = 1; V.idleX = 0; }
           V.L.galaxy = awake ? awakenTarget() : CFG.holeRest; V.L.aurora = 0;
-          try { draw(performance.now() / 1000); } catch (er) {}
+          try { draw(performance.now() / 1000); } catch (er) { failVisualizer('runtime render failure', er); }
         }
       }
       idleHaloCheck();   // §IDLE ورود به Music Mode با منبعِ صوتیِ بی‌موسیقی: هاله منتظرِ تیکِ ۳ ثانیه نمی‌ماند
@@ -3884,7 +3913,7 @@ void main(){
   let rzT = 0;
   window.addEventListener('resize', function () {
     V.grace = performance.now() + 3500;                          // گذارِ تمام‌صفحه/تغییر اندازه فریم‌ها را موقتاً می‌اندازد؛ کیفیت را پایین نیاور
-    clearTimeout(rzT); rzT = setTimeout(guard(function () { if (V.ok) { resizeGL(); if (!V.running && V.playing) startLoop(); else if (!V.running) { try { draw(performance.now() / 1000); } catch (e) {} } } }, 'to:resize-120ms'), 120);
+    clearTimeout(rzT); rzT = setTimeout(guard(function () { if (V.ok) { try { resizeGL(); if (!V.running && V.playing) startLoop(); else if (!V.running) draw(performance.now() / 1000); } catch (e) { failVisualizer('resize or render failure', e); } } }, 'to:resize-120ms'), 120);
   });
   document.addEventListener('fullscreenchange', function () { V.grace = performance.now() + 3500; });
 
