@@ -116,6 +116,8 @@
   try { const sv = localStorage.getItem(SHUF_KEY); S.shuffle = sv === null ? SHUFFLE_DEFAULT : sv === '1'; } catch (e) { S.shuffle = SHUFFLE_DEFAULT; }
   let root, dock, els = {};
   let visualMode = 'pending', fallbackArtTimer = 0, fallbackArtSeq = 0;
+  let graphicsNoticeTimer = 0, graphicsNoticeHideTimer = 0, graphicsNoticeShown = false;
+  const GRAPHICS_NOTICE_KEY = 'voidMusic.lightweightGraphicsNoticeShown';
 
   /* ------------------------------------------------------------------ */
   /* ابزارها                                                              */
@@ -1136,6 +1138,15 @@
     injectSearchCss();
 
     els.toast = el('div', 'vm-toast', { role: 'status' });
+    els.graphicsNotice = el('div', 'vm-graphics-notice', { role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true', hidden: '' });
+    els.graphicsNoticeTitle = el('strong', 'vm-graphics-notice__title');
+    els.graphicsNoticeTitle.textContent = 'Lightweight Graphics Mode';
+    els.graphicsNoticeText = el('span', 'vm-graphics-notice__text');
+    els.graphicsNoticeText.textContent = "You're viewing Void with reduced graphics. Enable WebGL for the full Galaxy experience.";
+    els.graphicsNoticeClose = el('button', 'vm-graphics-notice__close', { type: 'button', 'aria-label': 'Close notification' });
+    els.graphicsNoticeClose.textContent = '×';
+    els.graphicsNotice.append(els.graphicsNoticeTitle, els.graphicsNoticeText, els.graphicsNoticeClose);
+    els.graphicsNoticeClose.addEventListener('click', hideGraphicsNotice);
     els.corner = el('div', 'vm-corner');
     els.fs = mkBtn('vm-cbtn vm-fs', 'voidMusicFullscreen');
     els.fs.append(icon(ICON.fs, 'i-fs'), icon(ICON.fsExit, 'i-fsx'));
@@ -1149,6 +1160,7 @@
     dock.append(els.arc, els.seek, els.time, els.clock, els.vol, els.prev, els.play, els.next, els.queueBtn, els.open, els.openLabel, els.volPop, els.queuePop, els.soundPop, els.toast);
     if (fallbackScene) root.appendChild(fallbackScene);
     root.append(els.meta, els.stars, dock, els.corner, els.file, els.folder);
+    root.appendChild(els.graphicsNotice);
     document.body.appendChild(root);
     clockWatch(true);
 
@@ -1395,6 +1407,7 @@
       if (els.fallbackArt) els.fallbackArt.classList.remove('is-active');
       if (artSrc) flashArtwork(artSrc, true);
     } else if (artSrc) updateFallbackArtwork(artSrc);
+    if (mode === 'lightweight' && root.classList.contains('vm-visual-lightweight')) showGraphicsNotice();
     const note = document.getElementById('void-gl-note');
     if (note && note.parentNode) note.parentNode.removeChild(note);
     return true;
@@ -1529,6 +1542,27 @@
   }
   let toastTimer = 0;
   let toastAction = null;
+  function showGraphicsNotice() {
+    if (graphicsNoticeShown || !root || !root.classList.contains('vm-visual-lightweight') || !els.graphicsNotice) return;
+    try {
+      if (sessionStorage.getItem(GRAPHICS_NOTICE_KEY) === '1') { graphicsNoticeShown = true; return; }
+      sessionStorage.setItem(GRAPHICS_NOTICE_KEY, '1');
+    } catch (e) {}
+    graphicsNoticeShown = true;
+    const notice = els.graphicsNotice;
+    notice.hidden = false;
+    requestAnimationFrame(function () { requestAnimationFrame(function () { notice.classList.add('is-visible'); }); });
+    clearTimeout(graphicsNoticeTimer);
+    graphicsNoticeTimer = setTimeout(hideGraphicsNotice, 10000);
+  }
+  function hideGraphicsNotice() {
+    clearTimeout(graphicsNoticeTimer); graphicsNoticeTimer = 0;
+    const notice = els.graphicsNotice;
+    if (!notice || notice.hidden) return;
+    notice.classList.remove('is-visible');
+    clearTimeout(graphicsNoticeHideTimer);
+    graphicsNoticeHideTimer = setTimeout(function () { notice.hidden = true; graphicsNoticeHideTimer = 0; }, 300);
+  }
   function toast(msg, action, actionLabel) {
     S.toastLog.push({ msg: msg, action: typeof action === 'function' ? 1 : 0 });
     if (S.toastLog.length > 24) S.toastLog.shift();
