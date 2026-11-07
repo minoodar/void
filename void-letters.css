@@ -668,14 +668,17 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     gap: 10px;
     width: min(380px, calc(100vw - 24px));
     padding: 16px 16px 14px;
-    border: 1px solid rgba(235, 240, 245, .16);
+    border: 1px solid rgba(236, 241, 247, .17);
     border-radius: 20px 34px 20px 34px;
     background:
-        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .07), transparent 62%),
-        rgba(9, 12, 18, .78);
-    -webkit-backdrop-filter: blur(14px) saturate(115%);
-            backdrop-filter: blur(14px) saturate(115%);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, .62), 0 0 0 1px rgba(0, 0, 0, .35);
+        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .06), transparent 62%),
+        linear-gradient(180deg, rgba(16, 20, 27, .44), rgba(8, 10, 15, .40));
+    -webkit-backdrop-filter: blur(10px) saturate(112%);
+            backdrop-filter: blur(10px) saturate(112%);
+    box-shadow:
+        0 24px 64px rgba(0, 0, 0, .56),
+        inset 0 1px 0 rgba(255, 255, 255, .05),
+        0 0 0 1px rgba(0, 0, 0, .32);
     color: rgba(250, 252, 255, .94);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     pointer-events: auto;
@@ -1116,12 +1119,17 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     transform: translate(-50%, -50%);
     margin: 0;
     padding: 0;
-    border: 1px solid rgba(235, 240, 245, .16);
+    border: 1px solid rgba(236, 241, 247, .17);
     border-radius: 18px;
     background:
-        radial-gradient(120% 90% at 50% -10%, rgba(251, 191, 36, .07), transparent 60%),
-        linear-gradient(180deg, rgba(13, 16, 23, .985), rgba(5, 7, 11, .99));
-    box-shadow: 0 24px 70px rgba(0, 0, 0, .66), 0 0 0 1px rgba(0, 0, 0, .35);
+        radial-gradient(130% 90% at 50% -12%, rgba(251, 191, 36, .08), transparent 60%),
+        linear-gradient(180deg, rgba(19, 23, 31, .33), rgba(7, 9, 13, .30));
+    -webkit-backdrop-filter: blur(8px) saturate(116%);
+            backdrop-filter: blur(8px) saturate(116%);
+    box-shadow:
+        0 26px 80px rgba(0, 0, 0, .58),
+        inset 0 1px 0 rgba(255, 255, 255, .055),
+        0 0 0 1px rgba(0, 0, 0, .30);
     color: rgba(250, 252, 255, .94);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     pointer-events: auto;
@@ -1710,3 +1718,50 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
         transition: opacity .08s linear;
     }
 }
+
+/* ---- Glass refinement (2026-11-07) ----
+   فقط پس‌زمینهٔ سطحِ شیشه‌ای نیمه‌شفاف است؛ متن و کنترل‌ها کامل خوانا می‌مانند. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    #void-god-panel {
+        background:
+            radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .06), transparent 62%),
+            rgba(8, 10, 15, .88);
+    }
+    #void-god-dialog {
+        background:
+            radial-gradient(130% 90% at 50% -12%, rgba(251, 191, 36, .08), transparent 60%),
+            linear-gradient(180deg, rgba(19, 23, 31, .96), rgba(7, 9, 13, .97));
+    }
+}
+
+/* خواننده */
+#void-god-panel .void-god-msg-text {
+    color: rgba(250, 252, 255, .97);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+}
+#void-god-panel .void-god-msg-title { color: rgba(250, 252, 255, 1); }
+#void-god-panel .void-god-msg-meta { color: rgba(235, 240, 245, .62); }
+#void-god-panel .void-god-msg-tag { color: rgba(251, 204, 108, .9); }
+#void-god-panel .void-god-secret-hint { color: rgba(251, 208, 118, .78); }
+
+/* نویسنده */
+#void-god-dialog .void-god-title { color: rgba(250, 252, 255, 1); }
+#void-god-dialog .void-god-title-fa { color: rgba(251, 204, 108, .88); }
+#void-god-dialog .void-god-intro { color: rgba(235, 240, 245, .86); }
+#void-god-dialog .void-god-label,
+#void-god-dialog .void-god-legend { color: rgba(235, 240, 245, .74); }
+#void-god-dialog .void-god-count { color: rgba(235, 240, 245, .72); }
+#void-god-dialog .void-god-quota { color: rgba(235, 240, 245, .82); }
+#void-god-dialog .void-god-quota__text { color: rgba(235, 240, 245, .74); }
+#void-god-dialog .void-god-secret { color: rgba(235, 240, 245, .84); }
+#void-god-dialog .void-god-secret__micro { color: rgba(235, 240, 245, .68); }
+#void-god-dialog .void-god-ack { color: rgba(235, 240, 245, .85); }
+#void-god-dialog .void-god-published__note { color: rgba(235, 240, 245, .82); }
+#void-god-dialog .void-god-published__status { color: rgba(235, 240, 245, .76); }
+#void-god-dialog .void-god-text {
+    border-color: rgba(235, 240, 245, .2);
+    background: rgba(8, 11, 16, .9);
+    color: rgba(250, 252, 255, .98);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+}
+#void-god-dialog .void-god-text::placeholder { color: rgba(235, 240, 245, .42); }

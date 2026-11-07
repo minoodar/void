@@ -726,3 +726,33 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
     }
     .void-topnav__grip, .void-topnav__link { transition: none; }
 }
+
+/* ---- تنظیماتِ موسیقی: شیشهٔ تیرهٔ نیمه‌شفاف (2026-11-07) ----
+   فقط سطحِ پنل شفاف است؛ متن و کنترل‌ها کامل خوانا می‌مانند. */
+.vm-sound-pop {
+    background:
+        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 60%),
+        linear-gradient(180deg, rgba(17, 21, 28, .44), rgba(8, 10, 15, .40));
+    border-color: rgba(236, 241, 247, .18);
+    -webkit-backdrop-filter: blur(10px) saturate(112%);
+            backdrop-filter: blur(10px) saturate(112%);
+    box-shadow:
+        0 18px 48px rgba(0, 0, 0, .56),
+        inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .vm-sound-pop { background: rgba(8, 10, 15, .9); }
+}
+.vm-sound-pop .vm-snd-title { color: var(--vm-fg-hi); }
+.vm-sound-pop .vm-snd-lbl { color: rgba(235, 240, 245, .84); opacity: 1; }
+.vm-sound-pop .vm-snd-val { color: rgba(235, 240, 245, .82); opacity: 1; }
+.vm-sound-pop .vm-eq-hz { color: rgba(235, 240, 245, .82); opacity: 1; }
+.vm-sound-pop .vm-eq-db { color: rgba(235, 240, 245, .78); opacity: 1; }
+.vm-sound-pop .vm-snd-spec { background: rgba(8, 10, 20, .62); }
+.vm-sound-pop .vm-snd-sel {
+    background: rgba(8, 11, 16, .82);
+    border-color: rgba(199, 210, 254, .28);
+    color: var(--vm-fg-hi);
+}
+.vm-sound-pop .vm-chip { background: rgba(8, 11, 16, .55); color: rgba(235, 240, 245, .88); }
+.vm-sound-pop .vm-chip[aria-pressed="true"] { color: #fff; }
