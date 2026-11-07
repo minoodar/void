@@ -117,68 +117,6 @@ await test('changing Secret Ink starts a new submission without the flag', async
   assert(!('secret_ink' in bodyOf(env.calls[0])), 'a visible letter must not send secret_ink');
 });
 
-await test('each allowed presence travels with the letter and survives pending storage', async () => {
-  for (const kind of ['human', 'moon', 'root', 'unknown']) {
-    const env = makeEnv(() => ok201({ presence: kind }));
-    const api = env.window.VoidLettersApi;
-    const pending = api.begin('a marked letter', '7d', 'fa', false, kind);
-    equal(pending.presence, kind, 'pending lost ' + kind);
-    equal(api.loadPending().presence, kind, 'stored pending lost ' + kind);
-    await api.submit(pending);
-    equal(bodyOf(env.calls[0]).presence, kind, 'POST lost ' + kind);
-    equal(bodyOf(env.calls[0]).text, 'a marked letter', 'the text must stay untouched');
-  }
-});
-
-await test('none presence is never sent, whether chosen or omitted', async () => {
-  const env = makeEnv(() => ok201());
-  const api = env.window.VoidLettersApi;
-  await api.submit(api.begin('no mark chosen', '24h', null, false, 'none'));
-  assert(!('presence' in bodyOf(env.calls[0])), 'explicit none reached the POST');
-  await api.submit(api.begin('no mark given', '24h', null));
-  assert(!('presence' in bodyOf(env.calls[1])), 'omitted presence reached the POST');
-  equal(bodyOf(env.calls[1]).expiry, '24h');
-});
-
-await test('an unknown presence is normalized to none and never sent', async () => {
-  const env = makeEnv(() => ok201());
-  const api = env.window.VoidLettersApi;
-  for (const bad of ['dragon', 'HUMAN', ' human', '', 42, {}, ['moon']]) {
-    const pending = api.begin('invalid mark ' + String(bad), '24h', null, false, bad);
-    equal(pending.presence, 'none', 'invalid value survived: ' + String(bad));
-    await api.submit(pending);
-    assert(!('presence' in bodyOf(env.calls[env.calls.length - 1])), 'invalid value was sent: ' + String(bad));
-  }
-});
-
-await test('presence is part of the pending idempotency key', async () => {
-  const env = makeEnv(() => ok201());
-  const api = env.window.VoidLettersApi;
-  const first = api.begin('same words', '7d', null, false, 'moon');
-  const repeat = api.begin('same words', '7d', null, false, 'moon');
-  equal(repeat.request_id, first.request_id, 'an identical retry must reuse the UUID');
-  const implicitNone = api.begin('same words', '7d', null);
-  const explicitNone = api.begin('same words', '7d', null, false, 'none');
-  equal(explicitNone.request_id, implicitNone.request_id, 'none and omitted must be the same payload');
-  const changed = api.begin('same words', '7d', null, false, 'root');
-  assert(changed.request_id !== first.request_id, 'changing presence must start a new letter');
-});
-
-await test('a pending letter with presence is retried after reload with the same UUID', async () => {
-  const first = makeEnv(() => { throw new TypeError('offline'); });
-  const pending = first.window.VoidLettersApi.begin('moon after reload', '30d', null, false, 'moon');
-  await first.window.VoidLettersApi.submit(pending);
-
-  const second = makeEnv(() => ok201({ presence: 'moon' }));
-  for (const [k, v] of first.store) second.store.set(k, v);
-  const api = second.window.VoidLettersApi;
-  const restored = api.loadPending();
-  assert(restored && restored.presence === 'moon', 'presence was lost across reload');
-  await api.submit(restored);
-  equal(bodyOf(second.calls[0]).request_id, pending.request_id, 'retry changed the UUID');
-  equal(bodyOf(second.calls[0]).presence, 'moon', 'retry lost the presence');
-});
-
 await test('a second submit while one is in flight is refused', async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
@@ -498,37 +436,20 @@ await test('the feed maps secret_ink to a boolean and defaults it to false', asy
   equal(plain.letter.secret_ink, false, 'missing flag maps to false');
 });
 
-await test('the feed maps presence from each letter and defaults it to none', async () => {
-  const env = makeEnv(() => response(200, {
-    letters: [
-      { seq: 4, id: 'human', body: 'a', presence: 'human', created_at: 4, expires_at: 999 },
-      { seq: 3, id: 'invalid', body: 'b', presence: 'dragon', created_at: 3, expires_at: 999 },
-      { seq: 2, id: 'missing', body: 'c', created_at: 2, expires_at: 999 },
-      { seq: 1, id: 'null', body: 'd', presence: null, created_at: 1, expires_at: 999 }
-    ],
-    next_before: null
-  }));
-  const feed = env.window.VoidLettersApi.createFeed();
-  equal((await feed.next()).letter.presence, 'human');
-  equal((await feed.next()).letter.presence, 'none', 'invalid presence must not reach the reader');
-  equal((await feed.next()).letter.presence, 'none', 'missing presence is none');
-  equal((await feed.next()).letter.presence, 'none', 'NULL presence is none');
-});
-
-await test('updates-first merging keeps the mark delivered by /site/updates', async () => {
+await test('updates-first merging keeps the letter delivered by /site/updates', async () => {
   const updatesPayload = {
     ok: true,
     letters: [
-      { seq: 5, id: 'moon5', body: 'new moon', presence: 'moon', created_at: 5, expires_at: 999 },
+      { seq: 5, id: 'moon5', body: 'new moon', created_at: 5, expires_at: 999 },
       { seq: 4, id: 'plain4', body: 'new plain', created_at: 4, expires_at: 999 }
     ],
     next_after: 5, active: 6, unique_visitors: 1, total_sessions: 1, returning_ratio: 0
   };
   const env = makeEnv((url) => url.includes('/site/updates') ? response(200, updatesPayload) : response(200, {
     letters: [
-      { seq: 5, id: 'moon5', body: 'new moon', presence: 'moon', created_at: 5, expires_at: 999 },
+      { seq: 5, id: 'moon5', body: 'new moon', created_at: 5, expires_at: 999 },
       { seq: 4, id: 'plain4', body: 'new plain', created_at: 4, expires_at: 999 },
-      { seq: 1, id: 'older1', body: 'older', presence: 'human', created_at: 1, expires_at: 999 }
+      { seq: 1, id: 'older1', body: 'older', created_at: 1, expires_at: 999 }
     ],
     next_before: null
   }));
@@ -540,27 +461,24 @@ await test('updates-first merging keeps the mark delivered by /site/updates', as
   const second = await feed.next();
   const third = await feed.next();
   equal(first.letter.id, 'moon5', 'updates-first copy is rendered first');
-  equal(first.letter.presence, 'moon', 'the updates copy keeps its mark');
   equal(second.letter.id, 'plain4');
-  equal(second.letter.presence, 'none', 'an unmarked update is none');
   equal(third.letter.id, 'older1', 'the older page letter still arrives once');
-  equal(third.letter.presence, 'human', 'the merged page copy keeps its mark');
 });
 
-await test('a later refresh delivers presence for a newly arrived letter', async () => {
+await test('a later refresh merges a newly arrived letter', async () => {
   const fresh = [];
   const env = makeEnv((url) => url.includes('/site/updates') ? response(200, {
     ok: true, letters: fresh.slice(), next_after: fresh.length ? 2 : 1,
     active: 2, unique_visitors: 1, total_sessions: 1, returning_ratio: 0
   }) : response(200, {
-    letters: [{ seq: 1, id: 'first1', body: 'first', presence: 'human', created_at: 1, expires_at: 999 }],
+    letters: [{ seq: 1, id: 'first1', body: 'first', created_at: 1, expires_at: 999 }],
     next_before: null
   }));
   const feed = env.window.VoidLettersApi.createFeed();
   await feed.prefetch();
-  equal((await feed.next()).letter.presence, 'human', 'initial letter keeps its mark');
+  equal((await feed.next()).letter.id, 'first1', 'initial letter is delivered');
 
-  fresh.push({ seq: 2, id: 'root2', body: 'later root', presence: 'root', created_at: 2, expires_at: 999 });
+  fresh.push({ seq: 2, id: 'root2', body: 'later root', created_at: 2, expires_at: 999 });
   const refreshed = await feed.refreshLatest();
   equal(refreshed.added, 1, 'the new letter is merged');
   const updatesCall = env.calls.find((call) => call.url.includes('/site/updates'));
@@ -568,38 +486,6 @@ await test('a later refresh delivers presence for a newly arrived letter', async
 
   const later = await feed.next();
   equal(later.letter.id, 'root2');
-  equal(later.letter.presence, 'root', 'a refreshed letter keeps its mark');
-});
-
-await test('updates without a usable presence degrade to none', async () => {
-  const env = makeEnv((url) => url.includes('/site/updates') ? response(200, {
-    ok: true,
-    letters: [
-      { seq: 2, id: 'legacy2', body: 'legacy', created_at: 2, expires_at: 999 },
-      { seq: 1, id: 'hostile1', body: 'hostile', presence: 'dragon', created_at: 1, expires_at: 999 }
-    ],
-    next_after: 2, active: 2, unique_visitors: 1, total_sessions: 1, returning_ratio: 0
-  }) : response(200, { letters: [], next_before: null }));
-  const feed = env.window.VoidLettersApi.createFeed();
-  await feed.refreshLatest();
-  equal((await feed.next()).letter.presence, 'none', 'a missing updates presence is none');
-  equal((await feed.next()).letter.presence, 'none', 'an invalid updates presence is none');
-});
-
-await test('the single-letter response maps presence and rejects unknown names', async () => {
-  const id = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
-  const marked = makeEnv(() => response(200, {
-    id, text: 'marked', presence: 'root', created_at: 1, expires_at: 2
-  }));
-  equal((await marked.window.VoidLettersApi.getLetter(id)).letter.presence, 'root');
-
-  const legacy = makeEnv(() => response(200, { id, text: 'legacy', created_at: 1, expires_at: 2 }));
-  equal((await legacy.window.VoidLettersApi.getLetter(id)).letter.presence, 'none', 'legacy NULL is none');
-
-  const hostile = makeEnv(() => response(200, {
-    id, text: 'hostile', presence: '<svg onload=alert(1)>', created_at: 1, expires_at: 2
-  }));
-  equal((await hostile.window.VoidLettersApi.getLetter(id)).letter.presence, 'none', 'arbitrary markup must not pass through');
 });
 
 await test('recordVisit posts only the returning flag and never rejects', async () => {

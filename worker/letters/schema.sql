@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS letters (
   id          TEXT NOT NULL UNIQUE,          -- 128-bit random hex identifier
   body        TEXT NOT NULL,                 -- Normalized, validated UTF-8 text (max 500 codepoints)
   lang        TEXT DEFAULT NULL,             -- Normalized ISO/BCP47 lang tag or NULL
-  presence    TEXT DEFAULT NULL,             -- Symbolic mark: human | moon | root | unknown | NULL
   created_at  INTEGER NOT NULL,              -- Unix timestamp in seconds
   expires_at  INTEGER NOT NULL,              -- Unix timestamp in seconds
   secret_ink  INTEGER NOT NULL DEFAULT 0,    -- 1 = readers see it masked until they reveal it

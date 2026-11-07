@@ -183,8 +183,6 @@
 
   var panel = null;
   var panelText = null;
-  var panelPresence = null;
-  var PRESENCE_LABELS = { human: 'Human', moon: 'Moon', root: 'Root', unknown: 'Unknown' };
   var panelTag = null;
   var panelMeta = null;
   var panelLifespan = null;
@@ -264,7 +262,6 @@
   var hintEl = null;
   var ackEl = null;
   var secretEl = null;
-  var presenceNone = null;
   var submitBtn = null;
   var noticeEl = null;
   var successEl = null;
@@ -313,8 +310,8 @@
       discoveryBtn.title = 'Show tools; activate again to discover a letter';
     }
     if (quillBtn) {
-      quillBtn.setAttribute('aria-label', 'Write a letter');
-      quillBtn.title = 'Write a letter';
+      quillBtn.setAttribute('aria-label', 'Message to Galaxy');
+      quillBtn.title = 'Message to Galaxy';
     }
   }
 
@@ -1221,7 +1218,7 @@
     submitBtn.setAttribute('aria-busy', sending ? 'true' : 'false');
     var left = Math.ceil((cooldownUntil - Date.now()) / 1000);
     if (sending) {
-      submitBtn.textContent = 'Releasing\u2026';
+      submitBtn.textContent = 'Sending\u2026';
       submitBtn.disabled = true;
       return;
     }
@@ -1230,7 +1227,7 @@
       submitBtn.disabled = true;
       return;
     }
-    submitBtn.textContent = uncertainSubmission ? 'Check submission' : 'Release';
+    submitBtn.textContent = uncertainSubmission ? 'Check submission' : 'Submit letter';
     if (published) { submitBtn.disabled = true; return; }
     var text = composer.value;
     var ok = codePoints(text) <= MAX_POINTS && !BAD_CHARS.test(text) &&
@@ -1542,14 +1539,7 @@
     translateRing.appendChild(translateGlyph);
     panelTranslate.appendChild(translateRing);
 
-    /* The writer's chosen glyph, not the viewer's state: decorative, inert,
-       and reset for every letter before it is shown. */
-    panelPresence = make('span', 'void-god-msg-presence');
-    panelPresence.setAttribute('role', 'img');
-    panelPresence.hidden = true;
-
     head.appendChild(panelTranslate);
-    head.appendChild(panelPresence);
     head.appendChild(titles);
     head.appendChild(x);
 
@@ -1572,7 +1562,7 @@
     shareGlyph.appendChild(svgNode('path', { d: 'M8.9 10.9 15.1 7.1M8.9 13.1 15.1 16.9' }));
     panelShareMenu.appendChild(shareGlyph);
     messageBody.appendChild(panelText);
-    secretHint = make('p', 'void-god-secret-hint', 'Click to reveal \u00B7 Click again to hide');
+    secretHint = make('p', 'void-god-secret-hint', 'Tap the stars to reveal');
     secretHint.id = 'void-god-secret-hint';
     secretHint.hidden = true;
     secretHint.setAttribute('aria-hidden', 'true');
@@ -1684,23 +1674,6 @@
     return Array.from(text);
   }
 
-  function renderPresence(value) {
-    if (!panelPresence) return;
-    var kind = typeof value === 'string' && Object.prototype.hasOwnProperty.call(PRESENCE_LABELS, value)
-      ? value : 'none';
-    while (panelPresence.firstChild) panelPresence.removeChild(panelPresence.firstChild);
-    if (kind === 'none') {
-      panelPresence.hidden = true;
-      panelPresence.removeAttribute('aria-label');
-      panelPresence.removeAttribute('title');
-      return;
-    }
-    panelPresence.appendChild(presenceSvg(kind));
-    panelPresence.setAttribute('aria-label', 'Symbolic presence: ' + PRESENCE_LABELS[kind]);
-    panelPresence.title = PRESENCE_LABELS[kind] + ' presence';
-    panelPresence.hidden = false;
-  }
-
   function maskSecretText(text) {
     var parts = secretGraphemes(typeof text === 'string' ? text : '');
     var out = '';
@@ -1790,7 +1763,6 @@
   function renderMessage(msg) {
     resetTranslation();
     voteBusy = false;
-    renderPresence(msg.presence);
     setPanelText(msg.text, msg.secret_ink === true);
     if (msg.lang) panelText.setAttribute('lang', msg.lang);
     else panelText.removeAttribute('lang');
@@ -2397,7 +2369,6 @@
     panelRequestToken++;
     closeSharePop(false);
     resetTranslation({ release: true });
-    renderPresence('none');
     setReadingMode(false);
     if (!preserveReaderState) restoreMusicPresentation();
     voteBusy = false;
@@ -2421,7 +2392,6 @@
     setReadingMode(false);
     restoreMusicPresentation();
     currentMessage = null;
-    renderPresence('none');
     voteBusy = false;
     clearLifespanTimer();
     panel.classList.remove('is-on', 'is-loading-letter');
@@ -3658,7 +3628,6 @@
     sending = false;
     if (!uncertainSubmission) ackEl.checked = false;
     if (!uncertainSubmission && secretEl) secretEl.checked = false;
-    if (presenceNone) presenceNone.checked = true;
     noticeEl.hidden = !uncertainSubmission;
     noticeEl.textContent = '';
     if (uncertainSubmission) notice('We could not confirm whether your letter arrived. Press Check submission to safely try again.');
@@ -3670,44 +3639,36 @@
     try { composer.focus({ preventScroll: true }); } catch (e) {}
   }
 
-  /* Four original line-art presences on one shared grid: a thin contour and a
-     single filled point. No religious or genre symbols. */
-  function presenceSvg(kind) {
-    var svg = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
-    if (kind === 'none') {
-      svg.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '6.4', 'stroke-dasharray': '1.6 3.4' }));
-      svg.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '1.1', fill: 'currentColor', stroke: 'none' }));
-    } else if (kind === 'human') {
-      svg.appendChild(svgNode('circle', { cx: '12', cy: '8.1', r: '3.1' }));
-      svg.appendChild(svgNode('path', { d: 'M5.6 19.4c.7-3.4 3.2-5.4 6.4-5.4s5.7 2 6.4 5.4' }));
-      svg.appendChild(svgNode('circle', { cx: '12', cy: '15.7', r: '.9', fill: 'currentColor', stroke: 'none' }));
-    } else if (kind === 'moon') {
-      svg.appendChild(svgNode('path', { d: 'M15.9 4.6a7.4 7.4 0 1 0 3.5 12.6 6.1 6.1 0 0 1-3.5-12.6Z' }));
-      svg.appendChild(svgNode('circle', { cx: '16.6', cy: '9.3', r: '.9', fill: 'currentColor', stroke: 'none' }));
-    } else if (kind === 'root') {
-      svg.appendChild(svgNode('path', { d: 'M12 5.2v9.8' }));
-      svg.appendChild(svgNode('path', { d: 'M12 5.2c-2.4 1.7-3.6 3.7-3.6 5.9M12 5.2c2.4 1.7 3.6 3.7 3.6 5.9' }));
-      svg.appendChild(svgNode('path', { d: 'M12 14.6c-1.7.7-3 2-3.9 3.9M12 14.6c1.7.7 3 2 3.9 3.9' }));
-      svg.appendChild(svgNode('circle', { cx: '12', cy: '15', r: '.9', fill: 'currentColor', stroke: 'none' }));
-    } else {
-      svg.appendChild(svgNode('path', { d: 'M12 5.2a6.8 6.8 0 0 1 4.4 11.9M9.9 18.2a6.8 6.8 0 0 1-2.3-10.4' }));
-      svg.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '.9', fill: 'currentColor', stroke: 'none' }));
-    }
-    return svg;
-  }
-
   function buildCompose(host) {
     compose = make('dialog', 'void-god-dialog');
     compose.id = 'void-god-dialog';
-    compose.setAttribute('aria-label', 'Write a letter');
-    compose.setAttribute('aria-describedby', 'void-god-ack-text');
+    compose.setAttribute('aria-labelledby', 'void-god-title');
+    compose.setAttribute('aria-describedby', 'void-god-intro void-god-demo');
 
     composeForm = make('form', 'void-god-form');
     composeForm.setAttribute('novalidate', '');
 
+    var head = make('div', 'void-god-head');
+    var titles = make('div', 'void-god-titles');
+    var h = make('h2', 'void-god-title', '\u2726 Message to Galaxy');
+    h.id = 'void-god-title';
+    var fa = make('span', 'void-god-title-fa', '\u0646\u0627\u0645\u0647 \u0628\u0647 \u06a9\u0647\u06a9\u0634\u0627\u0646');
+    fa.lang = 'fa';
+    fa.dir = 'rtl';
+    titles.appendChild(h);
+    titles.appendChild(fa);
+    var x = make('button', 'void-god-x', '\u00D7');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Close without submitting');
+    head.appendChild(titles);
+    head.appendChild(x);
+
+    var intro = make('p', 'void-god-intro',
+      'Leave a thought among the stars. It becomes a small star in the galaxy: anonymous, public, and temporary. Write with care \u2014 once it leaves, it cannot be taken back.');
+    intro.id = 'void-god-intro';
+
     /* The composer carries the same meter, so touch users see the quota without
-       needing a hover state anywhere. Hidden while the server answer is unknown.
-       Quota and close share one compact utility row; no title competes with them. */
+       needing a hover state anywhere. Hidden while the server answer is unknown. */
     composeQuota = make('div', 'void-god-quota');
     composeQuota.id = 'void-god-quota';
     composeQuota.hidden = true;
@@ -3716,78 +3677,38 @@
     composeQuota.appendChild(qIcon);
     buildMeter(composeQuota, 'void-god-quota__meter');
     composeQuotaText = make('span', 'void-god-quota__text', '');
-    composeQuotaText.setAttribute('dir', 'ltr');
     composeQuota.appendChild(composeQuotaText);
 
-    var head = make('div', 'void-god-utility');
-    var x = make('button', 'void-god-x', '\u00D7');
-    x.type = 'button';
-    x.setAttribute('aria-label', 'Close without submitting');
-    head.appendChild(composeQuota);
-    head.appendChild(x);
+    var demo = make('p', 'void-god-demo', 'Your letter is stored anonymously on the public sky until it fades. Pressing Submit is final \u2014 it cannot be edited or deleted afterwards.');
+    demo.id = 'void-god-demo';
 
-    /* Presence is a symbolic mark, stored with the letter for its lifetime.
-       It carries no identity: only one of five fixed glyph names travels. */
-    var presence = make('fieldset', 'void-god-presence');
-    var presenceLegend = make('legend', 'void-god-presence__legend');
-    presenceLegend.appendChild(document.createTextNode('Presence'));
-    presenceLegend.appendChild(make('span', 'void-god-presence__optional', 'optional \u00B7 anonymous'));
-    presence.appendChild(presenceLegend);
-    var presenceRow = make('div', 'void-god-presence__row');
-    var presenceOpts = [
-      ['none', 'None'],
-      ['human', 'Human'],
-      ['moon', 'Moon'],
-      ['root', 'Root'],
-      ['unknown', 'Unknown']
-    ];
-    for (var pi = 0; pi < presenceOpts.length; pi++) {
-      var pOpt = make('label', 'void-god-presence__opt');
-      pOpt.title = presenceOpts[pi][0] === 'none' ? 'No presence' : 'A ' + presenceOpts[pi][0] + ' presence';
-      var pRadio = document.createElement('input');
-      pRadio.type = 'radio';
-      pRadio.name = 'void-god-presence';
-      pRadio.value = presenceOpts[pi][0];
-      pRadio.checked = presenceOpts[pi][0] === 'none';
-      var pGlyph = make('span', 'void-god-presence__glyph');
-      pGlyph.appendChild(presenceSvg(presenceOpts[pi][0]));
-      pOpt.appendChild(pRadio);
-      pOpt.appendChild(pGlyph);
-      pOpt.appendChild(make('span', 'void-god-presence__name', presenceOpts[pi][1]));
-      presenceRow.appendChild(pOpt);
-      if (presenceOpts[pi][0] === 'none') presenceNone = pRadio;
-    }
-    presence.appendChild(presenceRow);
+    var label = make('label', 'void-god-label', 'Your letter');
+    label.setAttribute('for', 'void-god-text');
 
     composer = make('textarea', 'void-god-text');
     composer.id = 'void-god-text';
-    composer.setAttribute('rows', '5');
+    composer.setAttribute('rows', '6');
     composer.setAttribute('dir', 'auto');
-    composer.setAttribute('placeholder', 'Write freely. Let the silence hold your words\u2026');
+    composer.setAttribute('placeholder', 'Write a few lines\u2026');
     composer.setAttribute('spellcheck', 'true');
     composer.setAttribute('autocomplete', 'off');
     composer.setAttribute('aria-describedby', 'void-god-count void-god-hint');
-    composer.setAttribute('aria-label', 'Your letter');
 
     var meta = make('div', 'void-god-count-row');
     countEl = make('span', 'void-god-count', '0 / 500');
     countEl.id = 'void-god-count';
-    countEl.setAttribute('dir', 'ltr');
     hintEl = make('span', 'void-god-hint', '');
     hintEl.id = 'void-god-hint';
-    hintEl.setAttribute('dir', 'auto');
     hintEl.setAttribute('aria-live', 'polite');
     meta.appendChild(countEl);
     meta.appendChild(hintEl);
 
-    var settings = make('div', 'void-god-settings');
     var fs = make('fieldset', 'void-god-exp');
     fs.appendChild(make('legend', 'void-god-legend', 'Fades after'));
     var row = make('div', 'void-god-exp-row');
-    var opts = [['24h', '24h'], ['7d', '7d'], ['30d', '30d'], ['90d', '90d']];
+    var opts = [['24h', '24 hours'], ['7d', '7 days'], ['30d', '30 days'], ['90d', '90 days']];
     for (var i = 0; i < opts.length; i++) {
       var opt = make('label', 'void-god-exp-opt');
-      opt.title = 'Fades after ' + opts[i][0];
       var radio = document.createElement('input');
       radio.type = 'radio';
       radio.name = 'void-god-expiry';
@@ -3798,62 +3719,47 @@
       row.appendChild(opt);
     }
     fs.appendChild(row);
-    settings.appendChild(fs);
 
-    /* Secret Ink: one switch. The explanation stays available to assistive
-       technology only, so toggling never changes the composer height. */
-    var secretBlock = make('div', 'void-god-secret');
-    var secretHead = make('label', 'void-god-secret__head');
-    var secretCopy = make('span', 'void-god-secret__copy');
-    secretCopy.appendChild(make('span', 'void-god-secret__title', 'Secret Ink'));
-    secretCopy.appendChild(make('span', 'void-god-secret__sub', 'Hide my letter'));
+    /* Secret Ink stays inside the fade fieldset: one compact row, off by
+       default, with the explanation available on hover and to screen readers. */
+    var secretLab = make('label', 'void-god-secret');
+    secretLab.title = 'Readers can reveal your words with one click.';
     secretEl = document.createElement('input');
     secretEl.type = 'checkbox';
     secretEl.id = 'void-god-secret-ink';
-    secretEl.setAttribute('aria-label', 'Secret Ink \u2014 hide my letter');
-    secretEl.setAttribute('aria-describedby', 'void-god-secret-desc');
-    var secretSwitch = make('span', 'void-god-switch');
-    secretSwitch.appendChild(secretEl);
-    var secretTrack = make('span', 'void-god-switch__track');
-    secretTrack.setAttribute('aria-hidden', 'true');
-    secretTrack.appendChild(make('span', 'void-god-switch__thumb'));
-    secretSwitch.appendChild(secretTrack);
-    secretHead.appendChild(secretCopy);
-    secretHead.appendChild(secretSwitch);
-    secretBlock.appendChild(secretHead);
-    var secretDesc = make('p', 'void-god-sr',
-      'Your letter will appear hidden and anyone can reveal it with one click. Visual hiding only \u2014 not encryption or restricted access.');
-    secretDesc.id = 'void-god-secret-desc';
-    secretBlock.appendChild(secretDesc);
-    settings.appendChild(secretBlock);
+    secretEl.setAttribute('aria-label', 'Secret Ink');
+    secretEl.setAttribute('aria-describedby', 'void-god-secret-hint');
+    secretLab.appendChild(secretEl);
+    var secretStar = make('span', 'void-god-secret__star', '\u2733');
+    secretStar.setAttribute('aria-hidden', 'true');
+    secretLab.appendChild(secretStar);
+    secretLab.appendChild(make('span', 'void-god-secret__text', 'Secret Ink'));
+    var secretMicro = make('span', 'void-god-secret__micro', 'Let your words hide among the stars.');
+    secretMicro.id = 'void-god-secret-hint';
+    secretLab.appendChild(secretMicro);
+    fs.appendChild(secretLab);
 
     var ackLab = make('label', 'void-god-ack');
     ackEl = document.createElement('input');
     ackEl.type = 'checkbox';
     ackEl.id = 'void-god-ack';
-    var ackText = make('span', '', 'I understand my letter is anonymous and public, may be seen or saved before it fades, and cannot be edited or deleted once released.');
-    ackText.id = 'void-god-ack-text';
-    ackText.setAttribute('dir', 'auto');
     ackLab.appendChild(ackEl);
-    ackLab.appendChild(ackText);
+    ackLab.appendChild(make('span', '',
+      'I understand letters are anonymous and public, cannot be edited or deleted after submission, and may be seen or saved before they expire.'));
 
     noticeEl = make('p', 'void-god-notice');
     noticeEl.id = 'void-god-notice';
     noticeEl.setAttribute('role', 'status');
-    noticeEl.setAttribute('dir', 'auto');
     noticeEl.hidden = true;
 
     var foot = make('div', 'void-god-foot');
-    foot.appendChild(make('span', 'void-god-release__micro', 'Let it go.'));
-    var actions = make('div', 'void-god-actions');
     var cancel = make('button', 'void-god-btn', 'Cancel');
     cancel.type = 'button';
-    submitBtn = make('button', 'void-god-btn void-god-btn--primary', 'Release');
+    submitBtn = make('button', 'void-god-btn void-god-btn--primary', 'Submit letter');
     submitBtn.type = 'submit';
     submitBtn.disabled = true;
-    actions.appendChild(cancel);
-    actions.appendChild(submitBtn);
-    foot.appendChild(actions);
+    foot.appendChild(cancel);
+    foot.appendChild(submitBtn);
 
     /* نمای موفقیت: فقط پس از پاسخِ واقعیِ ثبت آشکار می‌شود. */
     successEl = make('div', 'void-god-published');
@@ -3904,10 +3810,13 @@
     successEl.appendChild(okFoot);
 
     composeForm.appendChild(head);
-    composeForm.appendChild(presence);
+    composeForm.appendChild(composeQuota);
+    composeForm.appendChild(intro);
+    composeForm.appendChild(demo);
+    composeForm.appendChild(label);
     composeForm.appendChild(composer);
     composeForm.appendChild(meta);
-    composeForm.appendChild(settings);
+    composeForm.appendChild(fs);
     composeForm.appendChild(ackLab);
     composeForm.appendChild(noticeEl);
     composeForm.appendChild(foot);
@@ -3944,8 +3853,6 @@
         notice('Sending is unavailable right now. Nothing was sent.');
         return;
       }
-      submitBtn.classList.add('is-releasing');
-      setTimeout(function () { if (submitBtn) submitBtn.classList.remove('is-releasing'); }, 700);
       submitLetter();
     });
   }
@@ -3955,16 +3862,10 @@
     return checked ? checked.value : '7d';
   }
 
-  function currentPresence() {
-    var checked = composeForm && composeForm.querySelector('input[name="void-god-presence"]:checked');
-    return checked ? checked.value : 'none';
-  }
-
   function submitRemote(payload) {
     if (!api) return Promise.resolve({ kind: 'network' });
     var pending = uncertainSubmission || api.begin(
-      payload.text, payload.expiry, detectLang(payload.text), payload.secret_ink === true,
-      payload.presence
+      payload.text, payload.expiry, detectLang(payload.text), payload.secret_ink === true
     );
     return api.submit(pending);
   }
@@ -3978,10 +3879,6 @@
     }
     if (ackEl) ackEl.disabled = !!uncertainSubmission;
     if (secretEl) secretEl.disabled = !!uncertainSubmission;
-    if (composeForm) {
-      var presenceOptions = composeForm.querySelectorAll('input[name="void-god-presence"]');
-      for (var j = 0; j < presenceOptions.length; j++) presenceOptions[j].disabled = !!uncertainSubmission;
-    }
     updateState();
   }
 
@@ -3997,8 +3894,7 @@
     var payload = {
       text: composer.value,
       expiry: currentExpiry(),
-      secret_ink: !!(secretEl && secretEl.checked),
-      presence: currentPresence()
+      secret_ink: !!(secretEl && secretEl.checked)
     };
     source.submit(payload).then(function (result) {
       clearTimeout(connectionTimer);
@@ -4230,8 +4126,8 @@
     quillBtn = make('button', 'void-god-quill');
     quillBtn.id = 'void-god-quill';
     quillBtn.type = 'button';
-    quillBtn.setAttribute('aria-label', 'Write a letter');
-    quillBtn.setAttribute('title', 'Write a letter');
+    quillBtn.setAttribute('aria-label', 'Message to Galaxy');
+    quillBtn.setAttribute('title', 'Message to Galaxy');
     quillBtn.setAttribute('aria-haspopup', 'dialog');
     quillBtn.setAttribute('aria-expanded', 'false');
     quillBtn.setAttribute('aria-controls', 'void-god-dialog');

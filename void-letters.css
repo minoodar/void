@@ -711,93 +711,6 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     line-height: 1.25;
     letter-spacing: .02em;
     color: rgba(250, 252, 255, .96);
-    overflow-wrap: anywhere;
-}
-/* The translation control keeps its own circle: a 44px target whose visible
-   mark is a 30px ring, so busy/original/translated never resize the header. */
-.void-god-translate {
-    display: grid;
-    place-items: center;
-    flex: 0 0 44px;
-    width: 44px; height: 44px;
-    min-width: 44px; min-height: 44px;
-    margin: 0; padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: rgba(214, 208, 190, .62);
-    font: inherit;
-    line-height: 1;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: color .18s ease, background .18s ease;
-}
-.void-god-translate__ring {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: 30px; height: 30px;
-    border: 1px solid rgba(214, 208, 190, .26);
-    border-radius: 50%;
-    transition: border-color .18s ease, color .18s ease;
-}
-.void-god-translate__ring svg {
-    display: block;
-    width: 17px; height: 17px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-.void-god-translate:hover:not(:disabled),
-.void-god-translate:focus-visible {
-    color: rgba(232, 220, 192, .95);
-    background: rgba(214, 208, 190, .07);
-}
-.void-god-translate:hover:not(:disabled) .void-god-translate__ring,
-.void-god-translate:focus-visible .void-god-translate__ring { border-color: rgba(214, 208, 190, .42); }
-.void-god-translate:focus-visible { outline: 2px solid rgba(214, 208, 190, .8); outline-offset: 2px; }
-.void-god-translate:active:not(:disabled) { background: rgba(214, 208, 190, .1); }
-.void-god-translate:disabled { opacity: .34; cursor: not-allowed; }
-.void-god-translate.is-on {
-    color: rgba(201, 176, 137, .95);
-    background: rgba(165, 140, 97, .09);
-}
-.void-god-translate.is-on .void-god-translate__ring { border-color: rgba(165, 140, 97, .5); }
-.void-god-translate.is-busy .void-god-translate__ring { color: rgba(232, 220, 192, .9); }
-.void-god-translate.is-busy .void-god-translate__ring::after {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    border: 1px solid transparent;
-    border-top-color: currentColor;
-    border-radius: 50%;
-    animation: voidTranslateSpin .9s linear infinite;
-}
-@keyframes voidTranslateSpin { to { transform: rotate(360deg); } }
-/* A quiet signature: the writer's glyph sits between the translation control
-   and the label, inert and never mistaken for a button. */
-.void-god-msg-presence {
-    display: grid;
-    place-items: center;
-    flex: 0 0 26px;
-    width: 26px; height: 26px;
-    border: 1px solid rgba(214, 208, 190, .18);
-    border-radius: 50%;
-    background: rgba(214, 208, 190, .03);
-    color: rgba(214, 208, 190, .66);
-    pointer-events: none;
-}
-.void-god-msg-presence[hidden] { display: none; }
-.void-god-msg-presence svg {
-    display: block;
-    width: 15px; height: 15px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
 }
 .void-god-nav__button {
     display: grid; place-items: center;
@@ -1203,14 +1116,13 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     transform: translate(-50%, -50%);
     margin: 0;
     padding: 0;
-    border: 1px solid rgba(214, 208, 190, .14);
-    border-radius: 20px;
+    border: 1px solid rgba(235, 240, 245, .16);
+    border-radius: 18px;
     background:
-        radial-gradient(120% 90% at 50% -10%, rgba(165, 140, 97, .1), transparent 60%),
-        radial-gradient(90% 70% at 100% 110%, rgba(119, 126, 104, .08), transparent 60%),
-        linear-gradient(180deg, rgba(17, 20, 17, .99), rgba(8, 10, 9, .995));
-    box-shadow: 0 30px 80px rgba(0, 0, 0, .72), 0 0 0 1px rgba(0, 0, 0, .4);
-    color: #D6D0BE;
+        radial-gradient(120% 90% at 50% -10%, rgba(251, 191, 36, .07), transparent 60%),
+        linear-gradient(180deg, rgba(13, 16, 23, .985), rgba(5, 7, 11, .99));
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .66), 0 0 0 1px rgba(0, 0, 0, .35);
+    color: rgba(250, 252, 255, .94);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     pointer-events: auto;
     user-select: text; -webkit-user-select: text;
@@ -1235,194 +1147,200 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     to { opacity: 1; transform: translate(-50%, -50%); }
 }
 
-/* ---- Quiet Presence composer ----
-   One surface, four quiet movements: a presence, the writing, the settings,
-   and the release. Washi text on forest black, old gold only where the hand
-   can act. */
 .void-god-form {
     display: flex; flex-direction: column;
-    gap: 12px;
-    padding: 18px 20px 16px;
+    gap: 11px;
+    padding: 20px 20px 18px;
 }
 /* پس از ثبتِ واقعی، فرم جای خود را به نمای تأیید می‌دهد. */
 .void-god-form.is-published > :not(.void-god-published) { display: none; }
 
 .void-god-head {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 10px;
-    min-width: 0;
+    gap: 12px;
 }
-.void-god-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
-/* Quota and close share one 44px utility row: the top edge stays a control
-   line, never a heading. */
-.void-god-utility {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 44px;
-    min-width: 0;
+.void-god-titles { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+.void-god-title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: .02em;
+    color: rgba(250, 252, 255, .96);
+}
+.void-god-title-fa {
+    font-size: 12.5px;
+    line-height: 1.4;
+    letter-spacing: 0;
+    color: rgba(251, 191, 36, .78);
 }
 .void-god-x {
-    flex: 0 0 44px;
+    flex: none;
     width: 44px; height: 44px;
-    margin: 0;
-    margin-inline-start: auto;
+    margin: -6px -6px 0 0;
     display: grid; place-items: center;
     padding: 0;
     border: 0; border-radius: 50%;
-    background: transparent;
-    color: rgba(214, 208, 190, .5);
+    background: rgba(255, 255, 255, .04);
+    color: rgba(235, 240, 245, .70);
     font-family: inherit;
-    font-size: 19px;
+    font-size: 20px;
     line-height: 1;
     cursor: pointer;
     transition: background .18s ease, color .18s ease;
 }
-.void-god-x:hover { background: rgba(214, 208, 190, .07); color: rgba(232, 220, 192, .95); }
+.void-god-x:hover { background: rgba(255, 255, 255, .09); color: rgba(250, 252, 255, .96); }
 .void-god-x:focus-visible {
-    outline: 2px solid rgba(214, 208, 190, .8);
-    outline-offset: 1px;
+    outline: 2px solid rgba(235, 240, 245, .85);
+    outline-offset: 2px;
+}
+/* دکمهٔ ترجمه: دایرهٔ کوچک در سربرگ؛ ناحیهٔ لمس ۴۴px است ولی دایرهٔ دیداری
+   ۳۴px می‌ماند تا چیدمان موجود تغییر نکند. */
+.void-god-translate {
+    position: relative;
+    flex: none;
+    width: 44px; height: 44px;
+    margin: -6px -5px 0 -10px;
+    display: grid; place-items: center;
+    padding: 0;
+    border: 0; border-radius: 50%;
+    background: transparent;
+    color: rgba(235, 240, 245, .72);
+    font-family: inherit;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .18s ease;
+}
+.void-god-translate__ring {
+    position: relative;
+    display: grid; place-items: center;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .04);
+    color: inherit;
+    transition: background .18s ease, color .18s ease;
+}
+.void-god-translate svg {
+    display: block;
+    width: 17px; height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.55;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.void-god-translate:hover:not(:disabled) { color: rgba(250, 252, 255, .96); }
+.void-god-translate:hover:not(:disabled) .void-god-translate__ring { background: rgba(255, 255, 255, .09); }
+.void-god-translate:focus-visible { outline: none; }
+.void-god-translate:focus-visible .void-god-translate__ring {
+    box-shadow: 0 0 0 2px rgba(235, 240, 245, .8);
+}
+.void-god-translate:disabled { opacity: .3; cursor: not-allowed; }
+.void-god-translate.is-open .void-god-translate__ring {
+    background: rgba(255, 255, 255, .08);
+    color: #fff;
+}
+.void-god-translate.is-on { color: rgba(251, 216, 140, .92); }
+.void-god-translate.is-on .void-god-translate__ring {
+    background: rgba(251, 191, 36, .1);
+    color: rgba(251, 222, 150, .98);
+}
+.void-god-translate.is-busy .void-god-translate__ring { color: rgba(251, 216, 140, .9); }
+.void-god-translate.is-busy .void-god-translate__ring::after {
+    content: '';
+    position: absolute;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(251, 216, 140, .22);
+    border-top-color: rgba(251, 216, 140, .9);
+    animation: void-translate-spin .9s linear infinite;
+}
+@keyframes void-translate-spin { to { transform: rotate(360deg); } }
+
+.void-god-intro {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgba(235, 240, 245, .76);
+}
+.void-god-demo {
+    margin: 0;
+    padding: 6px 10px;
+    border: 1px solid rgba(251, 191, 36, .22);
+    border-radius: 8px;
+    background: rgba(251, 191, 36, .06);
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: rgba(251, 191, 36, .86);
 }
 
-/* Quota stays available but stops competing with the letter. */
+/* Same three drops as the quill, inside the composer: the touch equivalent of
+   the hover tooltip, without adding a paragraph of permanent explanation. */
 .void-god-quota {
     display: flex;
     align-items: center;
-    gap: 7px;
-    flex: 1 1 auto;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: rgba(119, 123, 120, .95);
+    gap: 8px;
+    min-height: 28px;
+    padding: 5px 10px;
+    border: 1px solid rgba(235, 240, 245, .10);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .025);
+    color: rgba(235, 240, 245, .7);
     font-size: 10.5px;
-    line-height: 1.35;
+    line-height: 1.3;
     font-variant-numeric: tabular-nums;
 }
 .void-god-quota[hidden] { display: none; }
 .void-god-quota__icon {
     display: grid;
     place-items: center;
-    width: 12px; height: 12px;
-    color: rgba(119, 123, 120, .9);
+    width: 14px; height: 14px;
+    color: rgba(235, 240, 245, .7);
 }
-.void-god-quota__icon svg { display: block; width: 12px; height: 12px; }
-.void-god-quota__meter { color: rgba(119, 123, 120, .95); }
-.void-god-quota__text { min-width: 0; overflow-wrap: anywhere; color: rgba(119, 123, 120, .9); }
-.void-god-quota.is-exhausted .void-god-quota__text { color: rgba(201, 176, 137, .9); }
+.void-god-quota__icon svg { display: block; width: 14px; height: 14px; }
+.void-god-quota__meter { color: rgba(235, 240, 245, .74); }
+.void-god-quota__text { color: rgba(235, 240, 245, .6); }
+.void-god-quota.is-exhausted {
+    border-color: rgba(251, 191, 36, .24);
+    background: rgba(251, 191, 36, .06);
+}
+.void-god-quota.is-exhausted .void-god-quota__text { color: rgba(251, 216, 140, .88); }
 
-/* A quiet presence: five fixed glyphs on one grid, none selected by default.
-   The chosen name travels with the letter; no identity does. */
-.void-god-presence {
-    margin: 0; padding: 0;
-    border: 0;
-    min-inline-size: 0;
-}
-.void-god-presence__legend,
-.void-god-legend {
-    padding: 0;
-    margin-bottom: 6px;
-    font-size: 9.5px;
+.void-god-label {
+    margin-bottom: -5px;
+    font-size: 10.5px;
     line-height: 1.4;
-    letter-spacing: .12em;
+    letter-spacing: .1em;
     text-transform: uppercase;
-    color: rgba(214, 208, 190, .42);
+    color: rgba(235, 240, 245, .55);
 }
-.void-god-presence__optional {
-    /* The label is English in both directions, so the visual gap is physical. */
-    margin-left: 6px;
-    letter-spacing: .02em;
-    text-transform: none;
-    color: rgba(165, 140, 97, .58);
-}
-.void-god-presence__row { display: flex; gap: 6px; }
-.void-god-presence__opt {
-    position: relative;
-    flex: 1 1 0;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    min-height: 52px;
-    padding: 6px 2px 5px;
-    border: 1px solid transparent;
-    border-radius: 12px;
-    color: rgba(214, 208, 190, .52);
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: color .18s ease, background .18s ease, border-color .18s ease;
-}
-.void-god-presence__opt input {
-    position: absolute;
-    width: 1px; height: 1px;
-    margin: 0;
-    opacity: 0;
-}
-.void-god-presence__opt:hover {
-    color: rgba(214, 208, 190, .86);
-    background: rgba(214, 208, 190, .04);
-}
-.void-god-presence__opt:has(input:checked) {
-    color: rgba(201, 176, 137, .98);
-    border-color: rgba(165, 140, 97, .35);
-    background: rgba(165, 140, 97, .09);
-}
-.void-god-presence__glyph svg {
-    display: block;
-    width: 22px; height: 22px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.35;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-.void-god-presence__name {
-    font-size: 9.5px;
-    line-height: 1.2;
-    letter-spacing: .03em;
-    white-space: nowrap;
-    color: inherit;
-}
-.void-god-presence__opt:has(input:checked) .void-god-presence__name { color: rgba(232, 220, 192, .9); }
-.void-god-presence__opt input:focus-visible ~ .void-god-presence__glyph {
-    outline: 2px solid rgba(214, 208, 190, .8);
-    outline-offset: 2px;
-    border-radius: 50%;
-}
-
-/* The writing surface carries the weight: warm paper tint, generous line
-   height, and the only large field in the surface. */
 .void-god-text {
     width: 100%;
-    min-height: 176px;
-    max-height: 36vh;
-    padding: 15px 16px;
-    border: 1px solid rgba(214, 208, 190, .14);
-    border-radius: 14px;
-    background:
-        linear-gradient(180deg, rgba(214, 208, 190, .05), rgba(214, 208, 190, .022));
-    color: #D6D0BE;
+    min-height: 126px;
+    max-height: 34vh;
+    padding: 12px 13px;
+    border: 1px solid rgba(235, 240, 245, .16);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .035);
+    color: rgba(250, 252, 255, .96);
     font-family: inherit;
-    font-size: 15px;
-    line-height: 1.7;
+    font-size: 14px;
+    line-height: 1.65;
     letter-spacing: .01em;
     unicode-bidi: plaintext;
     resize: vertical;
     outline: none;
     user-select: text; -webkit-user-select: text;
     cursor: text;
-    transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+    transition: border-color .18s ease, box-shadow .18s ease;
 }
-.void-god-text::placeholder { color: rgba(214, 208, 190, .32); }
+.void-god-text::placeholder { color: rgba(235, 240, 245, .32); }
 .void-god-text:focus {
-    border-color: rgba(165, 140, 97, .62);
-    background:
-        linear-gradient(180deg, rgba(214, 208, 190, .065), rgba(214, 208, 190, .03));
-    box-shadow: 0 0 0 3px rgba(165, 140, 97, .11);
+    border-color: rgba(251, 191, 36, .55);
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, .10);
 }
 
 .void-god-count-row {
@@ -1430,228 +1348,160 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     align-items: baseline;
     justify-content: space-between;
     gap: 10px;
-    margin-top: -7px;
-    font-size: 10.5px;
+    margin-top: -4px;
+    font-size: 11.5px;
     line-height: 1.4;
     font-variant-numeric: tabular-nums;
 }
-.void-god-count { flex: none; color: rgba(214, 208, 190, .42); }
-.void-god-count.is-over { color: rgba(214, 156, 138, .96); }
-.void-god-hint { flex: 1; text-align: right; color: rgba(214, 156, 138, .92); }
+.void-god-count { flex: none; color: rgba(235, 240, 245, .55); }
+.void-god-count.is-over { color: rgba(240, 161, 150, .96); }
+.void-god-hint { flex: 1; text-align: right; color: rgba(240, 161, 150, .92); }
 
-.void-god-settings {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 2px;
-}
 .void-god-exp { margin: 0; padding: 0; border: 0; min-inline-size: 0; }
-.void-god-exp-row {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 2px;
-    padding: 3px;
-    border: 1px solid rgba(214, 208, 190, .12);
-    border-radius: 999px;
-    background: rgba(214, 208, 190, .03);
+.void-god-exp-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.void-god-legend {
+    padding: 0;
+    margin-bottom: 7px;
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(235, 240, 245, .55);
 }
-.void-god-exp-opt { position: relative; display: flex; min-width: 0; }
+.void-god-exp-opt { position: relative; display: inline-flex; }
 .void-god-exp-opt input {
-    position: absolute;
-    inset: 0;
-    width: 100%; height: 100%;
-    margin: 0;
-    opacity: 0;
-    cursor: pointer;
-}
-.void-god-exp-opt span {
-    flex: 1;
-    display: grid;
-    place-items: center;
-    min-height: 34px;
-    padding: 0 4px;
-    border-radius: 999px;
-    color: rgba(214, 208, 190, .58);
-    font-size: 12px;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    transition: background .18s ease, color .18s ease, box-shadow .18s ease;
-}
-.void-god-exp-opt:hover span { color: rgba(214, 208, 190, .88); }
-.void-god-exp-opt input:checked + span {
-    background: rgba(165, 140, 97, .2);
-    box-shadow: inset 0 0 0 1px rgba(165, 140, 97, .5);
-    color: #E9DDC2;
-}
-.void-god-exp-opt input:focus-visible + span {
-    outline: 2px solid rgba(214, 208, 190, .8);
-    outline-offset: 2px;
-}
-
-/* Secret Ink: one switch on one line. The explanation lives with assistive
-   technology, so toggling never changes the composer height. */
-.void-god-secret {
-    display: flex;
-    flex-direction: column;
-}
-.void-god-secret__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 44px;
-    cursor: pointer;
-}
-.void-god-secret__copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.void-god-secret__title {
-    font-size: 13.5px;
-    font-weight: 600;
-    line-height: 1.3;
-    letter-spacing: .02em;
-    color: rgba(232, 220, 192, .95);
-}
-.void-god-secret__sub {
-    font-size: 11px;
-    line-height: 1.35;
-    color: rgba(214, 208, 190, .55);
-}
-.void-god-secret:has(input:checked) .void-god-secret__title { color: #E9DDC2; }
-.void-god-secret:has(input:checked) .void-god-secret__sub { color: rgba(201, 176, 137, .85); }
-.void-god-switch {
-    position: relative;
-    flex: none;
-    display: inline-flex;
-    width: 50px; height: 30px;
-    align-items: center;
-}
-.void-god-switch input {
     position: absolute;
     width: 1px; height: 1px;
     margin: 0;
     opacity: 0;
 }
-.void-god-switch__track {
-    position: relative;
-    display: block;
-    width: 46px; height: 26px;
-    border: 1px solid rgba(214, 208, 190, .22);
+.void-god-exp-opt span {
+    padding: 7px 12px;
+    border: 1px solid rgba(235, 240, 245, .16);
     border-radius: 999px;
-    background: rgba(214, 208, 190, .06);
-    transition: background .2s ease, border-color .2s ease;
+    background: rgba(255, 255, 255, .02);
+    color: rgba(235, 240, 245, .72);
+    font-size: 11.5px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color .18s ease, background .18s ease, color .18s ease;
 }
-.void-god-switch__thumb {
-    position: absolute;
-    top: 3px; left: 3px;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: rgba(214, 208, 190, .68);
-    transition: transform .2s ease, background .2s ease;
+.void-god-exp-opt:hover span { border-color: rgba(235, 240, 245, .32); }
+.void-god-exp-opt input:checked + span {
+    border-color: rgba(251, 191, 36, .5);
+    background: rgba(251, 191, 36, .12);
+    color: rgba(251, 216, 140, .96);
 }
-.void-god-switch input:checked + .void-god-switch__track {
-    border-color: rgba(165, 140, 97, .62);
-    background: rgba(165, 140, 97, .28);
+.void-god-exp-opt input:focus-visible + span {
+    outline: 1px solid rgba(235, 240, 245, .8);
+    outline-offset: 2px;
 }
-.void-god-switch input:checked + .void-god-switch__track .void-god-switch__thumb {
-    transform: translateX(20px);
-    background: #E9DDC2;
+
+.void-god-secret {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    margin-top: 11px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: rgba(235, 240, 245, .74);
+    cursor: pointer;
 }
-.void-god-switch input:focus-visible + .void-god-switch__track {
-    outline: 2px solid rgba(214, 208, 190, .8);
-    outline-offset: 3px;
+.void-god-secret input {
+    flex: none;
+    width: 15px; height: 15px;
+    margin: 0;
+    accent-color: #fbbf24;
+    cursor: pointer;
 }
+.void-god-secret input:focus-visible {
+    outline: 2px solid rgba(235, 240, 245, .8);
+    outline-offset: 2px;
+}
+.void-god-secret__star {
+    font-size: 12.5px;
+    line-height: 1;
+    color: rgba(251, 191, 36, .82);
+}
+.void-god-secret__text {
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: rgba(251, 216, 140, .94);
+}
+.void-god-secret input:checked ~ .void-god-secret__text { color: #fbbf24; }
+.void-god-secret__micro {
+    flex: 1 1 160px;
+    min-width: 0;
+    font-size: 11.5px;
+    color: rgba(235, 240, 245, .5);
+}
+
 .void-god-ack {
     display: flex;
     align-items: flex-start;
     gap: 9px;
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 1.5;
-    color: rgba(214, 208, 190, .62);
+    color: rgba(235, 240, 245, .76);
     cursor: pointer;
 }
 .void-god-ack input {
     flex: none;
     width: 16px; height: 16px;
     margin: 1px 0 0;
-    accent-color: #A58C61;
+    accent-color: #fbbf24;
     cursor: pointer;
 }
 .void-god-ack input:focus-visible {
-    outline: 2px solid rgba(214, 208, 190, .8);
+    outline: 2px solid rgba(235, 240, 245, .8);
     outline-offset: 2px;
 }
 
 .void-god-notice {
     margin: 0;
     padding: 9px 11px;
-    border: 1px solid rgba(190, 140, 120, .32);
+    border: 1px solid rgba(251, 191, 36, .28);
     border-radius: 10px;
-    background: rgba(190, 140, 120, .08);
-    color: rgba(227, 198, 184, .96);
-    font-size: 11.5px;
+    background: rgba(251, 191, 36, .07);
+    color: rgba(251, 216, 140, .95);
+    font-size: 12px;
     line-height: 1.5;
 }
 .void-god-notice[hidden] { display: none; }
 
-/* The release: one quiet rule, one final sentence, one action. */
 .void-god-foot {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(214, 208, 190, .08);
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 2px;
 }
-.void-god-release__micro {
-    font-size: 11px;
-    line-height: 1.4;
-    letter-spacing: .02em;
-    font-style: italic;
-    color: rgba(165, 140, 97, .62);
-}
-.void-god-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .void-god-btn {
-    min-height: 40px;
+    min-height: 38px;
     padding: 9px 16px;
-    border: 1px solid transparent;
+    border: 1px solid rgba(235, 240, 245, .18);
     border-radius: 999px;
-    background: transparent;
-    color: rgba(214, 208, 190, .6);
+    background: rgba(255, 255, 255, .03);
+    color: rgba(235, 240, 245, .88);
     font-family: inherit;
     font-size: 12.5px;
     line-height: 1;
     letter-spacing: .02em;
     cursor: pointer;
-    transition: border-color .18s ease, background .18s ease, color .18s ease;
+    transition: border-color .18s ease, background .18s ease;
 }
-.void-god-btn:hover { color: rgba(232, 220, 192, .95); background: rgba(214, 208, 190, .05); }
+.void-god-btn:hover { border-color: rgba(235, 240, 245, .34); background: rgba(255, 255, 255, .07); }
 .void-god-btn:focus-visible {
-    outline: 2px solid rgba(214, 208, 190, .8);
+    outline: 2px solid rgba(235, 240, 245, .85);
     outline-offset: 2px;
 }
 .void-god-btn--primary {
-    min-height: 44px;
-    padding: 0 22px;
-    border-color: rgba(165, 140, 97, .55);
-    background:
-        linear-gradient(180deg, rgba(165, 140, 97, .22), rgba(165, 140, 97, .1));
-    color: #E9DDC2;
-    font-size: 13px;
-    letter-spacing: .05em;
+    border-color: rgba(251, 191, 36, .5);
+    background: rgba(251, 191, 36, .14);
+    color: rgba(251, 222, 150, .98);
 }
-.void-god-btn--primary:hover {
-    border-color: rgba(201, 176, 137, .8);
-    background:
-        linear-gradient(180deg, rgba(165, 140, 97, .3), rgba(165, 140, 97, .14));
-    color: #F2E9D6;
-}
-.void-god-btn--primary.is-releasing {
-    animation: voidInkRelease .65s ease-out;
-}
-@keyframes voidInkRelease {
-    0% { box-shadow: 0 0 0 0 rgba(165, 140, 97, .5); background-color: rgba(165, 140, 97, .34); }
-    100% { box-shadow: 0 0 0 16px rgba(165, 140, 97, 0); background-color: rgba(165, 140, 97, .12); }
-}
+.void-god-btn--primary:hover { background: rgba(251, 191, 36, .22); }
 .void-god-btn:disabled {
     opacity: .38;
     cursor: not-allowed;
@@ -1709,10 +1559,7 @@ body.vm-quiet #void-god-panel button,
 body.vm-quiet #void-god-anchor,
 body.vm-quiet .void-god-ack,
 body.vm-quiet .void-god-ack input,
-body.vm-quiet .void-god-exp-opt span,
-body.vm-quiet .void-god-presence__opt,
-body.vm-quiet .void-god-secret__head,
-body.vm-quiet .void-god-switch__track { cursor: pointer !important; }
+body.vm-quiet .void-god-exp-opt span { cursor: pointer !important; }
 body.vm-quiet .void-god-text,
 body.vm-quiet .void-god-msg-text { cursor: text !important; }
 body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
@@ -1721,68 +1568,31 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     #void-galaxy-stats { font-size: 10px; column-gap: 4px; row-gap: 1px; padding: 5px 8px 5px 7px; }
     .vm-gs__n { font-size: 10.5px; }
     .vm-gs__l { display: none; }
-    #void-god-dialog { width: calc(100vw - 20px); max-height: 92vh; max-height: 92dvh; }
+    #void-god-dialog { width: calc(100vw - 20px); max-height: 90vh; max-height: 90dvh; }
     /* The site rail keeps its 44px column at the middle-right on these widths;
        ending the panel before it keeps every action button clear of the icons. */
     #void-god-panel { width: calc(100vw - 84px); padding: 14px 14px 12px; }
     body.is-letter-reading #void-god-panel { width: min(380px, calc(100vw - 24px)); }
     .void-god-panel__actions { gap: 4px; }
-    .void-god-form { padding: 14px 14px 12px; gap: 10px; }
-    .void-god-text { min-height: 150px; font-size: 16px; }
-    .void-god-presence__row { gap: 3px; }
-    .void-god-presence__opt { min-height: 50px; padding: 5px 1px 4px; }
-    .void-god-settings { gap: 9px; }
-    .void-god-exp-opt span { min-height: 44px; }
-    .void-god-foot {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 9px;
-    }
-    .void-god-actions { width: 100%; }
-    .void-god-actions .void-god-btn { flex: 1; min-height: 44px; }
-    .void-god-btn--primary { flex: 1.35; }
+    .void-god-form { padding: 16px 15px 14px; gap: 10px; }
+    .void-god-text { min-height: 110px; }
+    .void-god-foot .void-god-btn { flex: 1; }
 }
 
 @media (max-width: 420px) {
     /* سه دکمهٔ نمای ثبت (اشتراک عمومی، X، Done) در یک ردیف جای نمی‌گیرند. */
     .void-god-published .void-god-foot { flex-wrap: wrap; }
     .void-god-published .void-god-foot .void-god-btn { flex: 1 1 calc(50% - 4px); }
-    .void-god-presence__name { font-size: 9px; letter-spacing: 0; }
 }
 
 @media (max-width: 340px) {
     .void-god-panel__actions { gap: 1px; }
     .void-god-votes { gap: 0; }
-    .void-god-form { padding: 10px 9px 9px; gap: 6px; }
-    /* Four visible writing lines, not five: the field stays comfortable while
-       the whole surface fits a 568px-tall screen. */
-    .void-god-text { height: 132px; min-height: 116px; padding: 12px 13px; }
-    .void-god-presence__legend { margin-bottom: 3px; }
-    /* The pill values already read as durations; the legend stays available
-       to assistive technology without spending a line on this screen. */
-    .void-god-exp > .void-god-legend {
-        position: absolute;
-        width: 1px; height: 1px;
-        margin: 0; padding: 0;
-        overflow: hidden;
-        clip: rect(0 0 0 0);
-        clip-path: inset(50%);
-        white-space: nowrap;
-        border: 0;
-    }
-    .void-god-presence__opt { min-height: 44px; padding: 4px 1px 3px; }
-    .void-god-presence__glyph svg { width: 20px; height: 20px; }
-    .void-god-exp-opt span { min-height: 40px; }
-    .void-god-ack { gap: 8px; font-size: 11px; line-height: 1.45; }
-    /* At 320 the micro line and both actions fit one row, which keeps the
-       release inside the viewport without hiding either action. */
-    .void-god-foot { flex-direction: row; align-items: center; gap: 8px; padding-top: 8px; }
-    .void-god-foot .void-god-actions { width: auto; flex: 1 1 auto; }
 }
 
 @media (max-height: 560px) {
     #void-god-dialog { max-height: 94vh; max-height: 94dvh; }
-    #void-god-text { min-height: 118px; }
+    #void-god-text { min-height: 84px; }
 }
 
 /* When the whole column cannot stay in the middle-right band, the quill
@@ -1885,12 +1695,8 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     .void-god-nav__button,
     .void-god-btn,
     .void-god-exp-opt span,
-    .void-god-presence__opt,
-    .void-god-switch__track,
-    .void-god-switch__thumb,
     .void-god-msg-lifespan,
     .void-god-text { transition: none; animation: none; }
-    .void-god-btn--primary.is-releasing { animation: none; }
     .void-god-anchor__glow,
     .void-god-anchor__core { animation: none; }
     .void-god-discover__core { animation: none; }

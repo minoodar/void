@@ -19,7 +19,6 @@ const currentSchemaSql = await readFile(join(root, 'schema.sql'), 'utf8');
 // deliberately models an upgrade from the previous deployed schema.
 const schemaSql = currentSchemaSql
   .replace(/\r?\n\s*secret_ink\s+INTEGER NOT NULL DEFAULT 0,[^\r\n]*\r?\n\s*base_expires_at INTEGER DEFAULT NULL,[^\r\n]*\r?\n\s*base_votes_net INTEGER NOT NULL DEFAULT 0[^\r\n]*/, '')
-  .replace(/\r?\n\s*presence\s+TEXT DEFAULT NULL,[^\r\n]*/, '')
   .replace(/(\bexpires_at\s+INTEGER NOT NULL),([ \t]*-- Unix timestamp in seconds)/, '$1$2');
 const workerSource = await readFile(join(root, 'worker.js'), 'utf8');
 const wranglerToml = await readFile(join(root, 'wrangler.toml'), 'utf8');
@@ -276,33 +275,6 @@ await test('schema plus migrations create the isolated tables and the visitor ta
     assert(names.includes(voteTable), 'vote migration did not create ' + voteTable);
   }
   assert(names.includes('letter_vote_rate_v2'), 'vote baseline migration did not create the Worker rate table');
-  const letterCols = env.__raw.prepare('PRAGMA table_info(letters)').all().map(c => c.name);
-  assert(letterCols.includes('presence'), 'presence migration did not add the letters column');
-});
-
-await test('the presence migration adds one nullable column and keeps existing rows intact', async () => {
-  const raw = new DatabaseSync(':memory:');
-  raw.exec(schemaSql);
-  assert(!raw.prepare('PRAGMA table_info(letters)').all().some(c => c.name === 'presence'),
-    'precondition: the modelled legacy schema has no presence');
-
-  const now = Math.floor(Date.now() / 1000);
-  raw.prepare('INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
-    .run('legacy-row', 'a letter from before', 'fa', now - 60, now + 600);
-
-  const presenceSql = await readFile(join(root, 'migrations', '2026-11-05-letter-presence.sql'), 'utf8');
-  raw.exec(presenceSql);
-
-  const cols = raw.prepare('PRAGMA table_info(letters)').all();
-  const presence = cols.find(c => c.name === 'presence');
-  assert(presence, 'presence column missing after migration');
-  equal(presence.notnull, 0, 'presence must stay nullable');
-  equal(presence.dflt_value, 'NULL', 'presence default stays NULL');
-
-  const row = raw.prepare('SELECT * FROM letters WHERE id = ?').get('legacy-row');
-  equal(row.body, 'a letter from before', 'migration rewrote the body');
-  equal(row.lang, 'fa', 'migration rewrote the language');
-  equal(row.presence, null, 'existing rows must start with NULL presence');
 });
 
 await test('the vote migration applies to an existing schema and is idempotent', async () => {
@@ -475,31 +447,6 @@ await test('lang is normalized or dropped', async () => {
   const bad = worker.validatePayload(validBody({ lang: 'not a lang!' }));
   assert(bad.ok, 'invalid lang should not reject the letter');
   equal(bad.data.lang, null, 'invalid lang dropped');
-});
-
-await test('presence accepts exactly the five names and defaults to none', async () => {
-  const missing = worker.validatePayload(validBody());
-  assert(missing.ok, JSON.stringify(missing));
-  equal(missing.data.presence, 'none', 'missing presence defaults to none');
-
-  const explicitNone = worker.validatePayload(validBody({ presence: 'none' }));
-  assert(explicitNone.ok, JSON.stringify(explicitNone));
-  equal(explicitNone.data.presence, 'none', 'explicit none is kept');
-
-  for (const kind of ['human', 'moon', 'root', 'unknown']) {
-    const result = worker.validatePayload(validBody({ presence: kind }));
-    assert(result.ok, JSON.stringify(result));
-    equal(result.data.presence, kind, 'accepted ' + kind);
-  }
-});
-
-await test('invalid presence values are rejected instead of stored', async () => {
-  const bad = ['dragon', 'HUMAN', 'Moon', ' human', 'human ', '', 0, 42, true, false, {}, [], ['moon'], 'constructor', 'toString', '__proto__'];
-  for (const presence of bad) {
-    const result = worker.validatePayload(validBody({ presence }));
-    assert(!result.ok, 'accepted invalid presence: ' + JSON.stringify(presence));
-    equal(result.error, 'Invalid presence value', 'wrong error for ' + JSON.stringify(presence));
-  }
 });
 
 await test('non-string and non-object payloads are rejected', async () => {
@@ -803,163 +750,6 @@ await test('letters created before the secret_ink column report false', async ()
   equal(one.status, 200, 'public route finds the old row');
   equal(one.data.secret_ink, false, 'old row defaults to false on the public route');
   equal(one.data.text, 'from another time', 'old body is untouched');
-});
-
-await test('presence round-trips through creation, feed, single, recovery and the database', async () => {
-  const env = createEnv();
-  const created = {};
-
-  for (const kind of ['human', 'moon', 'root', 'unknown']) {
-    const body = validBody({ text: 'a ' + kind + ' letter', presence: kind });
-    const sender = nextIp();
-    const res = await call(env, '/letters', { method: 'POST', ip: sender, body });
-    equal(res.status, 201, 'create ' + kind);
-    equal(res.data.presence, kind, 'creation echoes ' + kind);
-    created[kind] = { id: res.data.id, body, ip: sender };
-  }
-
-  const plain = await call(env, '/letters', {
-    method: 'POST', ip: nextIp(), body: validBody({ text: 'no mark', presence: 'none' })
-  });
-  equal(plain.status, 201, 'none created');
-  equal(plain.data.presence, 'none', 'none is echoed as none');
-
-  const unsent = await call(env, '/letters', { method: 'POST', ip: nextIp(), body: validBody({ text: 'old client' }) });
-  equal(unsent.status, 201, 'missing presence created');
-  equal(unsent.data.presence, 'none', 'missing presence is none');
-  equal(env.__raw.prepare('SELECT presence FROM letters WHERE id = ?').get(unsent.data.id).presence, null,
-    'none is stored as NULL');
-
-  const feed = await call(env, '/letters?limit=20', { ip: nextIp() });
-  const fromFeed = (id) => feed.data.letters.find((letter) => letter.id === id);
-  for (const kind of Object.keys(created)) {
-    equal(fromFeed(created[kind].id).presence, kind, 'feed keeps ' + kind);
-  }
-  equal(fromFeed(plain.data.id).presence, 'none', 'feed none');
-  equal(fromFeed(unsent.data.id).presence, 'none', 'feed missing');
-
-  for (const kind of Object.keys(created)) {
-    const one = await call(env, '/letters/' + created[kind].id, { ip: nextIp() });
-    equal(one.status, 200, 'single ' + kind);
-    equal(one.data.presence, kind, 'single keeps ' + kind);
-  }
-  equal((await call(env, '/letters/' + plain.data.id, { ip: nextIp() })).data.presence, 'none', 'single none');
-
-  for (const kind of Object.keys(created)) {
-    const retry = await call(env, '/letters', { method: 'POST', ip: created[kind].ip, body: created[kind].body });
-    equal(retry.status, 200, 'recovery ' + kind);
-    equal(retry.data.recovered, true, 'recovered ' + kind);
-    equal(retry.data.presence, kind, 'recovery keeps ' + kind);
-  }
-});
-
-await test('an invalid presence is rejected before any letter or quota row is written', async () => {
-  const env = createEnv();
-  const ip = nextIp();
-  const before = env.DB.writes;
-  for (const presence of ['dragon', '<svg onload=alert(1)>', 'HUMAN', 42]) {
-    const res = await call(env, '/letters', { method: 'POST', ip, body: validBody({ presence }) });
-    equal(res.status, 400, 'invalid presence status: ' + String(presence));
-    equal(res.data.error, 'Invalid presence value', 'invalid presence error');
-  }
-  equal(env.DB.writes, before, 'invalid presence wrote to the database');
-  equal(tableRows(env, 'letters').length, 0, 'no letter stored');
-  equal(tableRows(env, 'letter_submissions').length, 0, 'no submission stored');
-  equal(tableRows(env, 'letter_limits').length, 0, 'no quota consumed');
-});
-
-await test('legacy letters without a presence column value read as none', async () => {
-  const env = createEnv();
-  const now = Math.floor(Date.now() / 1000);
-  const oldId = 'e'.repeat(32);
-  env.__raw.prepare(
-    'INSERT INTO letters (id, body, lang, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(oldId, 'from before presence', null, now - 10, now + 3600);
-
-  const feed = await call(env, '/letters?limit=10', { ip: nextIp() });
-  equal(feed.data.letters[0].presence, 'none', 'legacy feed row is none');
-  const one = await call(env, '/letters/' + oldId, { ip: nextIp() });
-  equal(one.status, 200, 'legacy single found');
-  equal(one.data.presence, 'none', 'legacy single is none');
-  equal(one.data.text, 'from before presence', 'legacy body untouched');
-});
-
-await test('/site/updates reports presence for every marked, missing and invalid row', async () => {
-  const env = createEnv();
-  const now = Math.floor(Date.now() / 1000);
-  const idOf = (name) => name.padEnd(32, '0');
-  const marked = ['human', 'moon', 'root', 'unknown'];
-  let offset = 0;
-  for (const name of marked.concat(['none', 'legacy', 'invalid'])) {
-    offset += 1;
-    insertLetter(env, idOf(name), {
-      body: 'a ' + name + ' letter', created_at: now - 600 + offset, expires_at: now + 3600
-    });
-  }
-  for (const name of marked.concat(['invalid'])) {
-    env.__raw.prepare('UPDATE letters SET presence = ? WHERE id = ?')
-      .run(name === 'invalid' ? 'dragon' : name, idOf(name));
-  }
-
-  const res = await call(env, '/site/updates', { ip: nextIp() });
-  equal(res.status, 200, 'site updates status');
-  equal(res.data.ok, true, 'site updates ok');
-  equal(res.data.letters.length, 7, 'every active letter is returned');
-  const byId = new Map(res.data.letters.map((letter) => [letter.id, letter]));
-  for (const kind of marked) equal(byId.get(idOf(kind)).presence, kind, 'updates keeps ' + kind);
-  equal(byId.get(idOf('none')).presence, 'none', 'updates none');
-  equal(byId.get(idOf('legacy')).presence, 'none', 'legacy SQL NULL is none');
-  equal(byId.get(idOf('invalid')).presence, 'none', 'invalid stored value is none');
-  for (const letter of res.data.letters) {
-    assert(Object.prototype.hasOwnProperty.call(letter, 'presence'), 'presence field missing for ' + letter.id);
-  }
-  equal(res.data.next_after, res.data.letters[0].seq, 'cursor is the newest seq');
-});
-
-await test('/site/updates?after= keeps presence on letters that arrive later', async () => {
-  const env = createEnv();
-  const now = Math.floor(Date.now() / 1000);
-  const firstId = 'a'.repeat(32);
-  insertLetter(env, firstId, { body: 'first', created_at: now - 60, expires_at: now + 3600 });
-  env.__raw.prepare('UPDATE letters SET presence = ? WHERE id = ?').run('human', firstId);
-
-  const baseline = await call(env, '/site/updates', { ip: nextIp() });
-  equal(baseline.data.letters[0].presence, 'human', 'baseline letter keeps its mark');
-  const cursor = baseline.data.next_after;
-
-  insertLetter(env, 'b'.repeat(32), { body: 'later moon', created_at: now, expires_at: now + 3600 });
-  env.__raw.prepare('UPDATE letters SET presence = ? WHERE id = ?').run('moon', 'b'.repeat(32));
-  insertLetter(env, 'c'.repeat(32), { body: 'later plain', created_at: now + 1, expires_at: now + 3600 });
-
-  const after = await call(env, '/site/updates?after=' + cursor, { ip: nextIp() });
-  equal(after.status, 200, 'after status');
-  equal(after.data.letters.length, 2, 'only letters newer than the cursor');
-  assert(!after.data.letters.some((letter) => letter.id === firstId), 'cursor letter repeated');
-  equal(after.data.letters[0].id, 'b'.repeat(32), 'ascending order');
-  equal(after.data.letters[0].presence, 'moon', 'new moon letter keeps its mark');
-  equal(after.data.letters[1].presence, 'none', 'new unmarked letter is none');
-  equal(after.data.next_after, after.data.letters[1].seq, 'cursor advances to the newest seq');
-});
-
-await test('an idempotent retry keeps the first letter and its presence', async () => {
-  const env = createEnv();
-  const ip = nextIp();
-  const firstBody = validBody({ text: 'moon at first', presence: 'moon' });
-  const first = await call(env, '/letters', { method: 'POST', ip, body: firstBody });
-  equal(first.status, 201, 'first');
-  equal(first.data.presence, 'moon', 'first presence');
-
-  const retry = await call(env, '/letters', {
-    method: 'POST', ip, body: validBody({ request_id: firstBody.request_id, text: 'moon at first', presence: 'root' })
-  });
-  equal(retry.status, 200, 'retry is recovered');
-  equal(retry.data.id, first.data.id, 'retry returns the original letter');
-  equal(retry.data.presence, 'moon', 'recovery reports the stored presence, not the retry payload');
-  equal(tableRows(env, 'letters').length, 1, 'retry created no duplicate letter');
-  equal(tableRows(env, 'letter_submissions').length, 1, 'retry created no duplicate submission');
-  equal(env.__raw.prepare('SELECT presence FROM letters WHERE id = ?').get(first.data.id).presence, 'moon',
-    'retry overwrote the stored presence');
-  equal(tableRows(env, 'letter_limits').find(r => r.scope === 'global').count, 1, 'retry consumed no extra quota');
 });
 
 await test('POST prunes expired letters opportunistically', async () => {
