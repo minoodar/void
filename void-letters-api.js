@@ -8,6 +8,21 @@
   var BASE = 'https://void-galaxy-letters.minoodar.workers.dev';
   var PAGE_SIZE = 20;
   var TIMEOUT_MS = 15000;
+  /* Transport classification for the statistics sources. The panel only turns
+     this into plain words (offline / unavailable); no detail is shown. */
+  var statsFailures = { updates: null, count: null, visitors: null };
+  function noteFailure(which, kind, status) {
+    statsFailures[which] = { kind: kind || 'network', status: status || 0, at: Date.now() };
+  }
+  function noteSuccess(which) { statsFailures[which] = null; }
+  function recentFailure() {
+    var best = null;
+    for (var k in statsFailures) {
+      var f = statsFailures[k];
+      if (f && (!best || f.at > best.at)) best = f;
+    }
+    return best;
+  }
   var PENDING_KEY = 'voidLetters.pending.v1';
   var EXPIRY_VALUES = { '24h': true, '7d': true, '30d': true, '90d': true };
   var UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -392,30 +407,55 @@
     }
     return request(url, { method: 'GET', cache: 'no-store' }).then(function (res) {
       var d = res.status === 200 && res.data && res.data.ok === true ? res.data : null;
-      if (!d || !Array.isArray(d.letters) || !isFinite(Number(d.next_after))) return null;
-      var u = Number(d.unique_visitors);
-      var t = Number(d.total_sessions);
-      var r = Number(d.returning_ratio);
-      var count = Number(d.active);
-      if (!isFinite(count) || count < 0 || !isFinite(u) || u < 0) return null;
+      if (!d || !Array.isArray(d.letters) ||
+          d.next_after === null || d.next_after === undefined ||
+          !isFinite(Number(d.next_after))) {
+        noteFailure('updates', res.status === 200 ? 'invalid' : 'http', res.status);
+        return null;
+      }
+      var rawU = d.unique_visitors;
+      var rawT = d.total_sessions;
+      var rawR = d.returning_ratio;
+      var rawCount = d.active;
+      var u = rawU === null || rawU === undefined ? NaN : Number(rawU);
+      var t = rawT === null || rawT === undefined ? NaN : Number(rawT);
+      var r = rawR === null || rawR === undefined ? NaN : Number(rawR);
+      var count = rawCount === null || rawCount === undefined ? NaN : Number(rawCount);
+      if (!isFinite(count) || count < 0 || !isFinite(u) || u < 0) {
+        noteFailure('updates', 'invalid', res.status);
+        return null;
+      }
+      noteSuccess('updates');
       return {
         letters: d.letters,
         next_after: Math.max(0, Math.floor(Number(d.next_after))),
         count: Math.floor(count),
         visitors: {
           u: Math.floor(u),
-          t: isFinite(t) && t >= 0 ? Math.floor(t) : 0,
-          r: isFinite(r) && r >= 0 ? Math.min(1, r) : 0
+          t: isFinite(t) && t >= 0 ? Math.floor(t) : null,
+          r: isFinite(r) && r >= 0 ? Math.min(1, r) : null
         }
       };
-    }, function () { return null; });
+    }, function (err) {
+      noteFailure('updates', err && err.kind, 0);
+      return null;
+    });
   }
 
   function count() {
     return request(BASE + '/letters/count', { method: 'GET', cache: 'no-store' }).then(function (res) {
-      var n = res.status === 200 && res.data ? Number(res.data.active) : NaN;
-      return isFinite(n) && n >= 0 ? n : null;
-    }, function () { return null; });
+      var raw = res.status === 200 && res.data ? res.data.active : null;
+      var n = raw === null || raw === undefined ? NaN : Number(raw);
+      if (!isFinite(n) || n < 0) {
+        noteFailure('count', res.status === 200 ? 'invalid' : 'http', res.status);
+        return null;
+      }
+      noteSuccess('count');
+      return n;
+    }, function (err) {
+      noteFailure('count', err && err.kind, 0);
+      return null;
+    });
   }
 
   /* The sender's remaining capacity, as counted by the Worker for this exact
@@ -562,17 +602,30 @@
   function visitorStats() {
     return request(BASE + '/visitors/stats', { method: 'GET', cache: 'no-store' }).then(function (res) {
       var d = res.status === 200 && res.data && res.data.ok === true ? res.data : null;
-      if (!d) return null;
-      var u = Number(d.unique_visitors);
-      var t = Number(d.total_sessions);
-      var r = Number(d.returning_ratio);
-      if (!isFinite(u) || u < 0) return null;
+      if (!d) {
+        noteFailure('visitors', res.status === 200 ? 'invalid' : 'http', res.status);
+        return null;
+      }
+      var rawU = d.unique_visitors;
+      var rawT = d.total_sessions;
+      var rawR = d.returning_ratio;
+      var u = rawU === null || rawU === undefined ? NaN : Number(rawU);
+      var t = rawT === null || rawT === undefined ? NaN : Number(rawT);
+      var r = rawR === null || rawR === undefined ? NaN : Number(rawR);
+      if (!isFinite(u) || u < 0) {
+        noteFailure('visitors', 'invalid', res.status);
+        return null;
+      }
+      noteSuccess('visitors');
       return {
         u: Math.floor(u),
-        t: isFinite(t) && t >= 0 ? Math.floor(t) : 0,
-        r: isFinite(r) && r >= 0 ? Math.min(1, r) : 0
+        t: isFinite(t) && t >= 0 ? Math.floor(t) : null,
+        r: isFinite(r) && r >= 0 ? Math.min(1, r) : null
       };
-    }, function () { return null; });
+    }, function (err) {
+      noteFailure('visitors', err && err.kind, 0);
+      return null;
+    });
   }
 
   global.VoidLettersApi = {
@@ -592,6 +645,7 @@
     retractVote: retractVote,
     letterUrl: letterUrl,
     recordVisit: recordVisit,
-    visitorStats: visitorStats
+    visitorStats: visitorStats,
+    lastFailure: recentFailure
   };
 })(typeof window !== 'undefined' ? window : globalThis);

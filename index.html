@@ -1312,6 +1312,105 @@
         syncSelection();
         syncPlaying();
         settleCatalogue();
+        /* The statistics pill mirrors this list. Announce every successful
+           update so a retry can refresh its count without a reload; the
+           one-shot readiness promise above stays untouched. */
+        try {
+          document.dispatchEvent(new CustomEvent('void:catalogue', {
+            detail: { count: DATA.length }
+          }));
+        } catch (e) {}
+      }
+
+      var TRACK_RETRY_DELAY = 1200;
+
+      function delayTrackRetry(ms) {
+        return new Promise(function (resolve) { setTimeout(resolve, ms); });
+      }
+
+      /* Retry-After is delay-seconds or an HTTP-date on a 429 or 5xx response.
+         The effective wait stays between 1.2 s and 5 s; a missing, invalid or
+         expired value falls back to TRACK_RETRY_DELAY. */
+      function retryAfterMs(res) {
+        if (!res) return 0;
+        var status = Number(res.status);
+        if (!(status === 429 || (status >= 500 && status < 600))) return 0;
+        var raw = '';
+        try { raw = res.headers && res.headers.get ? res.headers.get('Retry-After') || '' : ''; } catch (e) { raw = ''; }
+        raw = String(raw).replace(/^\s+|\s+$/g, '');
+        if (!raw) return 0;
+        if (/^\d+$/.test(raw)) {
+          var secs = parseInt(raw, 10);
+          if (!isFinite(secs) || secs <= 0) return 0;
+          return Math.max(TRACK_RETRY_DELAY, Math.min(secs * 1000, 5000));
+        }
+        var when = Date.parse(raw);
+        if (!isFinite(when)) return 0;
+        var now = Date.now();
+        try {
+          var stamped = Date.parse(res.headers.get('Date') || '');
+          if (isFinite(stamped)) now = stamped;
+        } catch (e) {}
+        var left = when - now;
+        if (!isFinite(left) || left <= 0) return 0;
+        return Math.max(TRACK_RETRY_DELAY, Math.min(left, 5000));
+      }
+
+      /* One attempt, one AbortController, one 8 s deadline. `cache: 'no-store'`
+         keeps a retry from being answered by a still-fresh disk copy. */
+      function requestTracksOnce(url) {
+        var controller = typeof AbortController === 'function' ? new AbortController() : null;
+        var timer = 0;
+        if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, 8000);
+        return new Promise(function (resolve) {
+          function finish(outcome) {
+            clearTimeout(timer);
+            resolve(outcome);
+          }
+          try {
+            window.fetch(url, {
+              method: 'GET',
+              headers: { Accept: 'application/json' },
+              mode: 'cors',
+              credentials: 'omit',
+              cache: 'no-store',
+              signal: controller ? controller.signal : undefined
+            }).then(function (res) {
+              if (!res) return finish({ ok: false, kind: 'network' });
+              if (!res.ok) {
+                return finish({
+                  ok: false,
+                  kind: 'http',
+                  status: res.status,
+                  retryAfter: retryAfterMs(res)
+                });
+              }
+              res.json().then(function (payload) {
+                var list = normalizeTracks(payload);
+                finish(list ? { ok: true, list: list } : { ok: false, kind: 'invalid' });
+              }, function (err) {
+                /* The deadline can fire after the headers arrived; the abort then
+                   surfaces on the body read. That is a timeout, not bad JSON. */
+                if (err && err.name === 'AbortError') finish({ ok: false, kind: 'network', timedOut: true });
+                else finish({ ok: false, kind: 'invalid' });
+              });
+            }, function (err) {
+              finish({
+                ok: false,
+                kind: 'network',
+                timedOut: !!(err && err.name === 'AbortError')
+              });
+            });
+          } catch (e) {
+            finish({ ok: false, kind: 'network' });
+          }
+        });
+      }
+
+      function retryableTracksFailure(r) {
+        if (!r || r.ok) return false;
+        if (r.kind === 'network') return true;
+        return r.kind === 'http' && (r.status === 429 || r.status >= 500);
       }
 
       function loadManagedTracks() {
@@ -1326,32 +1425,34 @@
         }
         var api = window.VoidLettersApi;
         var base = api && typeof api.base === 'string' ? api.base : 'https://void-galaxy-letters.minoodar.workers.dev';
-        var controller = typeof AbortController === 'function' ? new AbortController() : null;
-        var timer = 0;
-        if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, 8000);
-        window.fetch(String(base).replace(/\/+$/, '') + '/tracks', {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          mode: 'cors',
-          credentials: 'omit',
-          signal: controller ? controller.signal : undefined
-        }).then(function (res) {
-          clearTimeout(timer);
-          if (!res || !res.ok) return null;
-          return res.json();
-        }).then(function (payload) {
-          fetching = false;
-          var list = normalizeTracks(payload);
-          if (list) applyTracks(list);
-          else {
+        var url = String(base).replace(/\/+$/, '') + '/tracks';
+
+        requestTracksOnce(url).then(function (first) {
+          if (first.ok) { applyTracks(first.list); return true; }
+          /* One retry, only for transient failures. A malformed 200 or an
+             ordinary 4xx is settled immediately. */
+          if (!retryableTracksFailure(first)) return false;
+          return delayTrackRetry(first.retryAfter || TRACK_RETRY_DELAY).then(function () {
+            return requestTracksOnce(url);
+          }).then(function (second) {
+            if (second.ok) { applyTracks(second.list); return true; }
+            return false;
+          });
+        }).then(function (ok) {
+          if (!ok) {
             showFailure();
             settleCatalogue();
           }
-        }, function () {
-          clearTimeout(timer);
+        }).then(function () {
           fetching = false;
-          showFailure();
-          settleCatalogue();
+        }, function () {
+          /* An unexpected exception must not freeze the catalogue at "Loading…":
+             show the existing failure state and release the guard for a retry. */
+          try {
+            showFailure();
+            settleCatalogue();
+          } catch (e) {}
+          fetching = false;
         });
       }
 

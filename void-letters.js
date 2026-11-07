@@ -156,6 +156,13 @@
   var siteStatsTimer = 0;
   var siteStatsRefreshPromise = null;
   var siteStatsRefreshQueued = false;
+  var liveDotEl = null;
+  var statsStale = false;
+  var statsStaleReason = '';
+  /* Last valid value per metric, memory only. A missing sub-metric keeps its
+     own slot instead of invalidating the others. */
+  var statsLastGood = { letters: null, visitors: null, sessions: null, returning: null };
+  var catalogueEventsBound = false;
 
   /* One server-reported quota drives every surface: the quill, the Write action
      in the statistics panel, and the strip inside the composer. Unknown means
@@ -760,6 +767,7 @@
     var people = make('span', 'vm-gs__fig');
     var liveDot = make('span', 'vm-gs__dot');
     liveDot.setAttribute('aria-hidden', 'true');
+    liveDotEl = liveDot;
     people.appendChild(liveDot);
     people.appendChild(glyph('\ud83c\udf0c'));
     visitorsN = make('span', 'vm-gs__n', '\u2014');
@@ -1061,16 +1069,66 @@
     return true;
   }
 
+  /* A failed refresh must not look like a fresh one: the dot stops breathing
+     and dims, and the tooltip says why in plain words. Values already on
+     screen stay untouched. */
+  function setStatsStale(stale, reason) {
+    stale = !!stale;
+    statsStale = stale;
+    statsStaleReason = stale ? (reason || 'unavailable') : '';
+    if (liveDotEl) {
+      liveDotEl.style.background = stale ? 'rgba(235, 240, 245, .42)' : '';
+      liveDotEl.style.boxShadow = stale ? 'none' : '';
+      liveDotEl.style.animation = stale ? 'none' : '';
+      liveDotEl.style.opacity = stale ? '.8' : '';
+      liveDotEl.style.transform = stale ? 'none' : '';
+    }
+    if (el) {
+      el.title = !stale ? 'Galaxy statistics'
+        : reason === 'partial' ? 'Galaxy statistics \u2014 some statistics unavailable'
+        : reason === 'offline' ? 'Galaxy statistics \u2014 connection lost, retrying'
+        : 'Galaxy statistics \u2014 service unavailable, retrying';
+    }
+    updateStatsLabel();
+  }
+
+  function pctText(ratio) {
+    return ratio === null ? '\u2014' : Math.round(ratio * 100) + '%';
+  }
+
+  /* Fill only what is still unavailable; a value already on screen is never
+     replaced by an older one. */
+  function restoreLastGood() {
+    if (statsLastGood.letters !== null && letterTotal === null) {
+      setCount(statsLastGood.letters);
+    }
+    if (statsLastGood.visitors !== null && visitorsN && visitorsN.textContent === '\u2014') {
+      visitorsN.textContent = fmt(statsLastGood.visitors);
+      if (rowVisitors) rowVisitors.textContent = fmt(statsLastGood.visitors);
+    }
+    if (statsLastGood.sessions !== null && rowSessions && rowSessions.textContent === '\u2014') {
+      rowSessions.textContent = fmt(statsLastGood.sessions);
+    }
+    if (statsLastGood.returning !== null) {
+      var pct = pctText(statsLastGood.returning);
+      if (returningN && returningN.textContent === '\u2014') returningN.textContent = pct;
+      if (rowReturned && rowReturned.textContent === '\u2014') rowReturned.textContent = pct;
+    }
+    updateStatsLabel();
+  }
+
   function setCount(n) {
     if (!mount()) return false;
-    clearTimeout(hideTimer);
+    if (n === null || n === undefined) return false;
     n = Math.floor(Number(n));
-    var ok = isFinite(n) && n >= 0;
-    letterTotal = ok ? n : null;
-    num.textContent = ok ? fmt(n) : '\u2014';
+    if (!isFinite(n) || n < 0) return false;
+    clearTimeout(hideTimer);
+    letterTotal = n;
+    statsLastGood.letters = n;
+    num.textContent = fmt(n);
     if (rowLetters) rowLetters.textContent = num.textContent;
     if (statsRead) {
-      var can = ok && n > 0;
+      var can = n > 0;
       statsRead.disabled = !can;
       if (statsReadSub) statsReadSub.textContent = can ? 'newest letter' : 'no letters yet';
       statsRead.title = can ? 'Read the newest letter' : 'The galaxy has no letters yet';
@@ -1088,17 +1146,42 @@
     var tracks = trackTotal > 0 ? fmt(trackTotal) : '\u2014';
     el.setAttribute('aria-label',
       'Galaxy statistics: ' + explorers + ' explorers, ' + letters +
-      ' letters, ' + tracks + ' tracks in the Golden Folder');
+      ' letters, ' + tracks + ' tracks in the Golden Folder' +
+      (statsStale
+        ? (statsStaleReason === 'partial'
+          ? ', some statistics unavailable'
+          : ', statistics unavailable')
+        : ''));
   }
 
+  /* Each metric is merged on its own: an absent or invalid sessions/returning
+     value keeps the previous one on screen instead of blanking it. */
   function setVisitors(s) {
     if (!s) return;
-    var u = Number(s.u), t = Number(s.t), r = Number(s.r);
-    if (!isFinite(u) || u < 0) return;
-    if (visitorsN) visitorsN.textContent = fmt(u);
-    if (rowVisitors) rowVisitors.textContent = fmt(u);
-    if (rowSessions) rowSessions.textContent = isFinite(t) && t >= 0 ? fmt(t) : '\u2014';
-    var pct = isFinite(r) ? Math.round(Math.min(1, Math.max(0, r)) * 100) + '%' : '\u2014';
+    var changed = false;
+    var u = s.u === null || s.u === undefined ? NaN : Number(s.u);
+    if (isFinite(u) && u >= 0) {
+      statsLastGood.visitors = u;
+      if (visitorsN) visitorsN.textContent = fmt(u);
+      if (rowVisitors) rowVisitors.textContent = fmt(u);
+      changed = true;
+    }
+    var t = s.t === null || s.t === undefined ? NaN : Number(s.t);
+    if (isFinite(t) && t >= 0) {
+      statsLastGood.sessions = Math.floor(t);
+      changed = true;
+    }
+    var r = s.r === null || s.r === undefined ? NaN : Number(s.r);
+    if (isFinite(r)) {
+      statsLastGood.returning = Math.min(1, Math.max(0, r));
+      changed = true;
+    }
+    if (!changed) return;
+    if (rowSessions) {
+      rowSessions.textContent = statsLastGood.sessions === null
+        ? '\u2014' : fmt(statsLastGood.sessions);
+    }
+    var pct = pctText(statsLastGood.returning);
     if (returningN) returningN.textContent = pct;
     if (rowReturned) rowReturned.textContent = pct;
     updateStatsLabel();
@@ -1116,13 +1199,28 @@
   }
 
   function setTracks(n) {
+    if (n === null || n === undefined) return;
     n = Math.floor(Number(n));
     trackTotal = isFinite(n) && n > 0 ? n : 0;
     if (rowTracks) rowTracks.textContent = trackTotal ? fmt(trackTotal) : '\u2014';
     updateStatsLabel();
   }
 
+  /* The catalogue also announces every later successful update (including a
+     retry), which the one-shot promise cannot carry. Bind once; read the
+     current snapshot on bind so an early-settled catalogue still lands. */
+  function bindCatalogueEvents() {
+    if (catalogueEventsBound) return;
+    catalogueEventsBound = true;
+    document.addEventListener('void:catalogue', function (e) {
+      var n = e && e.detail ? e.detail.count : null;
+      setTracks(typeof n === 'number' ? n : readTrackCount());
+    });
+    setTracks(readTrackCount());
+  }
+
   function watchCatalogue() {
+    bindCatalogueEvents();
     var g = window.VoidGolden;
     if (!g || !g.ready || typeof g.ready.then !== 'function') return;
     g.ready.then(function (list) {
@@ -2084,37 +2182,75 @@
   }
 
   function refreshSiteStats() {
-    if (!api || document.visibilityState === 'hidden' ||
-        (window.navigator && window.navigator.onLine === false)) return Promise.resolve();
+    if (!api) return Promise.resolve();
+    /* Nothing can be fresh without a connection; show the existing subtle stale
+       state instead of leaving the pill looking live. Values stay untouched. */
+    if (window.navigator && window.navigator.onLine === false) {
+      setStatsStale(true, 'offline');
+      return Promise.resolve();
+    }
+    if (document.visibilityState === 'hidden') return Promise.resolve();
     refreshQuota(false);
     if (siteStatsRefreshPromise) {
       siteStatsRefreshQueued = true;
       return siteStatsRefreshPromise;
     }
     siteStatsRefreshQueued = false;
+    /* The fallback reads each endpoint on its own so one failing source never
+       blocks the other. Freshness is reported per source. */
+    function fallbackStats() {
+      var lettersOk = false;
+      var visitorsOk = false;
+      var a = api.count().then(function (n) {
+        if (n !== null) { setCount(n); lettersOk = true; }
+      }, function () {});
+      var b = api.visitorStats().then(function (s) {
+        if (s) { setVisitors(s); visitorsOk = true; }
+      }, function () {});
+      return Promise.all([a, b]).then(function () {
+        return { letters: lettersOk, visitors: visitorsOk };
+      });
+    }
+    function failureReason() {
+      if (window.navigator && window.navigator.onLine === false) return 'offline';
+      try {
+        var f = api && typeof api.lastFailure === 'function' ? api.lastFailure() : null;
+        if (f && (f.kind === 'network' || f.kind === 'timeout')) return 'offline';
+      } catch (e) {}
+      return 'unavailable';
+    }
     var update = feed && typeof feed.refreshLatest === 'function'
       ? feed.refreshLatest().then(function (result) {
           if (result && result.status === 'ok') {
-            if (result.count !== null) setCount(result.count);
+            var lettersOk = false;
+            if (result.count !== null) { setCount(result.count); lettersOk = true; }
             if (result.visitors) setVisitors(result.visitors);
-            return;
+            return { letters: lettersOk, visitors: !!result.visitors };
           }
-          return Promise.all([api.count(), api.visitorStats()]).then(function (values) {
-            if (values[0] !== null) setCount(values[0]);
-            if (values[1]) setVisitors(values[1]);
-          });
+          return fallbackStats();
         })
-      : Promise.all([api.count(), api.visitorStats()]).then(function (values) {
-          if (values[0] !== null) setCount(values[0]);
-          if (values[1]) setVisitors(values[1]);
-        });
+      : fallbackStats();
+    var settled = update.then(function (fresh) {
+      var lettersOk = !!(fresh && fresh.letters);
+      var visitorsOk = !!(fresh && fresh.visitors);
+      var complete = lettersOk && visitorsOk;
+      /* One failing source is not a total outage: keep the healthy metrics
+         looking fresh and use neutral wording for the rest. */
+      if (!complete) restoreLastGood();
+      setStatsStale(!complete, complete ? '' : lettersOk || visitorsOk ? 'partial' : failureReason());
+      return complete;
+    }, function () {
+      restoreLastGood();
+      setStatsStale(true, failureReason());
+      return false;
+    });
     function finishRefresh() {
       siteStatsRefreshPromise = null;
       if (!siteStatsRefreshQueued) return;
       siteStatsRefreshQueued = false;
       return refreshSiteStats();
     }
-    siteStatsRefreshPromise = update.then(finishRefresh, finishRefresh);
+    siteStatsRefreshPromise = settled.then(finishRefresh, finishRefresh);
     return siteStatsRefreshPromise;
   }
 
