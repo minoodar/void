@@ -114,12 +114,12 @@
     border: 1px solid rgba(235, 240, 245, .16);
     border-radius: 14px;
     background:
-        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .07), transparent 62%),
-        rgba(9, 12, 18, .93);
-    -webkit-backdrop-filter: blur(14px) saturate(115%);
-            backdrop-filter: blur(14px) saturate(115%);
+        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .06), transparent 62%),
+        rgba(9, 12, 18, .96);
+    -webkit-backdrop-filter: blur(16px) saturate(115%);
+            backdrop-filter: blur(16px) saturate(115%);
     box-shadow: 0 18px 50px rgba(0, 0, 0, .62), 0 0 0 1px rgba(0, 0, 0, .3);
-    color: rgba(250, 252, 255, .94);
+    color: rgba(250, 252, 255, .96);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     pointer-events: auto;
     transform-origin: left top;
@@ -137,8 +137,8 @@
     color: rgba(250, 252, 255, .96);
 }
 .vm-gs-row span {
-    font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
-    color: rgba(235, 240, 245, .55);
+    font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: rgba(235, 240, 245, .7);
 }
 .vm-gs-row i {
     font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
@@ -169,7 +169,7 @@
     border: 1px solid rgba(235, 240, 245, .14);
     border-radius: 12px;
     background: rgba(255, 255, 255, .028);
-    color: rgba(235, 240, 245, .82);
+    color: rgba(235, 240, 245, .88);
     font-family: inherit;
     text-align: start;
     cursor: pointer;
@@ -206,16 +206,16 @@
     min-width: 0;
 }
 .vm-gs-act__txt b {
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 600;
     line-height: 1.2;
     letter-spacing: .01em;
 }
 .vm-gs-act__txt small {
-    font-size: 9px;
+    font-size: 10.5px;
     line-height: 1.3;
     letter-spacing: .01em;
-    color: rgba(235, 240, 245, .48);
+    color: rgba(235, 240, 245, .64);
     white-space: nowrap;
 }
 .vm-gs-act__meter { margin-top: 3px; color: rgba(235, 240, 245, .6); }
@@ -321,12 +321,12 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     border-radius: 12px;
     background:
         radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
-        rgba(9, 12, 18, .93);
-    -webkit-backdrop-filter: blur(14px) saturate(115%);
-            backdrop-filter: blur(14px) saturate(115%);
+        rgba(9, 12, 18, .96);
+    -webkit-backdrop-filter: blur(16px) saturate(115%);
+            backdrop-filter: blur(16px) saturate(115%);
     box-shadow: 0 14px 40px rgba(0, 0, 0, .6), 0 0 0 1px rgba(0, 0, 0, .3);
-    color: rgba(235, 240, 245, .8);
-    font: 10.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: rgba(235, 240, 245, .88);
+    font: 11.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-variant-numeric: tabular-nums;
     pointer-events: none;
     opacity: 0; visibility: hidden; transform: translateY(2px) scale(.98);
@@ -668,18 +668,18 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     gap: 10px;
     width: min(380px, calc(100vw - 24px));
     padding: 16px 16px 14px;
-    border: 1px solid rgba(236, 241, 247, .17);
+    border: 1px solid rgba(236, 241, 247, .15);
     border-radius: 20px 34px 20px 34px;
     background:
-        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .06), transparent 62%),
-        linear-gradient(180deg, rgba(16, 20, 27, .44), rgba(8, 10, 15, .40));
-    -webkit-backdrop-filter: blur(10px) saturate(112%);
-            backdrop-filter: blur(10px) saturate(112%);
+        radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
+        linear-gradient(180deg, rgba(15, 19, 26, .965), rgba(7, 9, 14, .975));
+    -webkit-backdrop-filter: blur(18px) saturate(112%);
+            backdrop-filter: blur(18px) saturate(112%);
     box-shadow:
-        0 24px 64px rgba(0, 0, 0, .56),
+        0 24px 64px rgba(0, 0, 0, .58),
         inset 0 1px 0 rgba(255, 255, 255, .05),
         0 0 0 1px rgba(0, 0, 0, .32);
-    color: rgba(250, 252, 255, .94);
+    color: rgba(250, 252, 255, .96);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     pointer-events: auto;
     user-select: text; -webkit-user-select: text;
@@ -750,7 +750,7 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     line-height: 1.4;
     letter-spacing: .08em;
     text-transform: uppercase;
-    color: rgba(251, 191, 36, .78);
+    color: rgba(251, 204, 108, .9);
 }
 .void-god-msg-text {
     box-sizing: border-box;
@@ -762,8 +762,8 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     scrollbar-width: thin;
     scrollbar-color: rgba(235, 240, 245, .24) transparent;
     margin: 0;
-    color: rgba(250, 252, 255, .94);
-    font-size: 14.5px;
+    color: rgba(250, 252, 255, .96);
+    font-size: 15.5px;
     line-height: 1.75;
     letter-spacing: .01em;
     white-space: pre-wrap;
@@ -853,11 +853,11 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     border-radius: 12px;
     background:
         radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
-        rgba(9, 12, 18, .93);
-    -webkit-backdrop-filter: blur(14px) saturate(115%);
-            backdrop-filter: blur(14px) saturate(115%);
+        rgba(9, 12, 18, .96);
+    -webkit-backdrop-filter: blur(16px) saturate(115%);
+            backdrop-filter: blur(16px) saturate(115%);
     box-shadow: 0 14px 40px rgba(0, 0, 0, .6), 0 0 0 1px rgba(0, 0, 0, .3);
-    font: 11.5px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     pointer-events: auto;
     opacity: 0; visibility: hidden; transform: translateY(2px) scale(.98);
     transition: opacity .16s ease, transform .22s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .22s;
@@ -908,16 +908,16 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-share-pop__label { display: block; min-width: 0; }
 .void-god-msg-meta {
     margin: 0;
-    font-size: 11px;
+    font-size: 11.5px;
     line-height: 1.5;
-    color: rgba(235, 240, 245, .36);
+    color: rgba(235, 240, 245, .66);
 }
 .void-god-msg-lifespan {
     margin: -2px 0 0;
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 1.4;
     letter-spacing: .05em;
-    color: rgba(251, 216, 140, .78);
+    color: rgba(251, 216, 140, .86);
     font-variant-numeric: tabular-nums;
 }
 .void-god-msg-lifespan[hidden] { display: none; }
@@ -926,12 +926,12 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 @keyframes void-lifespan-bump {
     0% { color: rgba(251, 191, 36, .35); transform: translateY(2px); }
     35% { color: rgba(255, 226, 150, 1); transform: translateY(-1px); }
-    100% { color: rgba(251, 216, 140, .78); transform: none; }
+    100% { color: rgba(251, 216, 140, .86); transform: none; }
 }
 @keyframes void-lifespan-dip {
     0% { color: rgba(170, 190, 220, .35); transform: translateY(-2px); }
     35% { color: rgba(190, 205, 230, .95); transform: translateY(1px); }
-    100% { color: rgba(251, 216, 140, .78); transform: none; }
+    100% { color: rgba(251, 216, 140, .86); transform: none; }
 }
 .void-god-votes {
     display: flex;
@@ -970,8 +970,8 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-vote__count {
     display: block;
     min-height: 11px;
-    color: rgba(205, 210, 220, .68);
-    font-size: 10px;
+    color: rgba(215, 220, 230, .8);
+    font-size: 10.5px;
     font-weight: 400;
     line-height: 11px;
     font-variant-numeric: tabular-nums;
@@ -1015,11 +1015,11 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     border-radius: 12px;
     background:
         radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
-        rgba(9, 12, 18, .93);
-    -webkit-backdrop-filter: blur(14px) saturate(115%);
-            backdrop-filter: blur(14px) saturate(115%);
+        rgba(9, 12, 18, .96);
+    -webkit-backdrop-filter: blur(16px) saturate(115%);
+            backdrop-filter: blur(16px) saturate(115%);
     box-shadow: 0 14px 40px rgba(0, 0, 0, .6), 0 0 0 1px rgba(0, 0, 0, .3);
-    font: 11.5px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     pointer-events: auto;
     opacity: 0; visibility: hidden; transform: translateY(2px) scale(.98);
     transition: opacity .16s ease, transform .22s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .22s;
@@ -1084,11 +1084,11 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-translate-pop__label {
     margin: 0;
     padding: 3px 9px 5px;
-    font-size: 9.5px;
+    font-size: 10px;
     line-height: 1.4;
     letter-spacing: .08em;
     text-transform: uppercase;
-    color: rgba(235, 240, 245, .45);
+    color: rgba(235, 240, 245, .62);
 }
 .void-god-translate-pop__list {
     max-height: 188px;
@@ -1119,18 +1119,18 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     transform: translate(-50%, -50%);
     margin: 0;
     padding: 0;
-    border: 1px solid rgba(236, 241, 247, .17);
+    border: 1px solid rgba(236, 241, 247, .15);
     border-radius: 18px;
     background:
-        radial-gradient(130% 90% at 50% -12%, rgba(251, 191, 36, .08), transparent 60%),
-        linear-gradient(180deg, rgba(19, 23, 31, .33), rgba(7, 9, 13, .30));
-    -webkit-backdrop-filter: blur(8px) saturate(116%);
-            backdrop-filter: blur(8px) saturate(116%);
+        radial-gradient(130% 90% at 50% -12%, rgba(251, 191, 36, .06), transparent 60%),
+        linear-gradient(180deg, rgba(15, 19, 26, .965), rgba(6, 8, 13, .98));
+    -webkit-backdrop-filter: blur(18px) saturate(116%);
+            backdrop-filter: blur(18px) saturate(116%);
     box-shadow:
-        0 26px 80px rgba(0, 0, 0, .58),
+        0 26px 80px rgba(0, 0, 0, .6),
         inset 0 1px 0 rgba(255, 255, 255, .055),
         0 0 0 1px rgba(0, 0, 0, .30);
-    color: rgba(250, 252, 255, .94);
+    color: rgba(250, 252, 255, .96);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     pointer-events: auto;
     user-select: text; -webkit-user-select: text;
@@ -1143,9 +1143,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     overflow: auto;
 }
 #void-god-dialog::backdrop {
-    background: rgba(2, 3, 7, .62);
-    -webkit-backdrop-filter: blur(6px) saturate(115%);
-            backdrop-filter: blur(6px) saturate(115%);
+    background: rgba(2, 3, 7, .74);
+    -webkit-backdrop-filter: blur(8px) saturate(115%);
+            backdrop-filter: blur(8px) saturate(115%);
 }
 #void-god-dialog[open] {
     animation: voidGodIn .28s cubic-bezier(.22, 1, .36, 1);
@@ -1282,17 +1282,17 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     gap: 8px;
     padding: 0;
     margin-bottom: 6px;
-    font-size: 9.5px;
+    font-size: 10.5px;
     line-height: 1.3;
-    letter-spacing: .14em;
+    letter-spacing: .12em;
     text-transform: uppercase;
-    color: rgba(235, 240, 245, .52);
+    color: rgba(235, 240, 245, .72);
 }
 .void-god-presence__optional {
     letter-spacing: .02em;
     text-transform: none;
-    font-size: 10px;
-    color: rgba(235, 240, 245, .4);
+    font-size: 11px;
+    color: rgba(235, 240, 245, .56);
 }
 .void-god-presence__row {
     display: grid;
@@ -1308,7 +1308,7 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     min-width: 0;
     padding: 6px 2px 5px;
     border-radius: 10px;
-    color: rgba(235, 240, 245, .52);
+    color: rgba(235, 240, 245, .68);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     transition: color .18s ease, background .18s ease;
@@ -1337,9 +1337,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     stroke-linejoin: round;
 }
 .void-god-presence__name {
-    font-size: 9.5px;
+    font-size: 10.5px;
     line-height: 1.2;
-    letter-spacing: .04em;
+    letter-spacing: .03em;
     color: currentColor;
     white-space: nowrap;
 }
@@ -1359,8 +1359,8 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     align-items: center;
     gap: 10px;
     margin-top: 2px;
-    color: rgba(235, 240, 245, .72);
-    font-size: 10.5px;
+    color: rgba(235, 240, 245, .8);
+    font-size: 11.5px;
     line-height: 1.3;
     letter-spacing: .04em;
     font-variant-numeric: tabular-nums;
@@ -1378,17 +1378,19 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     width: 100%;
     min-height: 216px;
     max-height: 40vh;
-    padding: 4px 2px 2px;
+    padding: 12px 14px;
     border: 0;
     border-radius: 12px;
-    background:
-        linear-gradient(180deg, rgba(9, 12, 18, .62), rgba(9, 12, 18, .44) 46%, rgba(9, 12, 18, .3)),
-        linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .008));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 22px 40px -34px rgba(0, 0, 0, .9);
-    color: rgba(250, 252, 255, .97);
+    background: linear-gradient(180deg, rgba(7, 9, 14, .97), rgba(7, 9, 14, .94));
+    box-shadow:
+        inset 0 0 0 1px rgba(235, 240, 245, .08),
+        inset 0 1px 0 rgba(255, 255, 255, .04),
+        0 22px 40px -34px rgba(0, 0, 0, .9);
+    color: rgba(252, 253, 255, .98);
+    caret-color: rgba(251, 216, 140, .98);
     font-family: inherit;
-    font-size: 15.5px;
-    line-height: 1.8;
+    font-size: 16px;
+    line-height: 1.74;
     letter-spacing: .005em;
     unicode-bidi: plaintext;
     resize: vertical;
@@ -1397,14 +1399,16 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     cursor: text;
     transition: box-shadow .2s ease, background .2s ease;
 }
-.void-god-text::placeholder { color: rgba(235, 240, 245, .3); font-style: italic; }
+.void-god-text::selection {
+    background: rgba(251, 191, 36, .28);
+    color: rgba(255, 252, 245, 1);
+}
+.void-god-text::placeholder { color: rgba(235, 240, 245, .52); font-style: italic; }
 .void-god-text:focus {
-    background:
-        linear-gradient(180deg, rgba(11, 14, 20, .66), rgba(11, 14, 20, .47) 46%, rgba(11, 14, 20, .32)),
-        linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .012));
+    background: rgba(8, 10, 16, .99);
     box-shadow:
-        inset 0 1px 0 rgba(251, 191, 36, .26),
-        inset 0 0 0 1px rgba(251, 191, 36, .18),
+        inset 0 0 0 1px rgba(251, 191, 36, .30),
+        inset 0 1px 0 rgba(255, 255, 255, .045),
         0 26px 46px -34px rgba(0, 0, 0, .95);
 }
 
@@ -1432,10 +1436,10 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 .void-god-legend {
     padding: 0;
     margin-bottom: 5px;
-    font-size: 9.5px;
-    letter-spacing: .14em;
+    font-size: 10.5px;
+    letter-spacing: .12em;
     text-transform: uppercase;
-    color: rgba(235, 240, 245, .52);
+    color: rgba(235, 240, 245, .72);
 }
 .void-god-exp-opt { position: relative; display: flex; min-width: 0; }
 .void-god-exp-opt input {
@@ -1450,8 +1454,8 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     border: 0;
     border-radius: 8px 8px 0 0;
     background: transparent;
-    color: rgba(235, 240, 245, .62);
-    font-size: 11.5px;
+    color: rgba(235, 240, 245, .74);
+    font-size: 12px;
     line-height: 1;
     text-align: center;
     white-space: nowrap;
@@ -1501,9 +1505,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     transition: color .18s ease;
 }
 .void-god-secret__sub {
-    font-size: 10.5px;
-    line-height: 1.35;
-    color: rgba(235, 240, 245, .46);
+    font-size: 11px;
+    line-height: 1.4;
+    color: rgba(235, 240, 245, .6);
 }
 .void-god-switch {
     flex: none;
@@ -1542,9 +1546,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     display: flex;
     align-items: flex-start;
     gap: 9px;
-    font-size: 12px;
+    font-size: 12.5px;
     line-height: 1.5;
-    color: rgba(235, 240, 245, .76);
+    color: rgba(235, 240, 245, .86);
     cursor: pointer;
 }
 .void-god-ack input {
@@ -1580,11 +1584,11 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
 }
 .void-god-release { flex: 1 1 auto; min-width: 0; }
 .void-god-release__micro {
-    font-size: 11px;
+    font-size: 11.5px;
     font-style: italic;
     line-height: 1.4;
     letter-spacing: .02em;
-    color: rgba(235, 240, 245, .42);
+    color: rgba(235, 240, 245, .58);
 }
 .void-god-actions {
     display: flex;
@@ -1593,14 +1597,14 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     flex: none;
 }
 .void-god-btn {
-    min-height: 38px;
-    padding: 9px 16px;
-    border: 1px solid rgba(235, 240, 245, .18);
+    min-height: 40px;
+    padding: 10px 17px;
+    border: 1px solid rgba(235, 240, 245, .22);
     border-radius: 999px;
-    background: rgba(255, 255, 255, .03);
-    color: rgba(235, 240, 245, .88);
+    background: rgba(255, 255, 255, .035);
+    color: rgba(235, 240, 245, .92);
     font-family: inherit;
-    font-size: 12.5px;
+    font-size: 13px;
     line-height: 1;
     letter-spacing: .02em;
     cursor: pointer;
@@ -1659,7 +1663,7 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     border-radius: 12px;
     background:
         radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
-        rgba(9, 12, 18, .93);
+        rgba(9, 12, 18, .96);
 }
 .void-god-published__menu[hidden] { display: none; }
 .void-god-published__status {
@@ -1699,11 +1703,35 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     #void-god-panel { width: calc(100vw - 84px); padding: 14px 14px 12px; }
     body.is-letter-reading #void-god-panel { width: min(380px, calc(100vw - 24px)); }
     .void-god-panel__actions { gap: 4px; }
-    .void-god-form { padding: 16px 15px 14px; gap: 10px; }
-    .void-god-text { min-height: 184px; font-size: 15px; }
+    .void-god-form { padding: 14px 14px 13px; gap: 9px; }
+    .void-god-text { min-height: 168px; font-size: 16px; }
     .void-god-release { display: none; }
     .void-god-actions { flex: 1 1 auto; }
     .void-god-foot .void-god-btn { flex: 1; }
+}
+
+/* Small phones and short phone viewports: the whole form — page, consent and
+   the single action — fits without an inner scroll, so submitting never means
+   hunting for a control hidden under the fold. */
+@media (max-width: 360px), (max-width: 520px) and (max-height: 700px) {
+    #void-god-dialog { max-height: 96vh; max-height: 96dvh; }
+    .void-god-form { padding: 12px 12px 11px; gap: 7px; }
+    .void-god-title { font-size: 16px; }
+    .void-god-title-fa { font-size: 11.5px; }
+    .void-god-presence__legend { margin-bottom: 4px; }
+    .void-god-presence__opt { gap: 3px; padding: 3px 1px 2px; }
+    .void-god-presence__glyph { width: 24px; height: 24px; }
+    .void-god-presence__glyph svg { width: 20px; height: 20px; }
+    .void-god-quota { font-size: 11px; }
+    /* rows=7 sets the intrinsic height; an explicit height is what actually
+       compacts the page on a 568px-tall phone. */
+    .void-god-text { height: 132px; min-height: 132px; padding: 10px 12px; }
+    .void-god-count-row { font-size: 11px; }
+    .void-god-exp-opt span { padding: 6px 2px; font-size: 11.5px; }
+    .void-god-secret { margin-top: 6px; padding-top: 6px; }
+    .void-god-ack { font-size: 11.5px; line-height: 1.4; }
+    .void-god-foot { margin-top: 0; }
+    .void-god-btn { min-height: 38px; padding: 8px 14px; font-size: 12.5px; }
 }
 
 @media (max-width: 420px) {
@@ -1719,7 +1747,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
 
 @media (max-height: 560px) {
     #void-god-dialog { max-height: 94vh; max-height: 94dvh; }
-    .void-god-text { min-height: 132px; }
+    .void-god-text { height: 132px; min-height: 132px; }
 }
 
 /* When the whole column cannot stay in the middle-right band, the quill
@@ -1744,6 +1772,15 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     }
     #void-god-quill .void-god-quill__icon { width: 16px; height: 16px; }
     #void-god-quill .vm-meter__d { width: 4px; height: 5px; }
+    /* The mark shrinks in this tier; the tap target stays 44px. */
+    #void-god-quill::after {
+        content: "";
+        position: absolute;
+        left: 50%; top: 50%;
+        width: 44px; height: 44px;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+    }
     /* In this tier the rail lives top-left, so the panel can use the full width. */
     #void-god-panel { width: min(380px, calc(100vw - 24px)); }
     /* The three marks start at left:64px, so the pill only has 56px in the
@@ -1842,18 +1879,19 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     }
 }
 
-/* ---- Glass refinement (2026-11-07) ----
-   فقط پس‌زمینهٔ سطحِ شیشه‌ای نیمه‌شفاف است؛ متن و کنترل‌ها کامل خوانا می‌مانند. */
+/* ---- UI clarity pass (2026-11-07) ----
+   Functional surfaces sit at 96–98% opacity: the galaxy stays faintly present,
+   the text layer never competes with it, and every label keeps a readable floor. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     #void-god-panel {
         background:
-            radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .06), transparent 62%),
-            rgba(8, 10, 15, .88);
+            radial-gradient(120% 100% at 50% -10%, rgba(251, 191, 36, .05), transparent 62%),
+            rgba(8, 10, 15, .97);
     }
     #void-god-dialog {
         background:
-            radial-gradient(130% 90% at 50% -12%, rgba(251, 191, 36, .08), transparent 60%),
-            linear-gradient(180deg, rgba(19, 23, 31, .96), rgba(7, 9, 13, .97));
+            radial-gradient(130% 90% at 50% -12%, rgba(251, 191, 36, .06), transparent 60%),
+            linear-gradient(180deg, rgba(15, 19, 26, .97), rgba(6, 8, 13, .98));
     }
 }
 
@@ -1863,7 +1901,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
 }
 #void-god-panel .void-god-msg-title { color: rgba(250, 252, 255, 1); }
-#void-god-panel .void-god-msg-meta { color: rgba(235, 240, 245, .62); }
+#void-god-panel .void-god-msg-meta { color: rgba(235, 240, 245, .68); }
 #void-god-panel .void-god-msg-tag { color: rgba(251, 204, 108, .9); }
 #void-god-panel .void-god-secret-hint { color: rgba(251, 208, 118, .78); }
 
@@ -1871,22 +1909,15 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
 #void-god-dialog .void-god-title { color: rgba(250, 252, 255, 1); }
 #void-god-dialog .void-god-title-fa { color: rgba(251, 204, 108, .88); }
 #void-god-dialog .void-god-legend,
-#void-god-dialog .void-god-presence__legend { color: rgba(235, 240, 245, .7); }
-#void-god-dialog .void-god-presence__optional { color: rgba(235, 240, 245, .48); }
+#void-god-dialog .void-god-presence__legend { color: rgba(235, 240, 245, .72); }
+#void-god-dialog .void-god-presence__optional { color: rgba(235, 240, 245, .56); }
 #void-god-dialog .void-god-count { color: rgba(235, 240, 245, .72); }
-#void-god-dialog .void-god-quota { color: rgba(235, 240, 245, .82); }
-#void-god-dialog .void-god-quota__text { color: rgba(235, 240, 245, .72); }
-#void-god-dialog .void-god-secret__title { color: rgba(235, 240, 245, .88); }
-#void-god-dialog .void-god-secret__sub { color: rgba(235, 240, 245, .56); }
-#void-god-dialog .void-god-release__micro { color: rgba(235, 240, 245, .48); }
-#void-god-dialog .void-god-ack { color: rgba(235, 240, 245, .85); }
-#void-god-dialog .void-god-published__note { color: rgba(235, 240, 245, .82); }
-#void-god-dialog .void-god-published__status { color: rgba(235, 240, 245, .76); }
-#void-god-dialog .void-god-text {
-    background:
-        linear-gradient(180deg, rgba(9, 12, 18, .62), rgba(9, 12, 18, .45) 46%, rgba(9, 12, 18, .3)),
-        linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .012));
-    color: rgba(250, 252, 255, .98);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
-}
-#void-god-dialog .void-god-text::placeholder { color: rgba(235, 240, 245, .4); }
+#void-god-dialog .void-god-quota { color: rgba(235, 240, 245, .86); }
+#void-god-dialog .void-god-quota__text { color: rgba(235, 240, 245, .78); }
+#void-god-dialog .void-god-secret__title { color: rgba(235, 240, 245, .9); }
+#void-god-dialog .void-god-secret__sub { color: rgba(235, 240, 245, .64); }
+#void-god-dialog .void-god-release__micro { color: rgba(235, 240, 245, .58); }
+#void-god-dialog .void-god-ack { color: rgba(235, 240, 245, .86); }
+#void-god-dialog .void-god-published__note { color: rgba(235, 240, 245, .84); }
+#void-god-dialog .void-god-published__status { color: rgba(235, 240, 245, .78); }
+#void-god-dialog .void-god-text { text-shadow: 0 1px 2px rgba(0, 0, 0, .55); }

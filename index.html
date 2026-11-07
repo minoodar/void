@@ -177,10 +177,10 @@
       max-width: min(340px, calc(100vw - 24px));
       padding: 7px 12px; border-radius: 999px;
       border: 1px solid rgba(235, 240, 245, .18);
-      background: rgba(8, 10, 14, .78);
-      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+      background: rgba(8, 10, 14, .95);
+      -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
       box-shadow: 0 8px 26px rgba(0, 0, 0, .42);
-      color: rgba(235, 240, 245, .86);
+      color: rgba(235, 240, 245, .92);
       font: 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       letter-spacing: .01em;
       pointer-events: none; opacity: 0; visibility: hidden;
@@ -238,26 +238,27 @@
       padding: 0;
       border: 0;
       border-radius: 20px;
-      /* Deep-space glass: the galaxy stays visible through the window; only the
-         text layer is dense enough to keep every label readable. */
-      background: linear-gradient(180deg, rgba(5, 7, 12, .26) 0%, rgba(2, 3, 8, .42) 100%);
-      -webkit-backdrop-filter: blur(7px) saturate(118%);
-      backdrop-filter: blur(7px) saturate(118%);
-      box-shadow: 0 30px 80px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 0 0 1px rgba(235, 240, 245, .10);
-      color: rgba(250, 252, 255, .95);
+      /* Deep-space glass: the galaxy stays faintly visible through the window,
+         while the surface itself is dense enough that no label ever sits on
+         moving starfield. */
+      background: linear-gradient(180deg, rgba(9, 12, 18, .965) 0%, rgba(5, 7, 12, .975) 100%);
+      -webkit-backdrop-filter: blur(16px) saturate(118%);
+      backdrop-filter: blur(16px) saturate(118%);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 0 0 1px rgba(235, 240, 245, .10);
+      color: rgba(250, 252, 255, .96);
       text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
       overflow: hidden;
       font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     #void-golden-modal[open] { display: block; animation: vgmIn .22s cubic-bezier(.22, 1, .36, 1); }
     #void-golden-modal::backdrop {
-      background: rgba(2, 3, 8, .22);
-      -webkit-backdrop-filter: blur(2px);
-      backdrop-filter: blur(2px);
+      background: rgba(2, 3, 8, .62);
+      -webkit-backdrop-filter: blur(6px);
+      backdrop-filter: blur(6px);
     }
     @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      #void-golden-modal { background: rgba(5, 7, 12, .90); }
-      #void-golden-modal::backdrop { background: rgba(2, 3, 8, .74); }
+      #void-golden-modal { background: rgba(5, 7, 12, .97); }
+      #void-golden-modal::backdrop { background: rgba(2, 3, 8, .82); }
     }
     @keyframes vgmIn {
       from { opacity: 0; transform: translateY(6px) scale(.985); }
@@ -327,7 +328,7 @@
       border: 1px solid rgba(251, 191, 36, .20);
       border-radius: 999px;
       background: rgba(251, 191, 36, .06);
-      color: rgba(255, 228, 168, .82);
+      color: rgba(255, 228, 168, .9);
       font-size: 10.5px;
       font-weight: 500;
       letter-spacing: .075em;
@@ -336,9 +337,9 @@
     }
     .void-golden-modal__count {
       flex: none;
-      font-size: 11px;
-      letter-spacing: .04em;
-      color: rgba(235, 240, 245, .62);
+      font-size: 11.5px;
+      letter-spacing: .03em;
+      color: rgba(235, 240, 245, .74);
       transition: color .18s ease;
     }
     .void-golden-modal__count.is-active { color: rgba(255, 228, 168, .80); }
@@ -464,10 +465,10 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 13.5px;
+      font-size: 14px;
       color: rgba(250, 252, 255, .96);
     }
-    .void-golden-modal__empty { padding: 18px 8px; color: rgba(235, 240, 245, .62); }
+    .void-golden-modal__empty { padding: 18px 8px; color: rgba(235, 240, 245, .74); }
     .void-golden-modal__retry {
       margin-top: 10px;
       padding: 2px 0;
@@ -487,7 +488,7 @@
       padding: 0 2px;
       font-size: 12.5px;
       line-height: 1.5;
-      color: rgba(235, 240, 245, .74);
+      color: rgba(235, 240, 245, .82);
     }
     .void-golden-modal__info {
       width: 14px;
@@ -498,13 +499,14 @@
     }
     .void-golden-modal__foot { display: flex; justify-content: flex-end; gap: 10px; padding-top: 2px; }
     .void-golden-modal__btn {
-      padding: 9px 16px;
-      border: 1px solid rgba(235, 240, 245, .22);
+      min-height: 40px;
+      padding: 10px 17px;
+      border: 1px solid rgba(235, 240, 245, .24);
       border-radius: 999px;
-      background: rgba(255, 255, 255, .05);
-      color: rgba(250, 252, 255, .9);
+      background: rgba(255, 255, 255, .055);
+      color: rgba(250, 252, 255, .94);
       font: inherit;
-      font-size: 12.5px;
+      font-size: 13px;
       cursor: pointer;
       transition: background .18s ease, border-color .18s ease, opacity .18s ease;
     }
@@ -580,20 +582,20 @@
       padding: 0;
       border: 0;
       border-radius: 18px;
-      background: linear-gradient(180deg, rgba(5, 7, 12, .34) 0%, rgba(2, 3, 8, .54) 100%);
-      -webkit-backdrop-filter: blur(10px) saturate(120%);
-      backdrop-filter: blur(10px) saturate(120%);
+      background: linear-gradient(180deg, rgba(11, 14, 20, .96) 0%, rgba(4, 6, 10, .97) 100%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+      backdrop-filter: blur(16px) saturate(120%);
       box-shadow: 0 24px 64px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 0 0 1px rgba(235, 240, 245, .10);
-      color: rgba(250, 252, 255, .95);
+      color: rgba(250, 252, 255, .97);
       text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
       overflow: hidden;
       font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     #void-golden-share[open] { display: block; animation: vgShareIn .2s cubic-bezier(.22, 1, .36, 1); }
     #void-golden-share::backdrop {
-      background: rgba(2, 3, 8, .3);
-      -webkit-backdrop-filter: blur(3px);
-      backdrop-filter: blur(3px);
+      background: rgba(2, 3, 8, .55);
+      -webkit-backdrop-filter: blur(5px);
+      backdrop-filter: blur(5px);
     }
     @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
       #void-golden-share { background: rgba(5, 7, 12, .94); }
@@ -631,14 +633,14 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 11.5px;
-      color: rgba(235, 240, 245, .62);
+      font-size: 12px;
+      color: rgba(235, 240, 245, .74);
     }
     .void-golden-share__msg {
       margin: 2px 0 5px;
-      font-size: 12px;
+      font-size: 12.5px;
       line-height: 1.5;
-      color: rgba(235, 240, 245, .74);
+      color: rgba(235, 240, 245, .84);
     }
     .void-golden-share__actions { display: flex; flex-direction: column; gap: 7px; }
     .void-golden-share__btn {
@@ -679,7 +681,7 @@
       border: 0;
       border-radius: 50%;
       background: none;
-      color: rgba(235, 240, 245, .55);
+      color: rgba(235, 240, 245, .72);
       font: 18px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       cursor: pointer;
     }
@@ -699,11 +701,11 @@
       padding: 15px 17px 14px;
       border: 1px solid rgba(235, 240, 245, .16);
       border-radius: 18px;
-      background: linear-gradient(180deg, rgba(8, 10, 14, .74) 0%, rgba(5, 7, 12, .84) 100%);
-      -webkit-backdrop-filter: blur(14px) saturate(118%);
-      backdrop-filter: blur(14px) saturate(118%);
+      background: linear-gradient(180deg, rgba(11, 14, 20, .95) 0%, rgba(6, 8, 13, .96) 100%);
+      -webkit-backdrop-filter: blur(16px) saturate(118%);
+      backdrop-filter: blur(16px) saturate(118%);
       box-shadow: 0 16px 44px rgba(0, 0, 0, .46), inset 0 1px 0 rgba(255, 255, 255, .1);
-      color: rgba(250, 252, 255, .94);
+      color: rgba(250, 252, 255, .96);
       text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
       animation: vgInviteIn .46s cubic-bezier(.22, 1, .36, 1) both;
     }
@@ -713,11 +715,11 @@
       to   { opacity: 1; transform: none; }
     }
     .void-invite__eyebrow {
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 500;
-      letter-spacing: .16em;
+      letter-spacing: .14em;
       text-transform: uppercase;
-      color: rgba(251, 191, 36, .72);
+      color: rgba(251, 191, 36, .84);
     }
     .void-invite__title {
       margin: 0;
@@ -729,9 +731,9 @@
     }
     .void-invite__line {
       margin: 0;
-      font-size: 12px;
+      font-size: 12.5px;
       line-height: 1.5;
-      color: rgba(235, 240, 245, .68);
+      color: rgba(235, 240, 245, .8);
     }
     .void-invite__track {
       margin: 3px 0 2px;
@@ -752,9 +754,9 @@
       background: rgba(251, 191, 36, .14);
       color: rgba(255, 230, 170, .98);
       font: inherit;
-      font-size: 10.5px;
+      font-size: 11.5px;
       font-weight: 600;
-      letter-spacing: .09em;
+      letter-spacing: .07em;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -772,7 +774,7 @@
       border: 0;
       border-radius: 50%;
       background: none;
-      color: rgba(235, 240, 245, .55);
+      color: rgba(235, 240, 245, .72);
       font: 18px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       cursor: pointer;
     }
