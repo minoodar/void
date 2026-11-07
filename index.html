@@ -957,6 +957,15 @@
       var DATA = [];
       var URLS = new Set();
       var fetching = false;
+      /* Recovery state: a terminal failure earns one deferred attempt; every
+         later attempt needs a real trigger (event or the manual button) and the
+         throttle, so a dead route never turns into polling. */
+      var catalogueFailed = false;
+      var lastCatalogueAttempt = 0;
+      var deferredRecoveryTimer = 0;
+      var lastAttemptWasDeferred = false;
+      var RECOVERY_THROTTLE_MS = 15 * 1000;
+      var DEFERRED_RECOVERY_MS = 30 * 1000;
       function indexUrls() {
         URLS.clear();
         for (var i = 0; i < DATA.length; i++) if (DATA[i] && DATA[i].url) URLS.add(DATA[i].url);
@@ -1413,9 +1422,39 @@
         return r.kind === 'http' && (r.status === 429 || r.status >= 500);
       }
 
+      function clearDeferredRecovery() {
+        if (deferredRecoveryTimer) {
+          clearTimeout(deferredRecoveryTimer);
+          deferredRecoveryTimer = 0;
+        }
+      }
+
+      function scheduleDeferredRecovery() {
+        clearDeferredRecovery();
+        deferredRecoveryTimer = setTimeout(function () {
+          deferredRecoveryTimer = 0;
+          if (!catalogueFailed || fetching) return;
+          if (Date.now() - lastCatalogueAttempt < RECOVERY_THROTTLE_MS) return;
+          lastAttemptWasDeferred = true;
+          loadManagedTracks();
+        }, DEFERRED_RECOVERY_MS);
+      }
+
+      /* The GET result, never navigator.onLine, decides whether the catalogue
+         is healthy. Throttled and single-flight, so bursts of events collapse. */
+      function maybeRecoverCatalogue() {
+        if (!catalogueFailed || fetching) return;
+        if (Date.now() - lastCatalogueAttempt < RECOVERY_THROTTLE_MS) return;
+        loadManagedTracks();
+      }
+
       function loadManagedTracks() {
         if (fetching) return;
         fetching = true;
+        var wasDeferred = lastAttemptWasDeferred;
+        lastAttemptWasDeferred = false;
+        lastCatalogueAttempt = Date.now();
+        clearDeferredRecovery();
         showLoading();
         if (typeof window.fetch !== 'function') {
           fetching = false;
@@ -1440,18 +1479,27 @@
           });
         }).then(function (ok) {
           if (!ok) {
+            catalogueFailed = true;
             showFailure();
             settleCatalogue();
+            /* One deferred chance per failure episode; the deferred attempt
+               itself never re-arms, so an outage cannot become a poll loop. */
+            if (!wasDeferred) scheduleDeferredRecovery();
+          } else {
+            catalogueFailed = false;
+            clearDeferredRecovery();
           }
         }).then(function () {
           fetching = false;
         }, function () {
           /* An unexpected exception must not freeze the catalogue at "Loading…":
              show the existing failure state and release the guard for a retry. */
+          catalogueFailed = true;
           try {
             showFailure();
             settleCatalogue();
           } catch (e) {}
+          if (!wasDeferred) scheduleDeferredRecovery();
           fetching = false;
         });
       }
@@ -1503,6 +1551,12 @@
 
       showLoading();
       loadManagedTracks();
+      window.addEventListener('online', maybeRecoverCatalogue);
+      window.addEventListener('pageshow', maybeRecoverCatalogue);
+      window.addEventListener('focus', maybeRecoverCatalogue);
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') maybeRecoverCatalogue();
+      });
 
       link.addEventListener('click', function (e) {
         e.preventDefault();
