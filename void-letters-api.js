@@ -48,6 +48,10 @@
     try { return global.sessionStorage || null; } catch (e) { return null; }
   }
 
+  function persistentStorage() {
+    try { return global.localStorage || null; } catch (e) { return null; }
+  }
+
   function num(v) {
     var n = Number(v);
     return isFinite(n) ? n : 0;
@@ -583,15 +587,19 @@
     return voteRequest(id, 'DELETE', null);
   }
 
-  /* Visitor counting rides the same Worker and database as the letters. A hit
-     is fire-and-forget: the stats request is what fills the pill, so a blocked
-     or failed write can never hide the numbers. `returning` is advisory; the
-     Worker decides from its own hashed row. */
-  function recordVisit(returning) {
+  /* Visitor counting rides the same Worker and database as the letters.
+     `returning` is advisory; the Worker decides from its own hashed row. An
+     optional `sessionKey` makes the hit idempotent, so a retry after an
+     ambiguous failure can never count the same browser session twice. */
+  function recordVisit(returning, sessionKey) {
+    var payload = { returning: !!returning };
+    if (typeof sessionKey === 'string' && UUID_V4_REGEX.test(sessionKey)) {
+      payload.session_key = sessionKey;
+    }
     return request(BASE + '/visitors/hit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ returning: !!returning })
+      body: JSON.stringify(payload)
     }).then(function (res) {
       return res.status === 200 && !!res.data && res.data.ok === true;
     }, function () { return false; });
@@ -628,6 +636,146 @@
     });
   }
 
+  var VISIT_KEY_STORE = 'vgm-hit-key';
+  var VISIT_COUNTED_STORE = 'vgm-counted';
+  var VISIT_RETURNING_STORE = 'vgm-visitor';
+  var VISIT_BACKOFF_MS = [5000, 30000, 120000];
+  var VISIT_EVENT_GAP_MS = 30000;
+
+  function readStore(store, key) {
+    try { return store ? store.getItem(key) : null; } catch (e) { return null; }
+  }
+
+  function writeStore(store, key, value) {
+    try { if (store) store.setItem(key, value); } catch (e) {}
+  }
+
+  /* Owns the one visitor hit of a browser session. The key is minted once,
+     persisted in sessionStorage and reused by every retry, so the Worker can
+     recognise a replay. `vgm-counted` is written only after the Worker confirms
+     the hit (fresh or already-recorded). Timed retries are capped at three and
+     every event-driven retry is gated by a 30s gap, so a flaky network cannot
+     turn into a polling loop. navigator.onLine only gates sending; the reply is
+     the only proof of reachability. */
+  function createVisitRegistrar(config) {
+    config = config || {};
+    var backoff = Array.isArray(config.backoff) && config.backoff.length ? config.backoff.slice() : VISIT_BACKOFF_MS.slice();
+    var eventGap = num(config.eventGap) > 0 ? num(config.eventGap) : VISIT_EVENT_GAP_MS;
+    var sessionStore = config.sessionStore !== undefined ? config.sessionStore : storage();
+    var persistentStore = config.persistentStore !== undefined ? config.persistentStore : persistentStorage();
+    var clock = typeof config.now === 'function' ? config.now : function () { return Date.now(); };
+    var setTimer = typeof config.setTimeout === 'function' ? config.setTimeout : function (fn, ms) { return setTimeout(fn, ms); };
+    var clearTimerFn = typeof config.clearTimeout === 'function' ? config.clearTimeout : function (id) { clearTimeout(id); };
+    var send = typeof config.send === 'function' ? config.send : function (returning, key) { return recordVisit(returning, key); };
+    var onConfirmed = typeof config.onConfirmed === 'function' ? config.onConfirmed : function () {};
+    var online = typeof config.isOnline === 'function' ? config.isOnline : function () {
+      var nav = global.navigator;
+      return !nav || nav.onLine !== false;
+    };
+    var suppressed = typeof config.isSuppressed === 'function' ? config.isSuppressed : function () {
+      var nav = global.navigator;
+      return !!(nav && (nav.doNotTrack === '1' || nav.globalPrivacyControl === true));
+    };
+
+    var inFlight = false;
+    var confirmed = false;
+    var disposed = false;
+    var timer = 0;
+    var attempts = 0;
+    var lastEventAt = 0;
+
+    function counted() {
+      return confirmed || readStore(sessionStore, VISIT_COUNTED_STORE) === '1';
+    }
+
+    function sessionKey() {
+      var value = readStore(sessionStore, VISIT_KEY_STORE);
+      if (value && UUID_V4_REGEX.test(value)) return value;
+      value = newRequestId();
+      writeStore(sessionStore, VISIT_KEY_STORE, value);
+      return value;
+    }
+
+    function stopTimer() {
+      if (timer) { clearTimerFn(timer); timer = 0; }
+    }
+
+    function confirm() {
+      confirmed = true;
+      attempts = 0;
+      stopTimer();
+      writeStore(sessionStore, VISIT_COUNTED_STORE, '1');
+      writeStore(persistentStore, VISIT_RETURNING_STORE, '1');
+      try { onConfirmed(); } catch (e) {}
+    }
+
+    function schedule() {
+      if (disposed || counted() || attempts >= backoff.length) return;
+      var delay = backoff[attempts];
+      attempts++;
+      stopTimer();
+      timer = setTimer(function () { timer = 0; attempt(); }, delay);
+    }
+
+    function attempt() {
+      if (disposed || inFlight || counted() || suppressed() || !online()) return Promise.resolve(false);
+      stopTimer();
+      var returning = readStore(persistentStore, VISIT_RETURNING_STORE) === '1';
+      var key = sessionKey();
+      inFlight = true;
+      var pending;
+      try {
+        pending = Promise.resolve(send(returning, key));
+      } catch (e) {
+        pending = Promise.resolve(false);
+      }
+      return pending.then(function (ok) {
+        inFlight = false;
+        if (ok === true) { confirm(); return true; }
+        schedule();
+        return false;
+      }, function () {
+        inFlight = false;
+        schedule();
+        return false;
+      });
+    }
+
+    function start() {
+      if (disposed || counted()) return;
+      attempt();
+    }
+
+    function retryNow() {
+      if (disposed || counted()) return;
+      var at = clock();
+      if (lastEventAt && at - lastEventAt < eventGap) return;
+      lastEventAt = at;
+      if (inFlight) return;
+      attempts = 0;
+      attempt();
+    }
+
+    function dispose() {
+      disposed = true;
+      stopTimer();
+      attempts = 0;
+    }
+
+    function state() {
+      return {
+        key: readStore(sessionStore, VISIT_KEY_STORE),
+        counted: counted(),
+        inFlight: inFlight,
+        attempts: attempts,
+        scheduled: !!timer,
+        disposed: disposed
+      };
+    }
+
+    return { start: start, retryNow: retryNow, dispose: dispose, state: state };
+  }
+
   global.VoidLettersApi = {
     base: BASE,
     pageSize: PAGE_SIZE,
@@ -646,6 +794,7 @@
     letterUrl: letterUrl,
     recordVisit: recordVisit,
     visitorStats: visitorStats,
+    createVisitRegistrar: createVisitRegistrar,
     lastFailure: recentFailure
   };
 })(typeof window !== 'undefined' ? window : globalThis);

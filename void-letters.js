@@ -1230,41 +1230,34 @@
     });
   }
 
-  /* یک hit در هر نشستِ مرورگر و بعد stats. احترام به DNT/GPC مثل شمارندهٔ
-     قبلی: در آن حالت فقط آمار خوانده می‌شود. اعداد هرگز به موفقیتِ نوشتن
-     وابسته نیستند. */
-  var VISIT_COUNTED = 'vgm-counted';
-  var VISIT_RETURNING = 'vgm-visitor';
-
-  function readSession(key, persistent) {
-    try {
-      var store = persistent ? window.localStorage : window.sessionStorage;
-      return store ? store.getItem(key) : null;
-    } catch (e) { return null; }
-  }
-
-  function writeSession(key, value, persistent) {
-    try {
-      var store = persistent ? window.localStorage : window.sessionStorage;
-      if (store) store.setItem(key, value);
-    } catch (e) {}
-  }
+  /* یک hit در هر نشستِ مرورگر با یک شناسهٔ پایدار؛ هر تلاش دوباره همان شناسه
+     را می‌فرستد تا Worker نتواند نشست را دوبار بشمارد. `vgm-counted` فقط بعد
+     از تأیید Worker نوشته می‌شود. احترام به DNT/GPC مثل شمارندهٔ قبلی: در آن
+     حالت فقط آمار خوانده می‌شود. اعداد هرگز به موفقیتِ نوشتن وابسته نیستند. */
+  var visitRegistrar = null;
 
   function startVisitors() {
-    if (visitorsStarted || !api || typeof api.recordVisit !== 'function' ||
-        typeof api.visitorStats !== 'function') return;
+    if (visitorsStarted || !api || typeof api.createVisitRegistrar !== 'function') return;
     visitorsStarted = true;
     var nav = window.navigator || {};
-    var skipHit = nav.doNotTrack === '1' || nav.globalPrivacyControl === true ||
-      readSession(VISIT_COUNTED, false) === '1';
-    if (skipHit) return;
-    var hit = api.recordVisit(readSession(VISIT_RETURNING, true) === '1');
-    hit.then(function () {
-      writeSession(VISIT_COUNTED, '1', false);
-      writeSession(VISIT_RETURNING, '1', true);
-      /* A GET after the hit resolves is safe even when the POST outcome was
-         ambiguous; it never repeats the visitor write. */
-      return refreshSiteStats();
+    visitRegistrar = api.createVisitRegistrar({
+      sessionStore: window.sessionStorage,
+      persistentStore: window.localStorage,
+      isOnline: function () { return window.navigator.onLine !== false; },
+      isSuppressed: function () {
+        return nav.doNotTrack === '1' || nav.globalPrivacyControl === true;
+      },
+      onConfirmed: function () { refreshSiteStats(); }
+    });
+    visitRegistrar.start();
+    window.addEventListener('online', function () {
+      if (visitRegistrar) visitRegistrar.retryNow();
+    });
+    window.addEventListener('pageshow', function () {
+      if (visitRegistrar) visitRegistrar.retryNow();
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (visitRegistrar && document.visibilityState === 'visible') visitRegistrar.retryNow();
     });
   }
 
