@@ -258,6 +258,7 @@
   var compose = null;
   var composeForm = null;
   var composer = null;
+  var presenceNone = null;
   var countEl = null;
   var hintEl = null;
   var ackEl = null;
@@ -541,8 +542,8 @@
         composeQuota.classList.toggle('is-exhausted', quota.remaining === 0);
         var left = quotaLeftSec();
         composeQuotaText.textContent = quota.remaining > 0
-          ? quota.remaining + ' / ' + quota.limit + ' available today'
-          : 'No letters left today' + (left > 0 ? ' \u00b7 next in ' + quotaWait(left) : '');
+          ? quota.remaining + ' of ' + quota.limit + ' inks left'
+          : 'No ink left' + (left > 0 ? ' \u00b7 next in ' + quotaWait(left) : '');
       }
     } else if (composeQuota) {
       composeQuota.hidden = true;
@@ -1227,7 +1228,7 @@
       submitBtn.disabled = true;
       return;
     }
-    submitBtn.textContent = uncertainSubmission ? 'Check submission' : 'Submit letter';
+    submitBtn.textContent = uncertainSubmission ? 'Check submission' : "Let's go";
     if (published) { submitBtn.disabled = true; return; }
     var text = composer.value;
     var ok = codePoints(text) <= MAX_POINTS && !BAD_CHARS.test(text) &&
@@ -3628,6 +3629,7 @@
     sending = false;
     if (!uncertainSubmission) ackEl.checked = false;
     if (!uncertainSubmission && secretEl) secretEl.checked = false;
+    if (!uncertainSubmission && presenceNone) presenceNone.checked = true;
     noticeEl.hidden = !uncertainSubmission;
     noticeEl.textContent = '';
     if (uncertainSubmission) notice('We could not confirm whether your letter arrived. Press Check submission to safely try again.');
@@ -3639,11 +3641,38 @@
     try { composer.focus({ preventScroll: true }); } catch (e) {}
   }
 
+  /* Five original line-art presences on one shared grid: a thin contour and a
+     single filled point. The mark is a writing-side identity choice, not a
+     profile and not published metadata. */
+  function presenceSvg(kind) {
+    var svg = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    if (kind === 'none') {
+      svg.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '6.4', 'stroke-dasharray': '1.6 3.4' }));
+      svg.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '1.1', fill: 'currentColor', stroke: 'none' }));
+    } else if (kind === 'human') {
+      svg.appendChild(svgNode('circle', { cx: '12', cy: '8.1', r: '3.1' }));
+      svg.appendChild(svgNode('path', { d: 'M5.6 19.4c.7-3.4 3.2-5.4 6.4-5.4s5.7 2 6.4 5.4' }));
+      svg.appendChild(svgNode('circle', { cx: '12', cy: '15.7', r: '.9', fill: 'currentColor', stroke: 'none' }));
+    } else if (kind === 'moon') {
+      svg.appendChild(svgNode('path', { d: 'M15.9 4.6a7.4 7.4 0 1 0 3.5 12.6 6.1 6.1 0 0 1-3.5-12.6Z' }));
+      svg.appendChild(svgNode('circle', { cx: '16.6', cy: '9.3', r: '.9', fill: 'currentColor', stroke: 'none' }));
+    } else if (kind === 'root') {
+      svg.appendChild(svgNode('path', { d: 'M12 5.2v9.8' }));
+      svg.appendChild(svgNode('path', { d: 'M12 5.2c-2.4 1.7-3.6 3.7-3.6 5.9M12 5.2c2.4 1.7 3.6 3.7 3.6 5.9' }));
+      svg.appendChild(svgNode('path', { d: 'M12 14.6c-1.7.7-3 2-3.9 3.9M12 14.6c1.7.7 3 2 3.9 3.9' }));
+      svg.appendChild(svgNode('circle', { cx: '12', cy: '15', r: '.9', fill: 'currentColor', stroke: 'none' }));
+    } else {
+      svg.appendChild(svgNode('path', { d: 'M12 5.2a6.8 6.8 0 0 1 4.4 11.9M9.9 18.2a6.8 6.8 0 0 1-2.3-10.4' }));
+      svg.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '.9', fill: 'currentColor', stroke: 'none' }));
+    }
+    return svg;
+  }
+
   function buildCompose(host) {
     compose = make('dialog', 'void-god-dialog');
     compose.id = 'void-god-dialog';
     compose.setAttribute('aria-labelledby', 'void-god-title');
-    compose.setAttribute('aria-describedby', 'void-god-intro void-god-demo');
+    compose.setAttribute('aria-describedby', 'void-god-ack-text');
 
     composeForm = make('form', 'void-god-form');
     composeForm.setAttribute('novalidate', '');
@@ -3663,36 +3692,56 @@
     head.appendChild(titles);
     head.appendChild(x);
 
-    var intro = make('p', 'void-god-intro',
-      'Leave a thought among the stars. It becomes a small star in the galaxy: anonymous, public, and temporary. Write with care \u2014 once it leaves, it cannot be taken back.');
-    intro.id = 'void-god-intro';
+    /* The mark is chosen with symbols, not a form fieldset: five line-art
+       presences, one selected state, no identity attached. */
+    var presence = make('fieldset', 'void-god-presence');
+    var presenceLegend = make('legend', 'void-god-presence__legend', 'Presence');
+    presenceLegend.appendChild(make('span', 'void-god-presence__optional', 'optional \u00b7 not sent'));
+    presence.appendChild(presenceLegend);
+    var presenceRow = make('div', 'void-god-presence__row');
+    var presenceOpts = [
+      ['none', 'None'],
+      ['human', 'Human'],
+      ['moon', 'Moon'],
+      ['root', 'Root'],
+      ['unknown', 'Unknown']
+    ];
+    for (var pi = 0; pi < presenceOpts.length; pi++) {
+      var pOpt = make('label', 'void-god-presence__opt');
+      pOpt.title = presenceOpts[pi][0] === 'none' ? 'No presence' : 'A ' + presenceOpts[pi][0] + ' presence';
+      var pRadio = document.createElement('input');
+      pRadio.type = 'radio';
+      pRadio.name = 'void-god-presence';
+      pRadio.value = presenceOpts[pi][0];
+      pRadio.checked = presenceOpts[pi][0] === 'none';
+      var pGlyph = make('span', 'void-god-presence__glyph');
+      pGlyph.appendChild(presenceSvg(presenceOpts[pi][0]));
+      pOpt.appendChild(pRadio);
+      pOpt.appendChild(pGlyph);
+      pOpt.appendChild(make('span', 'void-god-presence__name', presenceOpts[pi][1]));
+      presenceRow.appendChild(pOpt);
+      if (presenceOpts[pi][0] === 'none') presenceNone = pRadio;
+    }
+    presence.appendChild(presenceRow);
 
-    /* The composer carries the same meter, so touch users see the quota without
-       needing a hover state anywhere. Hidden while the server answer is unknown. */
+    /* The composer carries the same meter as the quill: three ink drops, filled
+       while the server still allows a letter today. */
     composeQuota = make('div', 'void-god-quota');
     composeQuota.id = 'void-god-quota';
     composeQuota.hidden = true;
-    var qIcon = make('span', 'void-god-quota__icon');
-    qIcon.appendChild(quillSvg(14));
-    composeQuota.appendChild(qIcon);
     buildMeter(composeQuota, 'void-god-quota__meter');
     composeQuotaText = make('span', 'void-god-quota__text', '');
     composeQuota.appendChild(composeQuotaText);
 
-    var demo = make('p', 'void-god-demo', 'Your letter is stored anonymously on the public sky until it fades. Pressing Submit is final \u2014 it cannot be edited or deleted afterwards.');
-    demo.id = 'void-god-demo';
-
-    var label = make('label', 'void-god-label', 'Your letter');
-    label.setAttribute('for', 'void-god-text');
-
     composer = make('textarea', 'void-god-text');
     composer.id = 'void-god-text';
-    composer.setAttribute('rows', '6');
+    composer.setAttribute('rows', '7');
     composer.setAttribute('dir', 'auto');
-    composer.setAttribute('placeholder', 'Write a few lines\u2026');
+    composer.setAttribute('placeholder', 'Write freely. Let the silence hold your words\u2026');
     composer.setAttribute('spellcheck', 'true');
     composer.setAttribute('autocomplete', 'off');
     composer.setAttribute('aria-describedby', 'void-god-count void-god-hint');
+    composer.setAttribute('aria-label', 'Your letter');
 
     var meta = make('div', 'void-god-count-row');
     countEl = make('span', 'void-god-count', '0 / 500');
@@ -3720,23 +3769,29 @@
     }
     fs.appendChild(row);
 
-    /* Secret Ink stays inside the fade fieldset: one compact row, off by
-       default, with the explanation available on hover and to screen readers. */
+    /* Secret Ink stays inside the fade fieldset as a quiet switch: the visible
+       label is the whole hit area, the explanation lives in a screen-reader note
+       and the switch carries the state. */
     var secretLab = make('label', 'void-god-secret');
     secretLab.title = 'Readers can reveal your words with one click.';
     secretEl = document.createElement('input');
     secretEl.type = 'checkbox';
     secretEl.id = 'void-god-secret-ink';
+    secretEl.setAttribute('role', 'switch');
     secretEl.setAttribute('aria-label', 'Secret Ink');
-    secretEl.setAttribute('aria-describedby', 'void-god-secret-hint');
+    secretEl.setAttribute('aria-describedby', 'void-god-secret-compose-hint');
     secretLab.appendChild(secretEl);
-    var secretStar = make('span', 'void-god-secret__star', '\u2733');
-    secretStar.setAttribute('aria-hidden', 'true');
-    secretLab.appendChild(secretStar);
-    secretLab.appendChild(make('span', 'void-god-secret__text', 'Secret Ink'));
-    var secretMicro = make('span', 'void-god-secret__micro', 'Let your words hide among the stars.');
-    secretMicro.id = 'void-god-secret-hint';
-    secretLab.appendChild(secretMicro);
+    var secretCopy = make('span', 'void-god-secret__copy');
+    secretCopy.appendChild(make('span', 'void-god-secret__title', 'Secret Ink'));
+    secretCopy.appendChild(make('span', 'void-god-secret__sub', 'Hidden until a reader taps to reveal.'));
+    secretLab.appendChild(secretCopy);
+    var secretSwitch = make('span', 'void-god-switch');
+    secretSwitch.setAttribute('aria-hidden', 'true');
+    secretSwitch.appendChild(make('span', 'void-god-switch__track'));
+    secretLab.appendChild(secretSwitch);
+    var secretNote = make('span', 'void-god-sr', 'Secret Ink hides the letter behind a reveal tap in the reader.');
+    secretNote.id = 'void-god-secret-compose-hint';
+    secretLab.appendChild(secretNote);
     fs.appendChild(secretLab);
 
     var ackLab = make('label', 'void-god-ack');
@@ -3744,22 +3799,31 @@
     ackEl.type = 'checkbox';
     ackEl.id = 'void-god-ack';
     ackLab.appendChild(ackEl);
-    ackLab.appendChild(make('span', '',
-      'I understand letters are anonymous and public, cannot be edited or deleted after submission, and may be seen or saved before they expire.'));
+    var ackText = make('span', 'void-god-ack__text',
+      'I understand letters are anonymous and public, cannot be edited or deleted after submission, and may be seen or saved before they expire.');
+    ackText.id = 'void-god-ack-text';
+    ackLab.appendChild(ackText);
 
     noticeEl = make('p', 'void-god-notice');
     noticeEl.id = 'void-god-notice';
     noticeEl.setAttribute('role', 'status');
     noticeEl.hidden = true;
 
+    /* Release footer: the quiet act of letting go on one side, the single
+       primary action on the other. */
     var foot = make('div', 'void-god-foot');
+    var release = make('span', 'void-god-release');
+    release.appendChild(make('span', 'void-god-release__micro', 'Let it go.'));
+    var actions = make('div', 'void-god-actions');
     var cancel = make('button', 'void-god-btn', 'Cancel');
     cancel.type = 'button';
-    submitBtn = make('button', 'void-god-btn void-god-btn--primary', 'Submit letter');
+    submitBtn = make('button', 'void-god-btn void-god-btn--primary', "Let's go");
     submitBtn.type = 'submit';
     submitBtn.disabled = true;
-    foot.appendChild(cancel);
-    foot.appendChild(submitBtn);
+    actions.appendChild(cancel);
+    actions.appendChild(submitBtn);
+    foot.appendChild(release);
+    foot.appendChild(actions);
 
     /* نمای موفقیت: فقط پس از پاسخِ واقعیِ ثبت آشکار می‌شود. */
     successEl = make('div', 'void-god-published');
@@ -3810,10 +3874,8 @@
     successEl.appendChild(okFoot);
 
     composeForm.appendChild(head);
+    composeForm.appendChild(presence);
     composeForm.appendChild(composeQuota);
-    composeForm.appendChild(intro);
-    composeForm.appendChild(demo);
-    composeForm.appendChild(label);
     composeForm.appendChild(composer);
     composeForm.appendChild(meta);
     composeForm.appendChild(fs);
