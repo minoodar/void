@@ -248,11 +248,12 @@ body.void-admin-on > *:not(#void-admin-root) { visibility: hidden !important; }
     line-height: 1.65;
     color: var(--va-dim);
 }
-.va-login__error {
-    margin: 12px 0 0;
+.va-login .va-login__error {
+    margin: 14px 0 0;
     color: #fda4af;
-    font-size: 13px;
-    line-height: 1.5;
+    font-size: 13.5px;
+    line-height: 1.8;
+    overflow-wrap: anywhere;
 }
 .va-login__submit {
     width: 100%;

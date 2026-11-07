@@ -48,6 +48,16 @@
     invalid_body: 'The worker rejected the request body.'
   };
 
+  /* Login failures are classified by transport first, then by HTTP status, so a
+     blocked/unstable network path is never reported as a wrong secret. */
+  var LOGIN_MESSAGES = {
+    network: 'ارتباط با سرور مدیریت برقرار نشد. ممکن است مسیر اتصال شبکه به سرویس Cloudflare محدود یا ناپایدار باشد. اتصال اینترنت یا VPN را بررسی کنید و دوباره تلاش کنید.',
+    timeout: 'زمان انتظار برای پاسخ سرور به پایان رسید. احتمالاً ارتباط شبکه با سرویس ناپایدار است. لطفاً دوباره تلاش کنید.',
+    forbidden: 'رمز مدیریت صحیح نیست. لطفاً رمز را بررسی کنید.',
+    unauthorized: 'درخواست احراز هویت معتبر نیست. لطفاً دوباره وارد شوید.',
+    unavailable: 'سرویس مدیریت در حال حاضر آماده پاسخ\u200cگویی نیست. لطفاً کمی بعد دوباره تلاش کنید.'
+  };
+
   var state = {
     token: '',
     view: 'music',
@@ -78,6 +88,7 @@
   var editingId = null;
   var confirmResolve = null;
   var sortButtons = [];
+  var loginInFlight = false;
 
   /* ---------------------------------------------------------------- */
   /* tiny helpers                                                      */
@@ -220,20 +231,19 @@
       init.signal = controller.signal;
       timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, REQUEST_TIMEOUT_MS);
     }
+    function networkResult() {
+      clearTimeout(timer);
+      var timedOut = !!(controller && controller.signal && controller.signal.aborted);
+      return { status: 0, data: null, network: true, timeout: timedOut };
+    }
     return global.fetch(baseUrl() + path, init).then(function (response) {
       return response.text().then(function (raw) {
         clearTimeout(timer);
         var data = null;
         try { data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
-        return { status: response.status, data: data, network: false };
-      }, function () {
-        clearTimeout(timer);
-        return { status: 0, data: null, network: true };
-      });
-    }, function () {
-      clearTimeout(timer);
-      return { status: 0, data: null, network: true };
-    });
+        return { status: response.status, data: data, network: false, timeout: false };
+      }, networkResult);
+    }, networkResult);
   }
 
   function authFailure(response) {
@@ -260,6 +270,16 @@
     }
     dom.loginError.hidden = false;
     dom.loginError.textContent = message;
+  }
+
+  function loginFailureMessage(response) {
+    if (response.timeout) return LOGIN_MESSAGES.timeout;
+    if (response.network) return LOGIN_MESSAGES.network;
+    if (response.status === 403) return LOGIN_MESSAGES.forbidden;
+    if (response.status === 401) return LOGIN_MESSAGES.unauthorized;
+    if (response.status === 503) return LOGIN_MESSAGES.unavailable;
+    var code = response.status ? ' (HTTP ' + response.status + ')' : '';
+    return 'پاسخ سرور مدیریت غیرمنتظره بود' + code + '. لطفاً دوباره تلاش کنید.';
   }
 
   function setLoginBusy(busy, label) {
@@ -301,6 +321,7 @@
 
   function onLogin(event) {
     event.preventDefault();
+    if (loginInFlight) return;
     var secret = dom.secret.value.trim();
     if (!secret) {
       loginError('Enter the admin secret.');
@@ -312,9 +333,11 @@
       dom.secret.focus();
       return;
     }
+    loginInFlight = true;
     setLoginBusy(true, 'Unlocking…');
     loginError('');
     api('/admin/session', { token: secret }).then(function (response) {
+      loginInFlight = false;
       if (response.status === 200 && response.data && response.data.ok) {
         state.token = secret;
         writeToken(secret);
@@ -326,10 +349,7 @@
         return;
       }
       setLoginBusy(false);
-      if (response.status === 401 || response.status === 403) loginError('That secret was not accepted.');
-      else if (response.status === 503) loginError('The worker has no admin secret configured (it must be at least 16 characters).');
-      else if (response.network) loginError('Could not reach the letters worker. Check the connection and try again.');
-      else loginError('Unexpected response from the worker (' + response.status + ').');
+      loginError(loginFailureMessage(response));
       dom.secret.focus();
     });
   }
@@ -342,8 +362,10 @@
     }
     dom.login.hidden = false;
     dom.app.hidden = true;
+    loginInFlight = true;
     setLoginBusy(true, 'Verifying session…');
     api('/admin/session', { token: state.token }).then(function (response) {
+      loginInFlight = false;
       if (response.status === 200 && response.data && response.data.ok) {
         showApp();
         loadAll();
@@ -352,14 +374,8 @@
       if (response.status === 401 || response.status === 403) {
         clearToken();
         state.token = '';
-        showLogin('The saved session is no longer valid. Enter the secret again.');
-      } else if (response.status === 503) {
-        showLogin('The worker has no admin secret configured (it must be at least 16 characters).');
-      } else if (response.network) {
-        showLogin('Could not reach the letters worker. Check the connection, then unlock again.');
-      } else {
-        showLogin('Unexpected response from the worker (' + response.status + ').');
       }
+      showLogin(loginFailureMessage(response));
     });
   }
 
@@ -1097,7 +1113,7 @@
     '          <button class="va-reveal" id="va-reveal" type="button" aria-label="Show secret" aria-pressed="false">Show</button>',
     '        </span>',
     '      </label>',
-    '      <p class="va-login__error" id="va-login-error" role="alert" hidden></p>',
+    '      <p class="va-login__error" id="va-login-error" role="alert" dir="auto" hidden></p>',
     '      <button class="va-btn va-btn--primary va-login__submit" id="va-login-submit" type="submit">Unlock</button>',
     '    </form>',
     '  </section>',
