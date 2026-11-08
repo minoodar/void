@@ -1,0 +1,79 @@
+/* Void — lightweight glass theme.
+   One shared surface recipe, applied everywhere (the theme must not depend on
+   TV detection). Real blur is progressive enhancement on the major surfaces
+   only; lowfx and unsupported browsers keep the same translucency, borders and
+   highlights without blur. No animation is introduced here. */
+
+:root {
+  --vg-tint: 10, 14, 21;
+  --vg-line: rgba(255, 255, 255, .14);
+  --vg-edge: rgba(255, 255, 255, .16);
+  --vg-blur: 12px;
+}
+
+/* A static ambient wash gives the glass something to refract: faint indigo at
+   the stats corner and the rail, faint amber under the dock. Painted once. */
+html body {
+  background:
+    radial-gradient(52% 40% at 90% 46%, rgba(38, 66, 110, .17), transparent 70%),
+    radial-gradient(46% 34% at 10% 10%, rgba(30, 48, 86, .15), transparent 70%),
+    radial-gradient(64% 44% at 50% 108%, rgba(122, 86, 42, .12), transparent 72%),
+    radial-gradient(circle at 50% 42%, #050714 0%, #02030a 58%, #010208 100%);
+}
+
+/* Major surfaces: translucent charcoal, silver hairline, specular top edge. */
+html #void-galaxy-stats,
+html #void-galaxy-stats-panel,
+html .vm-pop,
+html .vm-sound-pop {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .02) 34%, rgba(255, 255, 255, 0) 62%),
+    rgba(var(--vg-tint), .5);
+  border: 1px solid var(--vg-line);
+  box-shadow: inset 0 1px 0 var(--vg-edge), 0 10px 30px rgba(0, 0, 0, .38);
+}
+
+/* Text-heavy panels stay a touch denser so labels never sit on starfield. */
+html #void-god-panel,
+html #void-god-dialog,
+html #void-golden-modal,
+html #void-golden-share,
+html #void-invite {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .02) 30%, rgba(255, 255, 255, 0) 58%),
+    rgba(var(--vg-tint), .62);
+  border: 1px solid var(--vg-line);
+  box-shadow: inset 0 1px 0 var(--vg-edge), 0 14px 40px rgba(0, 0, 0, .42);
+}
+
+/* Small chrome: same glass language, no blur layer of its own. */
+html .vm-btn,
+html .void-topnav__link.void-topnav__icon,
+html #void-god-quill,
+html #void-god-discover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .03) 55%, rgba(255, 255, 255, .02)),
+    rgba(var(--vg-tint), .44);
+  border: 1px solid var(--vg-line);
+  box-shadow: inset 0 1px 0 var(--vg-edge), 0 4px 14px rgba(0, 0, 0, .3);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Blur only where it reads: the major surfaces, only when supported, never in
+   lowfx. Full-screen scrim blur is redundant behind a blurred panel: drop it. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html:not(.void-lowfx) :is(
+    #void-galaxy-stats, #void-galaxy-stats-panel, .vm-pop, .vm-sound-pop,
+    #void-god-panel, #void-god-dialog, #void-golden-modal, #void-golden-share, #void-invite
+  ) {
+    -webkit-backdrop-filter: blur(var(--vg-blur)) saturate(125%);
+    backdrop-filter: blur(var(--vg-blur)) saturate(125%);
+  }
+}
+html #void-god-dialog::backdrop,
+html #void-golden-modal::backdrop,
+html #void-golden-share::backdrop {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}

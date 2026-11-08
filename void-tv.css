@@ -27,8 +27,6 @@ html.void-tv .void-topnav__rail { gap: 12px; }
 html.void-tv .void-topnav__link.void-topnav__icon {
   width: 56px;
   height: 56px;
-  border-color: rgba(235, 240, 245, .26);
-  background: rgba(8, 10, 14, .55);
 }
 html.void-tv .void-topnav__link.void-topnav__icon svg { width: 26px; height: 26px; }
 html.void-tv #void-god-quill {
@@ -38,7 +36,6 @@ html.void-tv #void-god-quill {
   right: max(32px, env(safe-area-inset-right, 0px));
   width: 56px;
   height: 56px;
-  background: rgba(8, 10, 14, .55);
 }
 html.void-tv .void-god-quill__icon { width: 25px; height: 25px; }
 html.void-tv #void-god-discover {
@@ -191,7 +188,7 @@ html.void-tv #void-music-root {
 html.void-tv .vm-meta { max-width: min(720px, 100%); min-height: 52px; gap: 14px; }
 html.void-tv .vm-title { font-size: 19px; }
 html.void-tv .vm-artist { font-size: 15px; }
-html.void-tv .vm-btn { width: 52px; height: 52px; background: var(--vm-glass); }
+html.void-tv .vm-btn { width: 52px; height: 52px; }
 html.void-tv .vm-btn.vm-play { width: 64px; height: 64px; }
 html.void-tv #void-music-root .vm-btn.vm-open { width: 72px; height: 72px; }
 html.void-tv .vm-ico { width: 26px; height: 26px; }
@@ -440,19 +437,8 @@ html.void-lowfx * {
   backdrop-filter: none !important;
 }
 
-/* Without blur the glass must carry its own density. */
-html.void-lowfx #void-topnav .void-topnav__icon,
-html.void-lowfx #void-god-quill { background: rgba(8, 10, 14, .86); }
-html.void-lowfx #void-galaxy-stats { background: rgba(8, 10, 14, .86); }
-html.void-lowfx #void-galaxy-stats-panel { background: #0b0e14; }
-html.void-lowfx #void-god-panel { background: linear-gradient(180deg, #0f131a, #07090e); }
-html.void-lowfx #void-god-dialog { background: linear-gradient(180deg, #0f131a, #06080d); }
-html.void-lowfx #void-golden-modal { background: linear-gradient(180deg, #0a0d13, #05070c); }
-html.void-lowfx #void-golden-share { background: linear-gradient(180deg, #0b0e14, #04060a); }
-html.void-lowfx #void-invite { background: linear-gradient(180deg, #0b0e14, #06080d); }
-html.void-lowfx .vm-btn { background: rgba(8, 10, 14, .86); }
-html.void-lowfx .vm-pop,
-html.void-lowfx .vm-sound-pop { background: #0a0c12; }
+/* Lowfx keeps the glass recipe from void-glass.css (translucency, hairline,
+   specular edge); only blur, motion and the sheen are removed. */
 html.void-lowfx dialog::backdrop { background: rgba(2, 3, 7, .86); }
 html.void-lowfx #void-golden-share::backdrop { background: rgba(2, 3, 8, .86); }
 
@@ -467,15 +453,7 @@ html.void-lowfx *::after {
 }
 html.void-lowfx .void-golden-modal__sheen { display: none !important; }
 
-/* Cheap depth: no large shadows on small chrome, no icon drop-shadow. */
-html.void-lowfx #void-topnav .void-topnav__icon,
-html.void-lowfx #void-god-quill,
-html.void-lowfx #void-galaxy-stats,
-html.void-lowfx .vm-btn,
-html.void-lowfx .vm-gs__dot,
-html.void-lowfx .void-golden-status__dot {
-  box-shadow: none !important;
-}
+/* Icon drop-shadows are the only per-pixel filter left on small chrome. */
 html.void-lowfx #void-god-quill:hover .void-god-quill__icon,
 html.void-lowfx #void-god-quill:focus .void-god-quill__icon,
 html.void-lowfx .void-god-quill__icon,

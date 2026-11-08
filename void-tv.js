@@ -28,6 +28,13 @@
     if (forced === 'desktop' || forced === 'mobile' || forced === 'off' || forced === 'lowfx') return false;
     if (uaLooksLikeTv()) return true;
 
+    // Android TV shells often report a plain "Android" UA without "Mobile" and
+    // emulate a cursor, so the pointer heuristic below can miss them. A wide,
+    // touchless Android surface is a TV/set-top box, not a phone or tablet.
+    var ua = navigator.userAgent || '';
+    if (/Android/i.test(ua) && !/Mobile/i.test(ua) && (navigator.maxTouchPoints || 0) <= 1 &&
+        window.innerWidth >= 960 && window.innerHeight >= 540) return true;
+
     var mm = window.matchMedia;
     if (!mm) return false;
     // A remote exposes no fine pointer. Phones are narrow; touch laptops keep
