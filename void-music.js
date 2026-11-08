@@ -1296,11 +1296,15 @@
   function layout() {
     if (!S.built) return;
     const vw = window.innerWidth;
-    const compact = vw < 520;
-    const W = Math.min(580, vw - 24);
-    const sag = compact ? 16 : 26;
-    const base = sag + 82;                // y خطِ کمان در لبه‌ها
-    const H = base + 36;
+    const tv = document.documentElement.classList.contains('void-tv');
+    const compact = !tv && vw < 520;
+    /* Some 4K TV engines expose 3840 CSS px at DPR 1: scale the arc to keep the
+       physical size of the 1080p bar (void-tv.css scales the marks to match). */
+    const tvScale = tv && vw >= 2200 ? 1.5 : 1;
+    const W = Math.min((tv ? 760 : 580) * tvScale, vw - (tv ? 96 : 24) * tvScale);
+    const sag = compact ? 16 : 26 * tvScale;
+    const base = sag + 82 * tvScale;                // y خطِ کمان در لبه‌ها
+    const H = base + 36 * tvScale;
     const yAt = function (u) { return base - 4 * sag * u * (1 - u); };
     dock.style.width = W + 'px';
     dock.style.height = H + 'px';
@@ -1311,24 +1315,24 @@
     S.layoutW = W; S.layoutBase = base; S.layoutSag = sag;
     const place = function (node, u, dy) { node.style.left = (u * W) + 'px'; node.style.top = (yAt(u) - dy) + 'px'; };
     const pu = compact ? { vol: .09, prev: .31, play: .5, next: .69, queue: .91 } : POS;
-    place(els.vol, pu.vol, 46); place(els.prev, pu.prev, 46); place(els.play, pu.play, 52);
-    place(els.next, pu.next, 46); place(els.queueBtn, pu.queue, 46);
-    els.open.style.left = (W / 2) + 'px'; els.open.style.top = (yAt(.5) - 30) + 'px';
-    els.openLabel.style.left = (W / 2) + 'px'; els.openLabel.style.top = (yAt(.5) + 12) + 'px';
-    els.seek.style.top = (base - sag - 12) + 'px'; els.seek.style.width = W + 'px'; els.seek.style.height = (sag + 26) + 'px';
+    place(els.vol, pu.vol, 46 * tvScale); place(els.prev, pu.prev, 46 * tvScale); place(els.play, pu.play, (tv ? 56 : 52) * tvScale);
+    place(els.next, pu.next, 46 * tvScale); place(els.queueBtn, pu.queue, 46 * tvScale);
+    els.open.style.left = (W / 2) + 'px'; els.open.style.top = (yAt(.5) - (tv ? 34 : 30) * tvScale) + 'px';
+    els.openLabel.style.left = (W / 2) + 'px'; els.openLabel.style.top = (yAt(.5) + (tv ? 16 : 12) * tvScale) + 'px';
+    els.seek.style.top = (base - sag - 12) + 'px'; els.seek.style.width = W + 'px'; els.seek.style.height = (sag + 26 * tvScale) + 'px';
     // تیک‌ها: ۱۲ نشانه (اشاره به دوازده برج)
     els.ticks.textContent = '';
     for (let k = 0; k <= 12; k++) {
       const u = k / 12, x = u * W, y = yAt(u);
       const slope = -4 * sag * (1 - 2 * u) / W;      // dy/dx
       const nl = Math.sqrt(1 + slope * slope), nx = -slope / nl, ny = 1 / nl;
-      els.ticks.appendChild(svg('line', { x1: (x + nx * 6).toFixed(1), y1: (y + ny * 6).toFixed(1), x2: (x + nx * 10).toFixed(1), y2: (y + ny * 10).toFixed(1) }, 'vm-tick'));
+      els.ticks.appendChild(svg('line', { x1: (x + nx * 6 * tvScale).toFixed(1), y1: (y + ny * 6 * tvScale).toFixed(1), x2: (x + nx * 10 * tvScale).toFixed(1), y2: (y + ny * 10 * tvScale).toFixed(1) }, 'vm-tick'));
     }
     // پاپ‌اورها
     // پاپ‌اورها از پایین لنگر می‌شوند (همیشه بالای دکمه‌ها باز می‌شوند، نه روی آن‌ها)
-    els.volPop.style.left = (pu.vol * W) + 'px'; els.volPop.style.top = ''; els.volPop.style.bottom = (H - (yAt(pu.vol) - 78)) + 'px';
-    els.queuePop.style.right = '0px'; els.queuePop.style.top = ''; els.queuePop.style.bottom = (H - (yAt(pu.queue) - 78)) + 'px';
-    els.soundPop.style.right = '0px'; els.soundPop.style.top = ''; els.soundPop.style.bottom = (H - (yAt(pu.queue) - 78)) + 'px';
+    els.volPop.style.left = (pu.vol * W) + 'px'; els.volPop.style.top = ''; els.volPop.style.bottom = (H - (yAt(pu.vol) - 78 * tvScale)) + 'px';
+    els.queuePop.style.right = '0px'; els.queuePop.style.top = ''; els.queuePop.style.bottom = (H - (yAt(pu.queue) - 78 * tvScale)) + 'px';
+    els.soundPop.style.right = '0px'; els.soundPop.style.top = ''; els.soundPop.style.bottom = (H - (yAt(pu.queue) - 78 * tvScale)) + 'px';
     placeStars();
     els.toast.style.top = '-8px'; els.toast.style.transform = '';
     els.toast.style.left = '50%';
@@ -2290,8 +2294,8 @@
     const onBtn = tag === 'BUTTON', onRange = tag === 'INPUT' && t0.type === 'range', onSeek = t0 === els.seek;
     if (k === 'Escape') { if (anyPop()) { closePops(); els.queueBtn.focus({ preventScroll: true }); } else exit(); }
     else if (k === ' ' || k === 'k') { if (onBtn) { e.stopImmediatePropagation(); return; } toggle(); }
-    else if (k === 'ArrowLeft' || k === 'ArrowRight') { if (onRange || onSeek) { e.stopImmediatePropagation(); return; } seekBy((k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 15 : 5)); }
-    else if (k === 'ArrowUp' || k === 'ArrowDown') { if (onRange || onSeek) { e.stopImmediatePropagation(); return; } setVolume(S.vol + (k === 'ArrowUp' ? .05 : -.05)); closePops(); setPop('vol', true); }
+    else if (k === 'ArrowLeft' || k === 'ArrowRight') { if (onRange || onSeek) return; seekBy((k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 15 : 5)); }
+    else if (k === 'ArrowUp' || k === 'ArrowDown') { if (onRange || onSeek) return; setVolume(S.vol + (k === 'ArrowUp' ? .05 : -.05)); closePops(); setPop('vol', true); }
     else if (k === 'm') toggleMute();
     else if (k === 'f') toggleFullscreen();
     else if (k === 'w') setWidget(!S.widgetShown);

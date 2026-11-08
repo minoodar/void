@@ -4337,7 +4337,10 @@
     quillBtn.addEventListener('focus', function () { showQuotaPop(quillBtn, false); });
     quillBtn.addEventListener('blur', function () { scheduleQuotaPopHide(); });
     quillBtn.addEventListener('click', function () {
-      if (!toolsRevealed || toolsIntro) {
+      /* On a TV the tools are always visible (void-tv.css), so the first remote
+         activation must act instead of spending a press on the reveal intro. */
+      var tvRemote = document.documentElement.classList.contains('void-tv');
+      if (!tvRemote && (!toolsRevealed || toolsIntro)) {
         toolsIntro = false;
         showToolPalette();
         if (touchPointer()) showQuotaPop(quillBtn, true);
@@ -4362,7 +4365,8 @@
     discoveryBtn.appendChild(make('span', 'void-god-discover__core'));
     host.appendChild(discoveryBtn);
     discoveryBtn.addEventListener('click', function () {
-      if (!toolsRevealed || toolsIntro) {
+      var tvRemote = document.documentElement.classList.contains('void-tv');
+      if (!tvRemote && (!toolsRevealed || toolsIntro)) {
         toolsIntro = false;
         showToolPalette();
         return;

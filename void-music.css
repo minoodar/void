@@ -748,6 +748,14 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
 .vm-sound-pop .vm-snd-val { color: rgba(235, 240, 245, .88); opacity: 1; font-size: 11.5px; }
 .vm-sound-pop .vm-eq-hz { color: rgba(235, 240, 245, .9); opacity: 1; font-size: 10.5px; }
 .vm-sound-pop .vm-eq-db { color: rgba(235, 240, 245, .86); opacity: 1; font-size: 10px; }
+/* Narrow phones: the head was squeezing the title into three stacked words.
+   Give the title its own line and let the two chips sit beneath it. */
+@media (max-width: 420px) {
+    .vm-sound-pop .vm-snd-head { flex-wrap: wrap; }
+    .vm-sound-pop .vm-snd-head .vm-snd-title { flex: 1 1 100%; letter-spacing: .02em; }
+    /* Keep the panel below the top-left counter instead of grazing it. */
+    #void-music-root .vm-sound-pop { max-height: min(78vh, 580px, calc(100vh - 200px)); }
+}
 .vm-sound-pop .vm-snd-spec { background: rgba(8, 10, 20, .62); }
 .vm-sound-pop .vm-snd-sel {
     background: rgba(8, 11, 16, .82);
@@ -756,3 +764,10 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
 }
 .vm-sound-pop .vm-chip { background: rgba(8, 11, 16, .55); color: rgba(235, 240, 245, .88); }
 .vm-sound-pop .vm-chip[aria-pressed="true"] { color: #fff; }
+/* On phones the settings panel spans the viewport and therefore crosses the
+   persistent rail column. As an open dialog it must win that collision, or the
+   44px icon chips cut through sliders and labels. */
+@media (max-width: 520px) {
+    body.void-music-on #void-music-root:has(.vm-sound-pop.is-open) { z-index: 1120; }
+    #void-music-root .vm-sound-pop.is-open { z-index: 6; }
+}

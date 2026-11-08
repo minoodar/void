@@ -220,6 +220,18 @@
 }
 .vm-gs-act__meter { margin-top: 3px; color: rgba(235, 240, 245, .6); }
 .vm-gs-act__pad { display: block; height: 9px; }
+/* The Write tile must not repeat the ink count — the quill and the composer
+   carry it. Removing the meter also removes its 9px alignment pad, so both
+   tile labels keep one baseline. The phone column is too narrow for the
+   nowrap label, so it wraps inside the tile instead of overrunning it. */
+#void-galaxy-stats-panel .vm-gs-act__meter,
+#void-galaxy-stats-panel .vm-gs-act__pad { display: none; }
+#void-galaxy-stats-panel .vm-gs-act__txt { flex: 1 1 auto; }
+#void-galaxy-stats-panel .vm-gs-act__txt small {
+    white-space: normal;
+    overflow-wrap: break-word;
+    text-wrap: balance;
+}
 
 /* ---- ink drops: one meter, three surfaces ---- */
 .vm-meter {

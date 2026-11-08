@@ -1,0 +1,484 @@
+/* ======================================================================
+   Void — 10-foot layout, remote focus, and low-effect fallbacks.
+   Every rule is scoped to html.void-tv or html.void-lowfx, so desktop and
+   phone rendering is untouched. Plain px fallbacks sit before max()/min()
+   for older Chromium TV engines.
+   ====================================================================== */
+
+/* ---------------------------------------------------------------------
+   1. Ten-foot layout: larger marks, overscan-safe edges, readable type
+   --------------------------------------------------------------------- */
+html.void-tv {
+  --void-tv-x: 32px;
+  --void-tv-y: 24px;
+  --void-tv-mark: 56px;
+}
+
+/* The right rail: four 56px marks, 12px apart (260px), centred where possible.
+   The quill and the discovery seed follow the same column arithmetic that the
+   desktop rail uses, so nothing drifts out of the column. */
+html.void-tv #void-topnav.void-topnav--rail {
+  top: 40px; /* legacy fallback */
+  top: max(calc(50% - 130px), calc(30vh + 64px));
+  right: 32px; /* legacy fallback */
+  right: max(32px, env(safe-area-inset-right, 0px));
+}
+html.void-tv .void-topnav__rail { gap: 12px; }
+html.void-tv .void-topnav__link.void-topnav__icon {
+  width: 56px;
+  height: 56px;
+  border-color: rgba(235, 240, 245, .26);
+  background: rgba(8, 10, 14, .55);
+}
+html.void-tv .void-topnav__link.void-topnav__icon svg { width: 26px; height: 26px; }
+html.void-tv #void-god-quill {
+  top: 302px; /* legacy fallback: 40 + 260 + 2 */
+  top: calc(max(calc(50% - 130px), calc(30vh + 64px)) + 262px);
+  right: 32px; /* legacy fallback */
+  right: max(32px, env(safe-area-inset-right, 0px));
+  width: 56px;
+  height: 56px;
+  background: rgba(8, 10, 14, .55);
+}
+html.void-tv .void-god-quill__icon { width: 25px; height: 25px; }
+html.void-tv #void-god-discover {
+  top: 370px; /* legacy fallback: 40 + 260 + 2 + 56 + 12 */
+  top: calc(max(calc(50% - 130px), calc(30vh + 64px)) + 330px);
+  right: 32px; /* legacy fallback */
+  right: max(32px, env(safe-area-inset-right, 0px));
+  width: 56px;
+  height: 56px;
+}
+html.void-tv .void-god-discover__core { width: 8px; height: 8px; }
+html.void-tv .void-god-discover__core::before { width: 14px; height: 14px; }
+html.void-tv .void-god-discover__core::after { width: 22px; height: 22px; }
+
+/* Short panels (540p TV dongles, 16:9 set-top boxes): the six-mark right
+   column no longer fits under the centered formula, so pin it to the top. */
+@media (max-height: 620px) {
+  html.void-tv #void-topnav.void-topnav--rail { top: 24px; }
+  html.void-tv #void-god-quill { top: 286px; }
+  html.void-tv #void-god-discover { top: 354px; }
+  html.void-tv .void-golden-modal__list { height: 210px; max-height: none; }
+  html.void-tv .void-golden-modal__panel { padding: 18px 20px 16px; }
+  html.void-tv .void-golden-modal__title { font-size: 21px; }
+  html.void-tv .void-golden-modal__pick { padding: 9px 10px; }
+  html.void-tv .void-golden-modal__label { font-size: 16px; }
+  html.void-tv .void-golden-modal__btn { min-height: 42px; padding: 8px 18px; font-size: 15px; }
+}
+
+/* The tools are the remote's only path to the Golden Folder and the quill:
+   the pointer-reveal gate must not hide them on a D-pad-only surface. */
+html.void-tv body:not(.is-tools-revealed) #void-topnav .void-topnav__link,
+html.void-tv body:not(.is-tools-revealed) #void-god-quill {
+  opacity: .8;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
+
+/* Statistics pill and panel */
+html.void-tv #void-galaxy-stats {
+  left: 32px !important; /* legacy fallback */
+  left: max(32px, env(safe-area-inset-left, 0px)) !important;
+  top: 24px !important; /* legacy fallback */
+  --void-gs-safe-top: max(24px, env(safe-area-inset-top, 0px));
+  min-width: 56px;
+  min-height: 56px;
+  padding: 8px 14px 8px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+}
+html.void-tv .vm-gs__dot { width: 8px; height: 8px; margin-inline-end: 7px; }
+html.void-tv .vm-gs__fig { gap: 4px; }
+html.void-tv .vm-gs__n { font-size: 15px; }
+html.void-tv .vm-gs__i { font-size: 14px; margin-inline-end: 4px; }
+html.void-tv .vm-gs__l { max-width: 8em; opacity: 1; font-size: 11px; }
+html.void-tv .vm-gs__more { display: inline-flex; }
+html.void-tv .vm-gs__sep { font-size: 16px; }
+html.void-tv #void-galaxy-stats-panel {
+  width: 340px;
+  max-width: calc(100vw - 64px);
+  padding: 16px 18px 14px;
+  gap: 10px;
+  border-radius: 18px;
+}
+html.void-tv .vm-gs-row b { font-size: 18px; }
+html.void-tv .vm-gs-row span { font-size: 13px; }
+html.void-tv .vm-gs-row i { font-size: 14px; }
+html.void-tv .vm-gs-acts { gap: 10px; }
+html.void-tv .vm-gs-act { min-height: 64px; padding: 10px 12px; border-radius: 14px; }
+html.void-tv .vm-gs-act__ico { width: 24px; height: 24px; }
+html.void-tv .vm-gs-act__svg,
+html.void-tv .vm-gs-act__quill { width: 22px; height: 22px; }
+html.void-tv .vm-gs-act__txt b { font-size: 15px; }
+html.void-tv .vm-gs-act__txt small { font-size: 12.5px; }
+
+/* Golden Folder selector */
+html.void-tv #void-golden-modal {
+  width: 660px; /* legacy fallback */
+  width: min(720px, 52vw, calc(100vw - 96px));
+  max-height: 640px; /* legacy fallback, also covers engines without dvh */
+  max-height: min(78vh, 78dvh, 700px);
+  border-radius: 24px;
+}
+html.void-tv .void-golden-modal__panel { padding: 26px 26px 22px; }
+html.void-tv .void-golden-modal__title { font-size: 24px; }
+html.void-tv .void-golden-modal__total { font-size: 14px; }
+html.void-tv .void-golden-modal__all {
+  min-height: 44px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+html.void-tv .void-golden-modal__count { font-size: 14px; }
+html.void-tv .void-golden-modal__list {
+  height: 260px;
+  max-height: min(42vh, 300px);
+  padding: 2px 6px 2px 0;
+}
+html.void-tv .void-golden-modal__pick { padding: 15px 10px; gap: 14px; }
+html.void-tv .void-golden-modal__pick input { width: 22px; height: 22px; border-radius: 6px; }
+html.void-tv .void-golden-modal__pick input::after { width: 11px; height: 6px; }
+html.void-tv .void-golden-modal__icon { width: 18px; height: 18px; }
+html.void-tv .void-golden-modal__icon svg { width: 18px; height: 18px; }
+html.void-tv .void-golden-modal__label { font-size: 18px; }
+html.void-tv .void-golden-modal__now { font-size: 15px; }
+html.void-tv .void-golden-modal__empty { font-size: 16px; }
+html.void-tv .void-golden-modal__net { font-size: 14px; }
+html.void-tv .void-golden-modal__retry { font-size: 14px; min-height: 40px; }
+html.void-tv .void-golden-modal__btn {
+  min-height: 48px;
+  padding: 12px 22px;
+  font-size: 16px;
+}
+html.void-tv .void-golden-modal__share { width: 40px; height: 40px; margin-right: 6px; }
+html.void-tv .void-golden-modal__share svg { width: 18px; height: 18px; }
+
+/* Sharing sheet */
+html.void-tv #void-golden-share { width: 440px; width: min(440px, calc(100vw - 96px)); }
+html.void-tv .void-golden-share__panel { padding: 26px 26px 20px; gap: 10px; }
+html.void-tv .void-golden-share__title { font-size: 20px; }
+html.void-tv .void-golden-share__meta { font-size: 14px; }
+html.void-tv .void-golden-share__msg { font-size: 15px; }
+html.void-tv .void-golden-share__btn { min-height: 44px; font-size: 15px; padding: 11px 16px; }
+html.void-tv .void-golden-share__status { font-size: 13px; }
+html.void-tv .void-golden-share__close { width: 44px; height: 44px; font-size: 22px; }
+
+/* Invitation card sits above the dock, clear of the metadata row */
+html.void-tv #void-invite {
+  width: 400px;
+  width: min(400px, calc(100vw - 96px));
+  left: 32px; /* legacy fallback */
+  left: max(32px, env(safe-area-inset-left, 0px));
+  bottom: 248px; /* legacy fallback */
+  bottom: calc(248px + env(safe-area-inset-bottom, 0px));
+  padding: 18px 20px 16px;
+  gap: 7px;
+}
+html.void-tv .void-invite__eyebrow { font-size: 12px; }
+html.void-tv .void-invite__title { font-size: 19px; }
+html.void-tv .void-invite__line { font-size: 15px; }
+html.void-tv .void-invite__track { font-size: 15px; }
+html.void-tv .void-invite__go { min-height: 46px; font-size: 14px; }
+html.void-tv .void-invite__close { width: 44px; height: 44px; font-size: 22px; }
+
+/* Player: wider arc on wide screens, larger marks, readable metadata */
+html.void-tv #void-music-root {
+  top: 0; right: 0; bottom: 0; left: 0; /* fallback for engines without inset */
+  gap: 18px;
+  padding-bottom: max(40px, env(safe-area-inset-bottom, 0px));
+}
+html.void-tv .vm-meta { max-width: min(720px, 100%); min-height: 52px; gap: 14px; }
+html.void-tv .vm-title { font-size: 19px; }
+html.void-tv .vm-artist { font-size: 15px; }
+html.void-tv .vm-btn { width: 52px; height: 52px; background: var(--vm-glass); }
+html.void-tv .vm-btn.vm-play { width: 64px; height: 64px; }
+html.void-tv #void-music-root .vm-btn.vm-open { width: 72px; height: 72px; }
+html.void-tv .vm-ico { width: 26px; height: 26px; }
+html.void-tv .vm-play .vm-ico,
+html.void-tv .vm-open .vm-ico { width: 30px; height: 30px; }
+html.void-tv .vm-time { font-size: 13px; }
+html.void-tv .vm-clock { font-size: 12px; }
+html.void-tv .vm-open-label { font-size: 15px; }
+html.void-tv .vm-pop { border-radius: 16px; }
+html.void-tv .vm-pop button { font-size: 14px; }
+html.void-tv .vm-vol-pop input[type="range"] { width: 160px; height: 36px; }
+html.void-tv .vm-vol-pop input[type="range"]::-webkit-slider-runnable-track { height: 3px; }
+html.void-tv .vm-vol-pop input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7.5px; }
+
+/* Letter reader */
+html.void-tv #void-god-panel {
+  width: 520px;
+  width: min(540px, 48vw, calc(100vw - 128px));
+  padding: 22px 22px 18px;
+  gap: 12px;
+}
+html.void-tv .void-god-msg-title { font-size: 20px; }
+html.void-tv .void-god-msg-tag { font-size: 12.5px; }
+html.void-tv .void-god-msg-text { font-size: 18px; line-height: 1.8; }
+html.void-tv .void-god-secret-hint { font-size: 12.5px; }
+html.void-tv .void-god-nav__button,
+html.void-tv .void-god-reader-icon {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  flex-basis: 52px;
+}
+html.void-tv .void-god-nav__button svg,
+html.void-tv .void-god-reader-icon svg { width: 20px; height: 20px; }
+html.void-tv #void-god-panel .void-god-btn { min-height: 46px; font-size: 15px; padding: 11px 19px; }
+
+/* Letter composer */
+html.void-tv #void-god-dialog {
+  width: 720px;
+  width: min(760px, 58vw, calc(100vw - 128px));
+  max-height: 760px;
+  max-height: min(84vh, 84dvh, 820px);
+}
+html.void-tv .void-god-form { padding: 26px; gap: 14px; }
+html.void-tv .void-god-title { font-size: 22px; }
+html.void-tv .void-god-title-fa { font-size: 15px; }
+html.void-tv .void-god-x,
+html.void-tv .void-god-translate { width: 52px; height: 52px; }
+html.void-tv .void-god-text { min-height: 240px; font-size: 19px; line-height: 1.8; }
+html.void-tv .void-god-count-row,
+html.void-tv .void-god-quota,
+html.void-tv .void-god-legend,
+html.void-tv .void-god-ack { font-size: 14px; }
+html.void-tv .void-god-exp-opt span { min-height: 44px; font-size: 14px; }
+html.void-tv .void-god-btn { min-height: 48px; padding: 12px 20px; font-size: 15px; }
+html.void-tv .void-god-published__title { font-size: 19px; }
+
+/* Status chip */
+html.void-tv #void-golden-status {
+  top: calc(84px + env(safe-area-inset-top, 0px));
+  min-height: 40px;
+  font-size: 14px;
+}
+html.void-tv .void-golden-status__action { min-height: 36px; font-size: 13px; }
+
+/* Remote focus: every focused control must be obvious from the sofa. */
+html.void-tv :focus {
+  outline: 3px solid rgba(251, 191, 36, .92) !important;
+  outline-offset: 4px !important;
+}
+html.void-tv #void-god-panel:focus { outline-offset: -3px !important; }
+html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
+
+/* ---------------------------------------------------------------------
+   1b. 4K engines that expose 3840×2160 CSS pixels (DPR 1). Scale the same
+   10-foot chrome by 1.5 so its physical size matches the 1080p layout.
+   --------------------------------------------------------------------- */
+@media (min-width: 2200px) {
+  html.void-tv #void-topnav.void-topnav--rail {
+    top: max(calc(50% - 195px), calc(30vh + 96px));
+    right: max(48px, env(safe-area-inset-right, 0px));
+  }
+  html.void-tv .void-topnav__rail { gap: 18px; }
+  html.void-tv .void-topnav__link.void-topnav__icon { width: 84px; height: 84px; }
+  html.void-tv .void-topnav__link.void-topnav__icon svg { width: 38px; height: 38px; }
+  html.void-tv #void-god-quill {
+    top: calc(max(calc(50% - 195px), calc(30vh + 96px)) + 392px);
+    right: max(48px, env(safe-area-inset-right, 0px));
+    width: 84px;
+    height: 84px;
+  }
+  html.void-tv .void-god-quill__icon { width: 37px; height: 37px; }
+  html.void-tv #void-god-discover {
+    top: calc(max(calc(50% - 195px), calc(30vh + 96px)) + 494px);
+    right: max(48px, env(safe-area-inset-right, 0px));
+    width: 84px;
+    height: 84px;
+  }
+  html.void-tv .void-god-discover__core { width: 12px; height: 12px; }
+
+  html.void-tv #void-galaxy-stats {
+    left: max(48px, env(safe-area-inset-left, 0px)) !important;
+    top: 36px !important;
+    --void-gs-safe-top: max(36px, env(safe-area-inset-top, 0px));
+    min-width: 84px;
+    min-height: 84px;
+    padding: 12px 20px 12px 18px;
+    border-radius: 22px;
+    font-size: 20px;
+  }
+  html.void-tv .vm-gs__dot { width: 11px; height: 11px; }
+  html.void-tv .vm-gs__n { font-size: 21px; }
+  html.void-tv .vm-gs__i { font-size: 19px; }
+  html.void-tv .vm-gs__l { font-size: 15px; }
+  html.void-tv .vm-gs__sep { font-size: 22px; }
+  html.void-tv #void-galaxy-stats-panel { width: 480px; padding: 22px 24px 20px; gap: 14px; }
+  html.void-tv .vm-gs-row b { font-size: 24px; }
+  html.void-tv .vm-gs-row span { font-size: 18px; }
+  html.void-tv .vm-gs-row i { font-size: 19px; }
+  html.void-tv .vm-gs-act { min-height: 84px; padding: 12px 14px; }
+  html.void-tv .vm-gs-act__ico { width: 32px; height: 32px; }
+  html.void-tv .vm-gs-act__svg,
+  html.void-tv .vm-gs-act__quill { width: 30px; height: 30px; }
+  html.void-tv .vm-gs-act__txt b { font-size: 20px; }
+  html.void-tv .vm-gs-act__txt small { font-size: 16px; }
+
+  html.void-tv #void-golden-modal {
+    width: min(1120px, 56vw, calc(100vw - 144px));
+    max-height: min(80vh, 80dvh, 1040px);
+    border-radius: 30px;
+  }
+  html.void-tv .void-golden-modal__panel { padding: 36px 36px 30px; }
+  html.void-tv .void-golden-modal__title { font-size: 34px; }
+  html.void-tv .void-golden-modal__total { font-size: 19px; }
+  html.void-tv .void-golden-modal__all { min-height: 60px; padding: 10px 18px; font-size: 19px; }
+  html.void-tv .void-golden-modal__count { font-size: 19px; }
+  html.void-tv .void-golden-modal__list { height: 400px; max-height: min(46vh, 460px); }
+  html.void-tv .void-golden-modal__pick { padding: 21px 14px; gap: 20px; }
+  html.void-tv .void-golden-modal__pick input { width: 30px; height: 30px; border-radius: 8px; }
+  html.void-tv .void-golden-modal__icon,
+  html.void-tv .void-golden-modal__icon svg { width: 24px; height: 24px; }
+  html.void-tv .void-golden-modal__label { font-size: 25px; }
+  html.void-tv .void-golden-modal__now { font-size: 20px; }
+  html.void-tv .void-golden-modal__empty { font-size: 22px; }
+  html.void-tv .void-golden-modal__net { font-size: 19px; }
+  html.void-tv .void-golden-modal__retry { font-size: 19px; min-height: 56px; }
+  html.void-tv .void-golden-modal__btn { min-height: 64px; padding: 16px 30px; font-size: 22px; }
+  html.void-tv .void-golden-modal__share { width: 56px; height: 56px; }
+  html.void-tv .void-golden-modal__share svg { width: 24px; height: 24px; }
+
+  html.void-tv #void-golden-share { width: min(620px, calc(100vw - 144px)); }
+  html.void-tv .void-golden-share__panel { padding: 36px 36px 28px; gap: 14px; }
+  html.void-tv .void-golden-share__title { font-size: 28px; }
+  html.void-tv .void-golden-share__meta { font-size: 19px; }
+  html.void-tv .void-golden-share__msg { font-size: 20px; }
+  html.void-tv .void-golden-share__btn { min-height: 60px; font-size: 20px; padding: 15px 22px; }
+  html.void-tv .void-golden-share__status { font-size: 18px; }
+  html.void-tv .void-golden-share__close { width: 56px; height: 56px; font-size: 30px; }
+
+  html.void-tv #void-invite {
+    width: min(560px, calc(100vw - 144px));
+    left: max(48px, env(safe-area-inset-left, 0px));
+    bottom: calc(372px + env(safe-area-inset-bottom, 0px));
+    padding: 24px 26px 22px;
+  }
+  html.void-tv .void-invite__eyebrow { font-size: 16px; }
+  html.void-tv .void-invite__title { font-size: 26px; }
+  html.void-tv .void-invite__line,
+  html.void-tv .void-invite__track { font-size: 20px; }
+  html.void-tv .void-invite__go { min-height: 60px; font-size: 19px; }
+  html.void-tv .void-invite__close { width: 56px; height: 56px; font-size: 30px; }
+
+  html.void-tv .vm-meta { max-width: min(1080px, 100%); min-height: 78px; gap: 20px; }
+  html.void-tv #void-music-root { padding-bottom: max(60px, env(safe-area-inset-bottom, 0px)); }
+  html.void-tv .vm-title { font-size: 28px; }
+  html.void-tv .vm-artist { font-size: 21px; }
+  html.void-tv .vm-btn { width: 78px; height: 78px; }
+  html.void-tv .vm-btn.vm-play { width: 96px; height: 96px; }
+  html.void-tv #void-music-root .vm-btn.vm-open { width: 108px; height: 108px; }
+  html.void-tv .vm-ico { width: 39px; height: 39px; }
+  html.void-tv .vm-play .vm-ico,
+  html.void-tv .vm-open .vm-ico { width: 45px; height: 45px; }
+  html.void-tv .vm-time { font-size: 19px; }
+  html.void-tv .vm-clock { font-size: 17px; }
+  html.void-tv .vm-open-label { font-size: 20px; }
+  html.void-tv .vm-pop button { font-size: 20px; }
+  html.void-tv .vm-vol-pop input[type="range"] { width: 220px; height: 48px; }
+
+  html.void-tv #void-god-panel {
+    width: min(800px, 52vw, calc(100vw - 192px));
+    padding: 30px 30px 26px;
+    gap: 16px;
+  }
+  html.void-tv .void-god-msg-title { font-size: 28px; }
+  html.void-tv .void-god-msg-tag,
+  html.void-tv .void-god-secret-hint { font-size: 18px; }
+  html.void-tv .void-god-msg-text { font-size: 25px; }
+  html.void-tv .void-god-nav__button,
+  html.void-tv .void-god-reader-icon { width: 78px; height: 78px; min-width: 78px; min-height: 78px; flex-basis: 78px; }
+  html.void-tv .void-god-nav__button svg,
+  html.void-tv .void-god-reader-icon svg { width: 28px; height: 28px; }
+  html.void-tv #void-god-panel .void-god-btn { min-height: 62px; font-size: 20px; }
+
+  html.void-tv #void-god-dialog {
+    width: min(1100px, 58vw, calc(100vw - 192px));
+    max-height: min(86vh, 86dvh, 1120px);
+  }
+  html.void-tv .void-god-form { padding: 36px; gap: 18px; }
+  html.void-tv .void-god-title { font-size: 30px; }
+  html.void-tv .void-god-title-fa { font-size: 20px; }
+  html.void-tv .void-god-x,
+  html.void-tv .void-god-translate { width: 78px; height: 78px; }
+  html.void-tv .void-god-text { min-height: 340px; font-size: 26px; }
+  html.void-tv .void-god-count-row,
+  html.void-tv .void-god-quota,
+  html.void-tv .void-god-legend,
+  html.void-tv .void-god-ack { font-size: 19px; }
+  html.void-tv .void-god-exp-opt span { min-height: 60px; font-size: 19px; }
+  html.void-tv .void-god-btn { min-height: 64px; padding: 16px 28px; font-size: 20px; }
+  html.void-tv .void-god-published__title { font-size: 26px; }
+
+  html.void-tv #void-golden-status { min-height: 56px; font-size: 19px; }
+  html.void-tv .void-golden-status__action { min-height: 50px; font-size: 18px; }
+}
+
+/* ---------------------------------------------------------------------
+   2. Legacy Chromium fallbacks for engines that predate inset / flex gap
+   --------------------------------------------------------------------- */
+@supports not (inset: 0px) {
+  html.void-tv .vm-arc { top: 0; right: 0; bottom: 0; left: 0; }
+  html.void-tv .void-topnav__rail { gap: 0; }
+  html.void-tv .void-topnav__rail > li { margin-bottom: 12px; }
+  html.void-tv .void-topnav__rail > li:last-child { margin-bottom: 0; }
+  html.void-tv .void-golden-modal__panel > * + * { margin-top: 12px; }
+  html.void-tv .void-golden-modal__foot > * + * { margin-left: 10px; }
+  html.void-tv .void-god-form > * + * { margin-top: 14px; }
+  html.void-tv .vm-meta { margin-bottom: 0; }
+}
+
+/* ---------------------------------------------------------------------
+   3. Low-effect mode: capability- or frame-sampled, never UA-only
+   --------------------------------------------------------------------- */
+html.void-lowfx * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Without blur the glass must carry its own density. */
+html.void-lowfx #void-topnav .void-topnav__icon,
+html.void-lowfx #void-god-quill { background: rgba(8, 10, 14, .86); }
+html.void-lowfx #void-galaxy-stats { background: rgba(8, 10, 14, .86); }
+html.void-lowfx #void-galaxy-stats-panel { background: #0b0e14; }
+html.void-lowfx #void-god-panel { background: linear-gradient(180deg, #0f131a, #07090e); }
+html.void-lowfx #void-god-dialog { background: linear-gradient(180deg, #0f131a, #06080d); }
+html.void-lowfx #void-golden-modal { background: linear-gradient(180deg, #0a0d13, #05070c); }
+html.void-lowfx #void-golden-share { background: linear-gradient(180deg, #0b0e14, #04060a); }
+html.void-lowfx #void-invite { background: linear-gradient(180deg, #0b0e14, #06080d); }
+html.void-lowfx .vm-btn { background: rgba(8, 10, 14, .86); }
+html.void-lowfx .vm-pop,
+html.void-lowfx .vm-sound-pop { background: #0a0c12; }
+html.void-lowfx dialog::backdrop { background: rgba(2, 3, 7, .86); }
+html.void-lowfx #void-golden-share::backdrop { background: rgba(2, 3, 8, .86); }
+
+/* The aurora sheen and every decorative loop stop; one-shot entrances keep
+   their final state because fill-mode is preserved. */
+html.void-lowfx *,
+html.void-lowfx *::before,
+html.void-lowfx *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+}
+html.void-lowfx .void-golden-modal__sheen { display: none !important; }
+
+/* Cheap depth: no large shadows on small chrome, no icon drop-shadow. */
+html.void-lowfx #void-topnav .void-topnav__icon,
+html.void-lowfx #void-god-quill,
+html.void-lowfx #void-galaxy-stats,
+html.void-lowfx .vm-btn,
+html.void-lowfx .vm-gs__dot,
+html.void-lowfx .void-golden-status__dot {
+  box-shadow: none !important;
+}
+html.void-lowfx #void-god-quill:hover .void-god-quill__icon,
+html.void-lowfx #void-god-quill:focus .void-god-quill__icon,
+html.void-lowfx .void-god-quill__icon,
+html.void-lowfx .void-god-quota-pop__quill svg,
+html.void-lowfx .vm-gs-act__quill,
+html.void-lowfx .vm-thumb { filter: none !important; }

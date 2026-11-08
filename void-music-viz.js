@@ -148,10 +148,18 @@
   ];
   function detectTier() {
     const cores = navigator.hardwareConcurrency || 4;
-    const mobile = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || innerWidth < 700;
+    const root = document.documentElement;
+    const tv = root.classList.contains('void-tv');
+    const lowfx = root.classList.contains('void-lowfx');
+    const coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    // A TV exposes a coarse pointer yet has a wide, stationary screen: keep the
+    // desktop dot budget on capable sets instead of treating it as a phone.
+    const mobile = !tv && (coarse || innerWidth < 700);
     let t = mobile ? 1 : 2;
     if (cores <= 4) t = Math.min(t, 1);
     if (mobile && cores <= 4) t = 0;
+    if (tv && cores <= 2) t = 0;
+    if (lowfx) t = Math.min(t, cores <= 4 ? 0 : 1);
     if (navigator.deviceMemory && navigator.deviceMemory <= 4) t = Math.min(t, 1);
     return t;
   }
