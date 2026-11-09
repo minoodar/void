@@ -49,6 +49,20 @@ const TTL_MAP = Object.freeze({
   '90d': 7776000
 });
 
+// Symbolic presence is a fixed vocabulary, never free text: only these names
+// may reach the database, and anything else reads back as 'none'.
+const PRESENCE_VALUES = Object.freeze({
+  none: 1,
+  human: 1,
+  moon: 1,
+  root: 1,
+  unknown: 1
+});
+
+function presenceOf(value) {
+  return typeof value === 'string' && PRESENCE_VALUES[value] === 1 ? value : 'none';
+}
+
 const VOTE_TYPES = Object.freeze({ like: 1, dislike: 1 });
 const VOTE_HOURLY_LIMIT = 30;
 // A letter can never outlive 90 days from creation and always keeps a small
@@ -234,7 +248,7 @@ export function validatePayload(payload) {
     return { ok: false, error: 'Invalid JSON body' };
   }
 
-  const { text, expiry, request_id, lang, secret_ink } = payload;
+  const { text, expiry, request_id, lang, secret_ink, presence } = payload;
 
   if (typeof request_id !== 'string' || !UUID_V4_REGEX.test(request_id)) {
     return { ok: false, error: 'Valid UUIDv4 request_id is required' };
@@ -283,6 +297,17 @@ export function validatePayload(payload) {
     if (/^[a-z]{2,3}(-[a-z0-9]{2,4})?$/.test(cleanLang)) validLang = cleanLang;
   }
 
+  // Missing presence is how older clients submit: a normal, unmarked letter.
+  // A present value outside the five names — null, empty or whitespace-padded
+  // strings, wrong casing, unknown names, or non-strings — is rejected.
+  let validPresence = 'none';
+  if (presence !== undefined) {
+    if (typeof presence !== 'string' || PRESENCE_VALUES[presence] !== 1) {
+      return { ok: false, error: 'invalid_presence' };
+    }
+    validPresence = presence;
+  }
+
   return {
     ok: true,
     data: {
@@ -292,7 +317,8 @@ export function validatePayload(payload) {
       lang: validLang,
       // Strict boolean: anything else (including a missing field, which is how
       // older clients submit) is a normal, fully visible letter.
-      secretInk: secret_ink === true
+      secretInk: secret_ink === true,
+      presence: validPresence
     }
   };
 }
@@ -369,7 +395,7 @@ function adminHeaders(cors) {
 
 async function findActiveLetterById(env, id, now) {
   return await env.DB
-    .prepare('SELECT id, created_at, expires_at, secret_ink FROM letters WHERE id = ? AND expires_at > ?')
+    .prepare('SELECT id, created_at, expires_at, secret_ink, presence FROM letters WHERE id = ? AND expires_at > ?')
     .bind(id, now)
     .first();
 }
@@ -381,6 +407,7 @@ function recoveredResponse(letter, headers) {
     created_at: Number(letter.created_at),
     expires_at: Number(letter.expires_at),
     secret_ink: Number(letter.secret_ink) === 1,
+    presence: presenceOf(letter.presence),
     recovered: true
   }, 200, headers);
 }
@@ -398,7 +425,7 @@ async function createLetter(request, env, cors) {
   const validated = validatePayload(body.value);
   if (!validated.ok) return json({ ok: false, error: validated.error }, 400, headers);
 
-  const { text, ttl, requestId, lang, secretInk } = validated.data;
+  const { text, ttl, requestId, lang, secretInk, presence } = validated.data;
   const senderHash = await getSenderHash(request, salt);
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + ttl;
@@ -447,11 +474,15 @@ async function createLetter(request, env, cors) {
   ).bind(requestId, senderHash, id, now, senderHash, now - DAY_SEC, DAILY_SENDER_LIMIT);
 
   const insertStmt = env.DB.prepare(
-    'INSERT INTO letters (id, body, lang, created_at, expires_at, base_expires_at, base_votes_net, secret_ink) ' +
-    'SELECT ?, ?, ?, ?, ?, ?, 0, ? ' +
+    'INSERT INTO letters (id, body, lang, created_at, expires_at, base_expires_at, base_votes_net, secret_ink, presence) ' +
+    'SELECT ?, ?, ?, ?, ?, ?, 0, ?, ? ' +
     'WHERE EXISTS (SELECT 1 FROM letter_submissions WHERE sender_hash = ? AND request_id = ? AND letter_id = ?) ' +
     'ON CONFLICT(id) DO NOTHING'
-  ).bind(id, text, lang, now, expiresAt, expiresAt, secretInk ? 1 : 0, senderHash, requestId, id);
+  ).bind(
+    id, text, lang, now, expiresAt, expiresAt, secretInk ? 1 : 0,
+    presence === 'none' ? null : presence,
+    senderHash, requestId, id
+  );
 
   const bumpGlobal = env.DB.prepare(
     'INSERT INTO letter_limits (scope, bucket, count) VALUES (?, ?, 1) ' +
@@ -534,7 +565,8 @@ async function createLetter(request, env, cors) {
     id,
     created_at: now,
     expires_at: expiresAt,
-    secret_ink: secretInk
+    secret_ink: secretInk,
+    presence
   }, 201, headers);
 }
 
@@ -817,7 +849,7 @@ async function listLetters(url, env, cors) {
 
   const now = Math.floor(Date.now() / 1000);
   const columns =
-    'SELECT l.seq, l.id, l.body, l.lang, l.secret_ink, l.created_at, l.expires_at, ' +
+    'SELECT l.seq, l.id, l.body, l.lang, l.secret_ink, l.presence, l.created_at, l.expires_at, ' +
     "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'like') AS votes_like, " +
     "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'dislike') AS votes_dislike " +
     'FROM letters l ';
@@ -830,7 +862,10 @@ async function listLetters(url, env, cors) {
       ).bind(now, before, limit).all();
 
   const letters = ((result && result.results) || []).map(function (row) {
-    return Object.assign({}, row, { secret_ink: Number(row.secret_ink) === 1 });
+    return Object.assign({}, row, {
+      secret_ink: Number(row.secret_ink) === 1,
+      presence: presenceOf(row.presence)
+    });
   });
   const nextBefore = letters.length === limit ? Number(letters[letters.length - 1].seq) : null;
 
@@ -850,7 +885,7 @@ async function getLetterById(rawId, env, cors) {
   const now = Math.floor(Date.now() / 1000);
   const row = await env.DB
     .prepare(
-      'SELECT l.id, l.body AS text, l.lang, l.secret_ink, l.created_at, l.expires_at, ' +
+      'SELECT l.id, l.body AS text, l.lang, l.secret_ink, l.presence, l.created_at, l.expires_at, ' +
       "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'like') AS votes_like, " +
       "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'dislike') AS votes_dislike " +
       'FROM letters l WHERE l.id = ? AND l.expires_at > ?'
@@ -865,6 +900,7 @@ async function getLetterById(rawId, env, cors) {
     expires_at: Number(row.expires_at),
     lang: row.lang || null,
     secret_ink: Number(row.secret_ink) === 1,
+    presence: presenceOf(row.presence),
     votes_like: Number(row.votes_like) || 0,
     votes_dislike: Number(row.votes_dislike) || 0
   }, 200, headers);
@@ -1003,7 +1039,7 @@ async function siteUpdates(url, env, cors) {
 
   const now = Math.floor(Date.now() / 1000);
   const letterColumns =
-    'SELECT l.seq, l.id, l.body, l.lang, l.secret_ink, l.created_at, l.expires_at, ' +
+    'SELECT l.seq, l.id, l.body, l.lang, l.secret_ink, l.presence, l.created_at, l.expires_at, ' +
     "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'like') AS votes_like, " +
     "(SELECT COUNT(*) FROM letter_votes v WHERE v.letter_id = l.id AND v.vote_type = 'dislike') AS votes_dislike " +
     'FROM letters l ';
@@ -1021,7 +1057,10 @@ async function siteUpdates(url, env, cors) {
     )
   ]);
   const letters = ((rows[0] && rows[0].results) || []).map(function (row) {
-    return Object.assign({}, row, { secret_ink: Number(row.secret_ink) === 1 });
+    return Object.assign({}, row, {
+      secret_ink: Number(row.secret_ink) === 1,
+      presence: presenceOf(row.presence)
+    });
   });
   const latestSeq = Number(rows[1] && rows[1].results && rows[1].results[0] && rows[1].results[0].latest_seq) || 0;
   const active = Number(rows[2] && rows[2].results && rows[2].results[0] && rows[2].results[0].active) || 0;

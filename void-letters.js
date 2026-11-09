@@ -190,6 +190,10 @@
 
   var panel = null;
   var panelText = null;
+  var panelPresence = null;
+  var panelPresenceValue = 'none';
+  var PRESENCE_LABELS = { human: 'Human', moon: 'Moon', root: 'Root', unknown: 'Unknown' };
+  var UNRESOLVED_STATES = { in_flight: true, ambiguous: true, retryable: true };
   var panelTag = null;
   var panelMeta = null;
   var panelLifespan = null;
@@ -1632,6 +1636,11 @@
     panelTranslate.appendChild(translateRing);
 
     head.appendChild(panelTranslate);
+    /* The writer's chosen glyph, not the viewer's state: decorative, inert,
+       and reset for every letter before it is shown. */
+    panelPresence = make('span', 'void-god-msg-presence');
+    panelPresence.hidden = true;
+    head.appendChild(panelPresence);
     head.appendChild(titles);
     head.appendChild(x);
 
@@ -1797,6 +1806,48 @@
       panelText.removeAttribute('aria-label');
     }
     if (secretHint) secretHint.hidden = !concealed || secretHintSeen;
+    paintPresence();
+  }
+
+  /* One dot stands in for every non-none mark while Secret Ink is concealed,
+     so the glyph, the label, the title, and the class names never reveal which
+     presence was chosen. The actual name only reaches the DOM after reveal. */
+  function presenceDotSvg() {
+    var svg = svgNode('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+    svg.appendChild(svgNode('circle', { cx: '12', cy: '12', r: '3.2', fill: 'currentColor', stroke: 'none' }));
+    return svg;
+  }
+
+  function paintPresence() {
+    if (!panelPresence) return;
+    var known = Object.prototype.hasOwnProperty.call(PRESENCE_LABELS, panelPresenceValue);
+    var kind = known ? panelPresenceValue : 'none';
+    while (panelPresence.firstChild) panelPresence.removeChild(panelPresence.firstChild);
+    panelPresence.classList.remove('is-concealed');
+    panelPresence.removeAttribute('title');
+    if (kind === 'none') {
+      panelPresence.hidden = true;
+      panelPresence.removeAttribute('role');
+      panelPresence.removeAttribute('aria-label');
+      return;
+    }
+    panelPresence.hidden = false;
+    panelPresence.setAttribute('role', 'img');
+    if (secretMode && !secretRevealed) {
+      panelPresence.classList.add('is-concealed');
+      panelPresence.setAttribute('aria-label', 'Presence concealed');
+      panelPresence.appendChild(presenceDotSvg());
+      return;
+    }
+    panelPresence.setAttribute('aria-label', 'Symbolic presence: ' + PRESENCE_LABELS[kind]);
+    panelPresence.title = PRESENCE_LABELS[kind] + ' presence';
+    panelPresence.appendChild(presenceSvg(kind));
+  }
+
+  function setPresenceValue(value) {
+    panelPresenceValue = typeof value === 'string' && Object.prototype.hasOwnProperty.call(PRESENCE_LABELS, value)
+      ? value : 'none';
+    paintPresence();
   }
 
   function setPanelText(text, secret) {
@@ -1818,6 +1869,7 @@
     secretRevealed = false;
     secretHintSeen = false;
     secretFullText = '';
+    panelPresenceValue = 'none';
     if (panelText) {
       panelText.classList.remove('is-secret-ink', 'is-concealed');
       panelText.removeAttribute('tabindex');
@@ -1826,6 +1878,7 @@
       panelText.removeAttribute('aria-label');
     }
     if (secretHint) secretHint.hidden = true;
+    paintPresence();
   }
 
   function toggleSecretReveal() {
@@ -1855,6 +1908,7 @@
   function renderMessage(msg) {
     resetTranslation();
     voteBusy = false;
+    setPresenceValue(msg.presence);
     setPanelText(msg.text, msg.secret_ink === true);
     if (msg.lang) panelText.setAttribute('lang', msg.lang);
     else panelText.removeAttribute('lang');
@@ -2501,6 +2555,8 @@
     resetTranslation({ release: true });
     setReadingMode(false);
     if (!preserveReaderState) restoreMusicPresentation();
+    secretRevealed = false;
+    paintPresence();
     voteBusy = false;
     clearLifespanTimer();
     clearTimeout(closeTimer);
@@ -2522,6 +2578,10 @@
     setReadingMode(false);
     restoreMusicPresentation();
     currentMessage = null;
+    /* The reveal state is per letter. Closing returns the mark to the shared
+       concealed dot without repainting the text during the dissolve. */
+    secretRevealed = false;
+    paintPresence();
     voteBusy = false;
     clearLifespanTimer();
     panel.classList.remove('is-on', 'is-loading-letter');
@@ -3727,11 +3787,15 @@
     if (compose.open) return;
     if (!uncertainSubmission && api && typeof api.loadPending === 'function') {
       var saved = api.loadPending();
-      if (saved && (saved.state === 'ambiguous' || saved.state === 'in_flight')) {
+      if (saved && UNRESOLVED_STATES[saved.state] === true) {
         composer.value = saved.text;
         if (secretEl) secretEl.checked = saved.secret_ink === true;
         var savedExpiry = composeForm.querySelectorAll('input[name="void-god-expiry"]');
         for (var si = 0; si < savedExpiry.length; si++) savedExpiry[si].checked = savedExpiry[si].value === saved.expiry;
+        var savedPresence = composeForm.querySelectorAll('input[name="void-god-presence"]');
+        for (var spi = 0; spi < savedPresence.length; spi++) {
+          savedPresence[spi].checked = savedPresence[spi].value === saved.presence;
+        }
         ackEl.checked = true;
         setUncertainSubmission(saved);
       }
@@ -3756,6 +3820,7 @@
     publishedBase = '';
     publishedLang = null;
     sending = false;
+    syncSubmissionLock();
     if (!uncertainSubmission) ackEl.checked = false;
     if (!uncertainSubmission && secretEl) secretEl.checked = false;
     if (!uncertainSubmission && presenceNone) presenceNone.checked = true;
@@ -3825,7 +3890,7 @@
        presences, one selected state, no identity attached. */
     var presence = make('fieldset', 'void-god-presence');
     var presenceLegend = make('legend', 'void-god-presence__legend', 'Presence');
-    presenceLegend.appendChild(make('span', 'void-god-presence__optional', 'optional \u00b7 not sent'));
+    presenceLegend.appendChild(make('span', 'void-god-presence__optional', 'optional'));
     presence.appendChild(presenceLegend);
     var presenceRow = make('div', 'void-god-presence__row');
     var presenceOpts = [
@@ -4053,29 +4118,43 @@
     return checked ? checked.value : '7d';
   }
 
+  function currentPresence() {
+    var checked = composeForm && composeForm.querySelector('input[name="void-god-presence"]:checked');
+    return checked ? checked.value : 'none';
+  }
+
   function submitRemote(payload) {
     if (!api) return Promise.resolve({ kind: 'network' });
     var pending = uncertainSubmission || api.begin(
-      payload.text, payload.expiry, detectLang(payload.text), payload.secret_ink === true
+      payload.text, payload.expiry, detectLang(payload.text), payload.secret_ink === true,
+      payload.presence
     );
     return api.submit(pending);
   }
 
+  /* Locks every submission control while a request is in flight and while its
+     outcome is unresolved. Definitive results clear the pending record and
+     unlock; the Presence mark follows the same rule as expiry and Secret Ink. */
+  function syncSubmissionLock() {
+    var locked = sending || !!uncertainSubmission;
+    if (composer) composer.readOnly = locked;
+    if (!composeForm) return;
+    var fields = composeForm.querySelectorAll(
+      'input[name="void-god-expiry"], input[name="void-god-presence"], #void-god-ack, #void-god-secret-ink'
+    );
+    for (var i = 0; i < fields.length; i++) fields[i].disabled = locked;
+  }
+
   function setUncertainSubmission(pending) {
     uncertainSubmission = pending || null;
-    if (composer) composer.readOnly = !!uncertainSubmission;
-    if (composeForm) {
-      var options = composeForm.querySelectorAll('input[name="void-god-expiry"]');
-      for (var i = 0; i < options.length; i++) options[i].disabled = !!uncertainSubmission;
-    }
-    if (ackEl) ackEl.disabled = !!uncertainSubmission;
-    if (secretEl) secretEl.disabled = !!uncertainSubmission;
+    syncSubmissionLock();
     updateState();
   }
 
   function submitLetter() {
     if (sending || typeof source.submit !== 'function') return;
     sending = true;
+    syncSubmissionLock();
     updateState();
     noticeEl.hidden = true;
     clearTimeout(connectionTimer);
@@ -4085,18 +4164,22 @@
     var payload = {
       text: composer.value,
       expiry: currentExpiry(),
-      secret_ink: !!(secretEl && secretEl.checked)
+      secret_ink: !!(secretEl && secretEl.checked),
+      presence: currentPresence()
     };
     source.submit(payload).then(function (result) {
       clearTimeout(connectionTimer);
       sending = false;
-      if (result && result.ambiguous) setUncertainSubmission(result.pending || (api && api.loadPending ? api.loadPending() : null));
+      var pending = api && api.loadPending ? api.loadPending() : null;
+      if (pending && UNRESOLVED_STATES[pending.state] === true) setUncertainSubmission(pending);
       else if (result && result.kind !== 'busy') setUncertainSubmission(null);
+      else syncSubmissionLock();
       handleSubmitResult(result || { kind: 'error' });
     }, function () {
       clearTimeout(connectionTimer);
       sending = false;
-      setUncertainSubmission(api && api.loadPending ? api.loadPending() : null);
+      var pending = api && api.loadPending ? api.loadPending() : null;
+      setUncertainSubmission(pending && UNRESOLVED_STATES[pending.state] === true ? pending : null);
       handleSubmitResult({ kind: 'network', ambiguous: true });
     });
   }
@@ -4142,7 +4225,7 @@
     } else if (result.kind === 'server' || result.kind === 'unavailable') {
       notice('The galaxy could not save your letter right now. Your draft is still here; please try again.');
     } else if (result.kind === 'http') {
-      notice('The galaxy returned an unexpected response (' + result.status + '). Your draft is still here.');
+      notice('The galaxy returned an unexpected response (' + result.status + '). Keep the letter unchanged and check the submission.');
     } else {
       notice('The service is temporarily unavailable. Your letter is still here \u2014 try again in a moment.');
     }

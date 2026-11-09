@@ -25,6 +25,8 @@
   }
   var PENDING_KEY = 'voidLetters.pending.v1';
   var EXPIRY_VALUES = { '24h': true, '7d': true, '30d': true, '90d': true };
+  var PRESENCE_VALUES = { none: true, human: true, moon: true, root: true, unknown: true };
+  var UNRESOLVED_STATES = { in_flight: true, ambiguous: true, retryable: true };
   var UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   var LETTER_ID_REGEX = /^[0-9a-f]{32}$/;
   var SHARE_FALLBACK = 'https://minoodar.github.io/void/';
@@ -60,6 +62,13 @@
   function countOf(v) {
     var n = Number(v);
     return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  /* Presence is decorative and optional. Anything outside the five allowed
+     values (including a missing field on older letters or v1 pending records)
+     reads as none. */
+  function presenceOf(v) {
+    return typeof v === 'string' && PRESENCE_VALUES[v] === true ? v : 'none';
   }
 
   function newRequestId() {
@@ -182,6 +191,7 @@
         expiry: p.expiry,
         lang: typeof p.lang === 'string' ? p.lang : null,
         secret_ink: p.secret_ink === true,
+        presence: presenceOf(p.presence),
         state: typeof p.state === 'string' ? p.state : 'prepared'
       } };
     } catch (e) { return { available: false, pending: null }; }
@@ -220,6 +230,7 @@
       expiry: pending.expiry,
       lang: pending.lang || null,
       secret_ink: pending.secret_ink === true,
+      presence: presenceOf(pending.presence),
       state: state
     });
   }
@@ -227,18 +238,19 @@
   /* Reuses the stored UUID only for the exact same payload; any edit is a new
      letter and gets a new id. The record is written before the request starts
      so a reload in the same tab can still retry safely. */
-  function begin(text, expiry, lang, secretInk) {
+  function begin(text, expiry, lang, secretInk, presence) {
     var normalizedLang = typeof lang === 'string' && lang ? lang : null;
     var normalizedSecret = secretInk === true;
+    var normalizedPresence = presenceOf(presence);
     var read = readPending();
     if (!read.available) return { kind: 'storage_unavailable' };
     var stored = read.pending;
     if (stored && stored.text === text && stored.expiry === expiry && stored.lang === normalizedLang &&
-        stored.secret_ink === normalizedSecret) return stored;
-    if (stored && (stored.state === 'ambiguous' || stored.state === 'in_flight')) return { kind: 'unresolved_submission' };
+        stored.secret_ink === normalizedSecret && stored.presence === normalizedPresence) return stored;
+    if (stored && UNRESOLVED_STATES[stored.state] === true) return { kind: 'unresolved_submission' };
     var pending = {
       request_id: newRequestId(), text: text, expiry: expiry, lang: normalizedLang,
-      secret_ink: normalizedSecret, state: 'prepared'
+      secret_ink: normalizedSecret, presence: normalizedPresence, state: 'prepared'
     };
     if (!pendingStorageReady(pending)) return { kind: 'storage_unavailable' };
     return pending;
@@ -251,13 +263,16 @@
     if (pending && pending.kind) return Promise.resolve({ kind: pending.kind });
     if (!pending || !UUID_V4_REGEX.test(pending.request_id || '') || !pendingStorageReady({
       request_id: pending.request_id, text: pending.text, expiry: pending.expiry,
-      lang: pending.lang || null, secret_ink: pending.secret_ink === true, state: 'in_flight'
+      lang: pending.lang || null, secret_ink: pending.secret_ink === true,
+      presence: presenceOf(pending.presence), state: 'in_flight'
     })) return Promise.resolve({ kind: 'storage_unavailable' });
     inFlight = true;
     setPendingState(pending, 'in_flight');
     var payload = { text: pending.text, expiry: pending.expiry, request_id: pending.request_id };
     if (pending.lang) payload.lang = pending.lang;
     if (pending.secret_ink === true) payload.secret_ink = true;
+    var pendingPresence = presenceOf(pending.presence);
+    if (pendingPresence !== 'none') payload.presence = pendingPresence;
     return request(BASE + '/letters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -316,6 +331,7 @@
           lang: typeof letter.lang === 'string' ? letter.lang : null,
           text: letter.body,
           secret_ink: letter.secret_ink === true || Number(letter.secret_ink) === 1,
+          presence: presenceOf(letter.presence),
           created_at: num(letter.created_at),
           expires_at: num(letter.expires_at),
           votes_like: countOf(letter.votes_like),
@@ -504,6 +520,7 @@
             lang: typeof raw.lang === 'string' ? raw.lang : null,
             text: raw.text,
             secret_ink: raw.secret_ink === true || Number(raw.secret_ink) === 1,
+            presence: presenceOf(raw.presence),
             created_at: num(raw.created_at),
             expires_at: num(raw.expires_at),
             votes_like: countOf(raw.votes_like),

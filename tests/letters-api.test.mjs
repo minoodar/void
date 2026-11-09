@@ -215,13 +215,25 @@ await test('network failure keeps pending and retries with the same UUID', async
   equal(bodyOf(env.calls[1]).request_id, pending.request_id, 'retry changed the UUID');
 });
 
-await test('editing the letter after a failure produces a new UUID', async () => {
+await test('editing a letter locked by an unresolved submission is refused', async () => {
   const env = makeEnv(() => { throw new TypeError('offline'); });
   const api = env.window.VoidLettersApi;
   const first = api.begin('original text', '7d', null);
   await api.submit(first);
+  equal(api.loadPending().state, 'ambiguous', 'a network failure stays unresolved');
   const edited = api.begin('edited text', '7d', null);
-  assert(edited.request_id !== first.request_id, 'edited payload reused the old UUID');
+  equal(edited.kind, 'unresolved_submission', 'the edit must not start a new submission');
+  equal(edited.request_id, undefined, 'no new UUID may be minted');
+  const kept = api.loadPending();
+  assert(kept && kept.request_id === first.request_id, 'the original request id must survive');
+});
+
+await test('editing a prepared draft before any request gets a new UUID', async () => {
+  const env = makeEnv(() => ok201());
+  const api = env.window.VoidLettersApi;
+  const first = api.begin('draft text', '7d', null);
+  const edited = api.begin('edited draft', '7d', null);
+  assert(edited.request_id !== first.request_id, 'a prepared draft edit reused the old UUID');
 });
 
 await test('pending survives a reload (same sessionStorage, new instance)', async () => {
@@ -649,6 +661,140 @@ await test('feed and single-letter payloads expose vote counts', async () => {
   const single = await api.getLetter(id);
   equal(single.letter.votes_like, 7, 'single likes');
   equal(single.letter.votes_dislike, 0, 'unusable count clamps to 0');
+});
+
+await test('every allowed presence rides the pending record and the POST payload', async () => {
+  for (const presence of ['human', 'moon', 'root', 'unknown']) {
+    const env = makeEnv(() => ok201());
+    const api = env.window.VoidLettersApi;
+    const pending = api.begin('presence ' + presence, '7d', null, false, presence);
+    equal(pending.presence, presence, 'pending carries ' + presence);
+    equal(api.loadPending().presence, presence, 'stored pending keeps ' + presence);
+    await api.submit(pending);
+    equal(bodyOf(env.calls[0]).presence, presence, 'POST carries ' + presence);
+  }
+});
+
+await test('presence none is stored but omitted from the POST', async () => {
+  const env = makeEnv(() => ok201());
+  const api = env.window.VoidLettersApi;
+  const pending = api.begin('no mark', '7d', null, false, 'none');
+  equal(pending.presence, 'none');
+  await api.submit(pending);
+  assert(!('presence' in bodyOf(env.calls[0])), 'none presence must not be sent');
+});
+
+await test('an unknown presence from the caller is normalized to none', async () => {
+  const env = makeEnv(() => ok201());
+  const api = env.window.VoidLettersApi;
+  const pending = api.begin('unknown mark', '7d', null, false, 'dragon');
+  equal(pending.presence, 'none');
+  await api.submit(pending);
+  assert(!('presence' in bodyOf(env.calls[0])), 'invalid presence must not be sent');
+});
+
+await test('presence is part of pending payload equality', async () => {
+  const env = makeEnv(() => ok201());
+  const api = env.window.VoidLettersApi;
+  const first = api.begin('same text', '7d', null, false, 'human');
+  const same = api.begin('same text', '7d', null, false, 'human');
+  equal(same.request_id, first.request_id, 'an identical payload must reuse the UUID');
+  const changed = api.begin('same text', '7d', null, false, 'moon');
+  assert(changed.request_id !== first.request_id, 'a presence change must mint a new UUID while prepared');
+});
+
+await test('changing presence during an unresolved submission returns unresolved_submission', async () => {
+  const env = makeEnv(() => response(403, { ok: false, error: 'forbidden' }));
+  const api = env.window.VoidLettersApi;
+  const pending = api.begin('locked text', '7d', null, false, 'root');
+  equal((await api.submit(pending)).kind, 'http');
+  equal(api.loadPending().state, 'retryable', '403 is retryable, not definitive');
+  const changed = api.begin('locked text', '7d', null, false, 'unknown');
+  equal(changed.kind, 'unresolved_submission');
+  const kept = api.loadPending();
+  assert(kept && kept.request_id === pending.request_id, 'the original identity must survive');
+  equal(kept.presence, 'root', 'the original presence must survive');
+});
+
+await test('retrying a retryable submission keeps the original UUID and presence', async () => {
+  let attempt = 0;
+  const env = makeEnv(() => {
+    attempt++;
+    if (attempt === 1) return response(403, { ok: false, error: 'forbidden' });
+    return ok201();
+  });
+  const api = env.window.VoidLettersApi;
+  const pending = api.begin('retry me', '7d', null, false, 'moon');
+  equal((await api.submit(pending)).kind, 'http');
+  const retry = api.begin('retry me', '7d', null, false, 'moon');
+  equal(retry.request_id, pending.request_id, 'the retry changed the UUID');
+  equal(retry.presence, 'moon', 'the retry changed the presence');
+  await api.submit(retry);
+  equal(bodyOf(env.calls[1]).request_id, pending.request_id);
+  equal(bodyOf(env.calls[1]).presence, 'moon');
+});
+
+await test('a v1 pending record without presence keeps its UUID and reads as none', async () => {
+  const env = makeEnv(() => ok201());
+  const id = '11111111-1111-4111-8111-111111111111';
+  env.store.set('voidLetters.pending.v1', JSON.stringify({
+    request_id: id, text: 'old record', expiry: '7d', lang: null, secret_ink: false, state: 'ambiguous'
+  }));
+  const api = env.window.VoidLettersApi;
+  const loaded = api.loadPending();
+  equal(loaded.presence, 'none', 'a missing presence reads as none');
+  const retry = api.begin('old record', '7d', null, false, 'none');
+  equal(retry.request_id, id, 'the v1 UUID must be preserved');
+  await api.submit(retry);
+  equal(bodyOf(env.calls[0]).request_id, id);
+  assert(!('presence' in bodyOf(env.calls[0])), 'a v1 record must not gain a presence');
+});
+
+await test('feed, updates and single-letter replies normalize presence', async () => {
+  const singleId = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+  const updatesId = 'e'.repeat(32);
+  const env = makeEnv((url) => {
+    if (url.includes('/site/updates')) {
+      return response(200, {
+        ok: true,
+        letters: [{ seq: 9, id: updatesId, body: 'updates moon', presence: 'moon', created_at: 9, expires_at: 999 }],
+        next_after: 9, active: 1, unique_visitors: 1, total_sessions: 1, returning_ratio: 0
+      });
+    }
+    if (url.includes('/letters?')) {
+      return response(200, {
+        letters: [
+          { seq: 3, id: 'a'.repeat(32), body: 'human', presence: 'human', created_at: 3, expires_at: 999 },
+          { seq: 2, id: 'b'.repeat(32), body: 'missing', created_at: 2, expires_at: 999 },
+          { seq: 1, id: 'c'.repeat(32), body: 'invalid', presence: 'dragon', created_at: 1, expires_at: 999 }
+        ],
+        next_before: null
+      });
+    }
+    return response(200, { id: singleId, text: 'single', presence: 'root', created_at: 1, expires_at: 999 });
+  });
+  const api = env.window.VoidLettersApi;
+  const feed = api.createFeed();
+  await feed.refreshLatest();
+  await feed.prefetch();
+
+  const first = await feed.next();
+  equal(first.letter.id, updatesId, 'the updates letter comes first');
+  equal(first.letter.presence, 'moon', 'updates presence is mapped');
+  equal((await feed.next()).letter.presence, 'human', 'feed presence is mapped');
+  equal((await feed.next()).letter.presence, 'none', 'missing presence maps to none');
+  equal((await feed.next()).letter.presence, 'none', 'invalid presence maps to none');
+
+  const single = await api.getLetter(singleId);
+  equal(single.letter.presence, 'root', 'single-letter presence is mapped');
+});
+
+await test('a definitive presence submission clears the pending record', async () => {
+  const env = makeEnv(() => ok201());
+  const api = env.window.VoidLettersApi;
+  const out = await api.submit(api.begin('definitive', '24h', null, false, 'human'));
+  equal(out.kind, 'created');
+  equal(api.loadPending(), null);
 });
 
 console.log('\n' + passed + '/' + (passed + failed) + ' checks passed');
