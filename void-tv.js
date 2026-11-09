@@ -179,6 +179,8 @@
   function activeSurface() {
     var d = topDialog();
     if (d) return d;
+    var sound = doc.querySelector('.vm-sound-pop.is-open');
+    if (sound) return sound;
     var ids = ['void-god-panel', 'void-galaxy-stats-panel'];
     for (var i = 0; i < ids.length; i++) {
       var p = doc.getElementById(ids[i]);
@@ -253,14 +255,24 @@
               e.key === 'ArrowUp' ? 'up' : e.key === 'ArrowDown' ? 'down' : '';
     if (!dir) return;
     var active = doc.activeElement;
-    if (ownsArrows(active)) return;
     var scope = activeSurface();
+    if (ownsArrows(active)) return;
     var target = pick(dir, active, scope);
     /* An open panel may still be fading in when the remote's first press lands.
        The trigger sits outside that panel, so a directional press is a request
        to enter the panel, not to look elsewhere. */
-    if (!target && scope && !scope.contains(active)) target = pick(dir, active, scope, true);
-    if (!target) return;
+    if (!target && scope && !scope.contains(active)) {
+      target = pick(dir, active, scope, true);
+    }
+    if (!target) {
+      /* A focused control inside an open surface stays inside it at an edge.
+         Editable fields, selects, and sliders returned above retain their keys. */
+      if (scope && scope.contains(active)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      return;
+    }
     e.preventDefault();
     e.stopImmediatePropagation();
     focusEl(target);
@@ -349,6 +361,11 @@
       var proceed = true;
       try { proceed = dialog.dispatchEvent(cancel); } catch (e) { proceed = true; }
       if (proceed && dialog.open) { try { dialog.close(); } catch (e2) {} }
+      return true;
+    }
+    var sound = doc.querySelector('.vm-sound-pop.is-open');
+    if (sound) {
+      sound.dispatchEvent(escapeEvent());
       return true;
     }
     var ids = ['void-god-panel', 'void-galaxy-stats-panel'];

@@ -36,7 +36,6 @@ html .vm-sound-pop {
 
 /* Text-heavy panels stay a touch denser so labels never sit on starfield. */
 html #void-god-panel,
-html #void-god-dialog,
 html #void-golden-modal,
 html #void-golden-share,
 html #void-invite {
@@ -45,6 +44,17 @@ html #void-invite {
     rgba(var(--vg-tint), .62);
   border: 1px solid var(--vg-line);
   box-shadow: inset 0 1px 0 var(--vg-edge), 0 14px 40px rgba(0, 0, 0, .42);
+}
+
+/* The composer is the glass surface itself; keep the content readable while
+   letting the ambient Void field remain visible through its shell. */
+html #void-god-dialog {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .085), rgba(255, 255, 255, .018) 46%, transparent 72%),
+    radial-gradient(120% 80% at 50% -10%, rgba(251, 191, 36, .075), transparent 64%),
+    rgba(var(--vg-tint), .48);
+  border-color: rgba(235, 240, 247, .19);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 20px 56px rgba(0, 0, 0, .48), 0 0 0 1px rgba(0, 0, 0, .18);
 }
 
 /* Small chrome: same glass language, no blur layer of its own. */
@@ -70,6 +80,12 @@ html #void-god-discover {
   ) {
     -webkit-backdrop-filter: blur(var(--vg-blur)) saturate(var(--vg-saturation));
     backdrop-filter: blur(var(--vg-blur)) saturate(var(--vg-saturation));
+  }
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html:not(.void-lowfx) #void-god-dialog {
+    -webkit-backdrop-filter: blur(14px) saturate(112%);
+    backdrop-filter: blur(14px) saturate(112%);
   }
 }
 html #void-god-dialog::backdrop,
