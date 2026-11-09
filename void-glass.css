@@ -50,9 +50,9 @@ html #void-invite {
    letting the ambient Void field remain visible through its shell. */
 html #void-god-dialog {
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, .085), rgba(255, 255, 255, .018) 46%, transparent 72%),
-    radial-gradient(120% 80% at 50% -10%, rgba(251, 191, 36, .075), transparent 64%),
-    rgba(var(--vg-tint), .48);
+    linear-gradient(145deg, rgba(255, 255, 255, .012), rgba(255, 255, 255, .004) 46%, transparent 72%),
+    radial-gradient(120% 80% at 50% -10%, rgba(251, 191, 36, .012), transparent 64%),
+    rgba(var(--vg-tint), .10);
   border-color: rgba(235, 240, 247, .19);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 20px 56px rgba(0, 0, 0, .48), 0 0 0 1px rgba(0, 0, 0, .18);
 }
