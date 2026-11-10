@@ -56,7 +56,8 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 .vm-meta.is-art .vm-title { pointer-events: auto; cursor: pointer; }
 .vm-meta.is-art .vm-title:hover { color: #fff; }
 .vm-meta.is-art .vm-title:focus-visible { outline: 1px solid rgba(235, 240, 245, .55); outline-offset: 3px; border-radius: 4px; }
-#void-music-root.is-quiet .vm-meta .vm-title, .vm-meta.is-out .vm-title { pointer-events: none; }
+#void-music-root.is-quiet .vm-meta .vm-title, .vm-meta.is-out .vm-title,
+#void-music-root.is-quiet .vm-meta .vm-repeat, .vm-meta.is-out .vm-repeat { pointer-events: none; }
 .vm-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .vm-title {
     font-size: 15px; font-weight: 600; letter-spacing: .02em; color: var(--vm-fg-hi);
@@ -68,6 +69,25 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .vm-artist:empty { display: none; }
+
+/* ---- تکرارِ فشرده کنارِ عنوان (OFF→۱→۲→۳→OFF): هم‌خانوادهٔ آیکون‌ها، بی‌کارت و بی‌پنل ---- */
+.vm-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.vm-title-row .vm-title { flex: 0 1 auto; min-width: 0; }
+.vm-repeat {
+    flex: none; display: inline-flex; align-items: center; gap: 2px;
+    margin: 0; padding: 2px 3px; min-width: 20px; height: 20px;
+    border: none; border-radius: 5px; background: none; font: inherit;
+    color: var(--vm-fg); opacity: .5; cursor: pointer; pointer-events: auto;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: opacity .2s ease, color .2s ease;
+}
+.vm-repeat .vm-ico { width: 14px; height: 14px; stroke-width: 2; }
+.vm-repeat-n { font-size: 10px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.vm-repeat-n:empty { display: none; }
+.vm-repeat:hover { opacity: .9; color: var(--vm-fg-hi); }
+.vm-repeat:focus-visible { outline: 1px solid rgba(235, 240, 245, .55); outline-offset: 2px; opacity: 1; }
+.vm-repeat.is-on { color: var(--vm-gold); opacity: .9; }
+.vm-repeat.is-on:hover { opacity: 1; }
 
 /* ---- داک (همیشه چپ‌به‌راست؛ خطِ زمان در RTL هم همان جهتِ استاندارد را دارد) ---- */
 .vm-dock {

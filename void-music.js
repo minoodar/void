@@ -45,7 +45,9 @@
     voidMusicRetry: 'Retry',
     voidMusicFullscreen: 'Full screen', voidMusicExitFullscreen: 'Exit full screen',
     voidMusicShowWidget: 'Show extension widget', voidMusicHideWidget: 'Hide extension widget',
-    voidMusicCoverHint: 'Show album art in the galaxy'
+    voidMusicCoverHint: 'Show album art in the galaxy',
+    voidMusicRepeatOff: 'Repeat off', voidMusicRepeatOn: 'Repeat: {n} more',
+    voidMusicTipRepeat: 'Repeat this track — off, 1, 2, or 3 extra plays'
   };
   // پیش‌فرض انگلیسیِ کلیدهای جستجو/شافل (ترجمهٔ ۱۲ زبانه در i18n.js است)
   EN.voidMusicSearch = 'Search tracks'; EN.voidMusicSearchClear = 'Clear search'; EN.voidMusicNoResults = 'No matching tracks';
@@ -108,7 +110,7 @@
     vol: 0.8, muted: false, outGain: null,
     mini: null, fsByUs: false, widgetShown: false, widgetWasVisible: true, ptrDown: false,
     roots: new Map(), permCache: new Map(), copyMode: false, copyDone: 0, copyTotal: 0, swept: [],
-    shuffle: false, query: '', starsFor: null, flownId: null, starsTimer: 0,
+    shuffle: false, repeat: 0, query: '', starsFor: null, flownId: null, starsTimer: 0,
     web: null, localAudio: null, webKey: '', curIdBeforeWeb: null, webChipState: null
   };
   // پخش تصادفی: پیش‌فرض خاموش (ترتیبِ فهرست). برای برگرداندنِ رفتارِ قدیمی (همیشه تصادفی) این را true کن.
@@ -187,7 +189,8 @@
     close: ['M7 7 L17 17', 'M17 7 L7 17'],
     fs: ['M4 9 V4 H9', 'M20 9 V4 H15', 'M4 15 V20 H9', 'M20 15 V20 H15'],
     fsExit: ['M9 4 V9 H4', 'M15 4 V9 H20', 'M9 20 V15 H4', 'M15 20 V15 H20'],
-    orbit: ['M3 12 C3 9.2 7 7 12 7 S21 9.2 21 12 S17 17 12 17 S3 14.8 3 12 Z', 'M10 12 A2 2 0 1 0 14 12 A2 2 0 1 0 10 12 Z']
+    orbit: ['M3 12 C3 9.2 7 7 12 7 S21 9.2 21 12 S17 17 12 17 S3 14.8 3 12 Z', 'M10 12 A2 2 0 1 0 14 12 A2 2 0 1 0 10 12 Z'],
+    repeat: ['M17 1l4 4-4 4', 'M3 11V9a4 4 0 0 1 4-4h14', 'M7 23l-4-4 4-4', 'M21 13v2a4 4 0 0 1-4 4H3']
   };
 
   /* ------------------------------------------------------------------ */
@@ -627,7 +630,17 @@
     a.addEventListener('timeupdate', updateProgress);
     a.addEventListener('durationchange', function () { updateProgress(); posState(); });
     a.addEventListener('seeked', posState);
-    a.addEventListener('ended', function () { next(); });
+    a.addEventListener('ended', function () {
+      // تکرار روی همان عنصرِ صوتی و همان منبع: بدون Audio تازه، بدون بارگذاری مجدد، ویژولایزر هم‌گام می‌ماند.
+      if (!S.web && S.repeat > 0) {
+        S.repeat--; syncRepeat();
+        a.currentTime = 0;
+        const pr = a.play();
+        if (pr && pr.catch) pr.catch(function () { next(); });
+        return;
+      }
+      next();
+    });
     a.addEventListener('error', onAudioError);
     ['playing', 'waiting', 'stalled', 'pause', 'ended', 'error', 'loadstart', 'canplay'].forEach(function (eventName) {
       a.addEventListener(eventName, function () {
@@ -770,6 +783,7 @@
     if (tok !== S.token) { playbackLog('play-aborted-stale-after-claim', { token: tok, currentToken: S.token }); if (!isPlaying()) releasePlayback(); return; }
     const a = ensureAudio();
     const prevTr = trackById(S.curId);
+    if (!prevTr || prevTr.id !== id) { S.repeat = 0; syncRepeat(); }   // انتخابِ آهنگِ تازه شمارِ تکرارِ قبلی را به ارث نمی‌برد
     if (S.curId && S.curId !== id && !opts.fromHistory) { S.history.push(S.curId); if (S.history.length > 60) S.history.shift(); }
     S.bag = S.bag.filter(function (x) { return x !== id; });
     S.curId = id;
@@ -1056,13 +1070,22 @@
     const tx = el('div', 'vm-text');
     els.title = el('div', 'vm-title', { dir: 'auto', 'aria-live': 'polite' });
     els.artist = el('div', 'vm-artist', { dir: 'auto' });
-    tx.append(els.title, els.artist);
+    const titleRow = el('div', 'vm-title-row');
+    els.repeat = el('button', 'vm-repeat', { type: 'button', 'aria-pressed': 'false' });
+    els.repeat.append(icon(ICON.repeat));
+    els.repeatN = el('span', 'vm-repeat-n', { 'aria-hidden': 'true' });
+    els.repeat.append(els.repeatN);
+    titleRow.append(els.title, els.repeat);
+    tx.append(titleRow, els.artist);
     els.meta.append(tx);
     // §ARTWORK عنوان دکمه است: کلیک/Enter/Space همان جلدی را که آخرین بار دیده شد از نو نشان می‌دهد.
     els.title.addEventListener('click', function () { replayArtwork(); });
     els.title.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); replayArtwork(); }
     });
+    // تکرار خواهرِ عنوان است (نه فرزندش): کلیکِ آن هرگز رفتارِ جلدِ عنوان را تحریک نمی‌کند.
+    els.repeat.addEventListener('click', function (e) { e.stopPropagation(); S.repeat = (S.repeat + 1) % 4; syncRepeat(); });
+    syncRepeat();
     window.addEventListener('pointermove', artHoverCheck, { passive: true });
     window.addEventListener('pointercancel', artHoverReset, { passive: true });
 
@@ -1227,6 +1250,15 @@
     document.head.appendChild(st);
   }
 
+  function syncRepeat() {
+    if (!els.repeat) return;
+    const n = S.repeat;
+    els.repeat.classList.toggle('is-on', n > 0);
+    els.repeat.setAttribute('aria-pressed', n > 0 ? 'true' : 'false');
+    els.repeatN.textContent = n > 0 ? String(n) : '';
+    els.repeat.setAttribute('aria-label', n > 0 ? L('voidMusicRepeatOn').replace('{n}', String(n)) : L('voidMusicRepeatOff'));
+    els.repeat.title = L('voidMusicTipRepeat');
+  }
   function relabel() {
     refreshMenuLabel();                       // دکمهٔ نوارِ بالا و منو حتی پیش از ساخته‌شدنِ پلیر
     if (!S.built) return;
@@ -1236,6 +1268,7 @@
     });
     const pk = els.play.getAttribute('aria-pressed') === 'true' ? 'voidMusicPause' : 'voidMusicPlay';
     els.play.dataset.k = pk; els.play.setAttribute('aria-label', L(pk)); els.play.title = L(pk);
+    syncRepeat();
     const fsOn = !!document.fullscreenElement;
     els.fs.setAttribute('aria-pressed', fsOn ? 'true' : 'false');
     els.fs.setAttribute('aria-label', L(fsOn ? 'voidMusicExitFullscreen' : 'voidMusicFullscreen')); els.fs.title = els.fs.getAttribute('aria-label');
@@ -1810,6 +1843,7 @@
     const prevTr = trackById(S.curId);
     if (prevTr && prevTr.url) emitRemoteFor(prevTr, 'inactive');   // منبعِ وب جایِ آهنگِ دور را می‌گیرد
     S.curIdBeforeWeb = S.curId; S.curId = null; S.web = proxy; S.audio = proxy;
+    S.repeat = 0; syncRepeat();   // منبعِ وب مسیرِ تکرارِ محلی را ندارد
     const h = webHandlers(); Object.keys(h).forEach(function (k) { proxy.addEventListener(k, h[k]); });
     S.webKey = ''; setWebMeta(info);
     if (S.built) { renderQueue(); renderStars(); }
@@ -1823,6 +1857,7 @@
     const h = webHandlers(); Object.keys(h).forEach(function (k) { p.removeEventListener(k, h[k]); });
     if (S.localAudio) S.audio = S.localAudio; else { S.audio = null; ensureAudio(); }
     S.curId = S.curIdBeforeWeb == null ? null : S.curIdBeforeWeb; S.curIdBeforeWeb = null; S.webKey = '';
+    S.repeat = 0; syncRepeat();
     if (!opts.quiet && S.built) { const tr = curTrack(); setMeta(tr ? tr.title : '', tr ? tr.artist : '', null); renderQueue(); renderStars(); }
     onPlayState(); updateProgress();
   }
