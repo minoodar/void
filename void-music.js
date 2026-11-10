@@ -1078,8 +1078,10 @@
     titleRow.append(els.title, els.repeat);
     tx.append(titleRow, els.artist);
     els.meta.append(tx);
-    // §ARTWORK عنوان دکمه است: کلیک/Enter/Space همان جلدی را که آخرین بار دیده شد از نو نشان می‌دهد.
-    els.title.addEventListener('click', function () { replayArtwork(); });
+    // §ARTWORK هاورِ عنوان همان جلدی را که آخرین بار دیده شد نشان می‌دهد و تا ترکِ عنوان باز می‌ماند؛
+    // Enter/Space همان مسیر را برایِ کیبورد نگه می‌دارد (کلیک دیگر لازم نیست).
+    els.title.addEventListener('mouseenter', artTitleEnter);
+    els.title.addEventListener('mouseleave', artTitleLeave);
     els.title.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); replayArtwork(); }
     });
@@ -1374,13 +1376,17 @@
 
   /* ---- هم‌گام‌سازی نمایش ---- */
   let metaTimer = 0;
-  /* §ARTWORK جلد فقط دو پنجرهٔ ۵ثانیه‌ای در کرهٔ سیاه دارد: آغازِ آهنگ و پایانِ آن. ردیفِ نمایش
-     دیگر تصویر ندارد؛ کلیک روی عنوان یا هاور روی خودِ دایره همان پنجره را از نو اجرا می‌کند.
+  /* §ARTWORK جلد دو پنجرهٔ ۷ثانیه‌ای در کرهٔ سیاه دارد: آغازِ آهنگ و پایانِ آن. هاورِ عنوان همان
+     پنجره را با همان انیمیشنِ ورود اجرا می‌کند و تا وقتی موس روی عنوان است بازش نگه می‌دارد؛
+     با ترکِ عنوان، ۷ ثانیهٔ بسته‌شدنِ جلد آغاز می‌شود و فقط به خودِ جلد تعلق دارد: پوسته و
+     خودکارپنهان همان لحظه برمی‌گردند و پس از آن پنجره، محوِ خروجِ موجود اجرا می‌شود.
      جلدِ آهنگِ تازه پوششِ تازه می‌گیرد؛ جلدِ کامل‌ترِ همان آهنگ (ID3) فقط جایگزین می‌شود. */
-  const ART_WIN_S = 5;
+  const ART_WIN_S = 7;
   let artSrc = null;        // جلدِ آهنگِ جاری؛ تنها منبعِ فراخوانیِ دوباره
   let artTrackId = null;
   let artEndTok = -1;       // توکنِ پخشی که پنجرهٔ پایانی‌اش اجرا شده
+  let artHoverTitle = false;   // موس همین حالا روی عنوان است
+  let artStopTimer = 0;        // پنجرهٔ ۷ثانیهٔ بسته‌شدنِ جلد (بدونِ تأخیر در پوسته)
   function flashArtwork(url, restart) {
     updateFallbackArtwork(url, restart);
     const viz = window.VoidMusicViz;
@@ -1389,7 +1395,63 @@
     artTrackId = S.curId;
     viz.artwork(url, { replace: same, restart: !!restart });
   }
-  function replayArtwork() { if (artSrc) flashArtwork(artSrc, true); }
+  function artHold(on) {
+    const viz = window.VoidMusicViz;
+    return !!(viz && typeof viz.artworkHold === 'function' && viz.artworkHold(on));
+  }
+  function artShowing() {
+    if (!artSrc) return false;
+    if (visualMode === 'full') {
+      const viz = window.VoidMusicViz;
+      const st = viz && typeof viz.artworkState === 'function' ? viz.artworkState() : null;
+      return !!(st && st.on);
+    }
+    return !!(els.fallbackArt && els.fallbackArt.classList.contains('is-active'));
+  }
+  function artChrome(on) { if (root) root.classList.toggle('is-art-live', !!on); }
+  function artKeep() {                    // نگه‌داشتنِ جلد در تمامِ مدتِ هاور (در حالتِ سبک: جلدِ DOMی)
+    if (artHold(true)) return;
+    if (visualMode !== 'full' && els.fallbackArt && !els.fallbackArt.classList.contains('is-active')) updateFallbackArtwork(artSrc);
+  }
+  function artRelease() {
+    clearTimeout(artStopTimer); artStopTimer = 0;
+    artHold(false);
+    artChrome(false);
+  }
+  function artDismiss() {                 // پایانِ نمایش: خروجِ موجود + برداشتنِ جلدِ DOMی
+    clearTimeout(fallbackArtTimer); fallbackArtTimer = 0;
+    if (els.fallbackArt) els.fallbackArt.classList.remove('is-active');
+    artRelease();
+  }
+  function artStopAfter() {               // تنها یک تایمرِ پایان وجود دارد؛ هر فراخوانی قبلی را لغو می‌کند
+    clearTimeout(artStopTimer);
+    artStopTimer = setTimeout(function () {
+      artStopTimer = 0;
+      if (!artHoverTitle) artDismiss();
+    }, ART_WIN_S * 1000);
+  }
+  function artTitleEnter() {
+    artHoverTitle = true;
+    if (!artSrc) return;                  // جلد هنوز نرسیده؛ setMeta در رسیدنِ آن ادامه می‌دهد
+    clearTimeout(artStopTimer); artStopTimer = 0;
+    if (!artShowing()) flashArtwork(artSrc, true);   // ورودِ تازه: همان انیمیشنِ ورودِ موجود
+    artKeep();
+    artChrome(true);
+  }
+  function artTitleLeave() {
+    artHoverTitle = false;
+    artChrome(false);                     // پوسته و خودکارپنهان فوراً؛ پنجرهٔ بسته‌شدن فقط برایِ جلد است
+    if (!artShowing()) { artRelease(); return; }
+    artStopAfter();
+  }
+  function replayArtwork() {              // مسیرِ کیبورد (Enter/Space): همان نمایش با پنجرهٔ ۷ثانیه‌ای
+    if (!artSrc) return;
+    flashArtwork(artSrc, true);
+    artKeep();
+    artChrome(true);
+    if (artHoverTitle) { clearTimeout(artStopTimer); artStopTimer = 0; }   // هاورِ فعال، پنجره را خودش نگه می‌دارد
+    else artStopAfter();
+  }
 
   function showFallbackArtwork(seq) {
     const img = els.fallbackArt;
@@ -1403,8 +1465,10 @@
     try { staticArtwork = staticArtwork || window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
     if (staticArtwork) return;
     fallbackArtTimer = setTimeout(function () {
-      if (seq === fallbackArtSeq) img.classList.remove('is-active');
       fallbackArtTimer = 0;
+      // §ARTWORK هاور یا پنجرهٔ بسته‌شدن، جلدِ DOMی را هم نگه می‌دارد؛ پایانِ نمایش خودش برمی‌داردش
+      if (artHoverTitle || artStopTimer) return;
+      if (seq === fallbackArtSeq) img.classList.remove('is-active');
     }, ART_WIN_S * 1000);
   }
 
@@ -1488,7 +1552,10 @@
       renderStars();
       artSrc = coverUrl || null;
       setTitleArt(!!artSrc, title);
+      clearTimeout(artStopTimer); artStopTimer = 0;      // تایمرِ پایان به جلدِ آهنگِ قبلی تعلق داشت
+      if (!artHoverTitle) { artHold(false); artChrome(false); }
       if (artSrc) flashArtwork(artSrc); else updateFallbackArtwork(null);
+      if (artSrc && artHoverTitle) { artHold(true); artChrome(true); }   // هاور ادامه دارد: نمایشِ تازه هم باز بماند
       els.meta.classList.toggle('is-blank', !title);
       els.meta.classList.remove('is-out');
       if (title) document.title = '\u266A ' + title;
@@ -1535,9 +1602,10 @@
     els.seek.setAttribute('aria-valuemax', String(Math.round(dur)));
     els.seek.setAttribute('aria-valuenow', String(Math.round(cur)));
     els.seek.setAttribute('aria-valuetext', fmt(cur) + ' / ' + fmt(dur));
-    /* §ARTWORK پنجرهٔ پایانی: ۵ ثانیهٔ آخرِ آهنگ همان جلد را دوباره می‌آورد؛ آغاز را setMeta می‌فرستد.
-       آهنگِ کوتاه‌تر از دو پنجره عمداً دوباره نمی‌شود تا نمایش یک‌سره و بی‌پرش بماند. */
-    if (a && !a.paused && artSrc && S.token !== artEndTok && cur > 0 && dur > ART_WIN_S * 2 && dur - cur <= ART_WIN_S) {
+    /* §ARTWORK پنجرهٔ پایانی: ۷ ثانیهٔ آخرِ آهنگ همان جلد را دوباره می‌آورد؛ آغاز را setMeta می‌فرستد.
+       آهنگِ کوتاه‌تر از دو پنجره عمداً دوباره نمی‌شود تا نمایش یک‌سره و بی‌پرش بماند.
+       اگر نمایش با هاور باز است، این پنجره دوباره اجرا نمی‌شود تا انیمیشنِ ورود وسطِ نگه‌داشت تکرار نشود. */
+    if (a && !a.paused && artSrc && !artHoverTitle && !artStopTimer && S.token !== artEndTok && cur > 0 && dur > ART_WIN_S * 2 && dur - cur <= ART_WIN_S) {
       artEndTok = S.token;
       flashArtwork(artSrc, true);
     }
@@ -2137,6 +2205,8 @@
     idleTimer = 0;
     if (!S.open || !isPlaying()) return;
     if (keepAlive() || anyPop()) { idleTimer = setTimeout(goQuiet, 1200); return; }
+    // §ARTWORK عنوان هدفِ هاور است: تا پایانِ نمایشِ جلد، خودکارپنهان نباید عنوان را از دسترس بردارد
+    if (root.classList.contains('is-art-live')) { idleTimer = setTimeout(goQuiet, 1200); return; }
     root.classList.add('is-quiet'); document.body.classList.add('vm-quiet');
     // §CLOCK ساعت خودش را نمی‌بلعد: تا پایانِ پنجرهٔ ۳۰ ثانیه‌ایِ آخرین poke روشن می‌ماند.
     // اگر موس فوکوسِ کیبوردی را گرم نگه داشته بود و goQuiet عقب افتاد، باقی‌ماندهٔ پنجره کاسته می‌شود.
@@ -2650,6 +2720,7 @@
   function exit() {
     if (!S.open) return;
     S.open = false;
+    artDismiss();                                     // هیچ تایمر/هولدِ جلد یا کلاسِ نمایشی باقی نماند
     clearTimeout(idleTimer); clearTimeout(popTimer);
     watchStrays(false);
     clearTimeout(S.starsTimer); S.starsTimer = 0;

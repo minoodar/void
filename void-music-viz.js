@@ -97,14 +97,14 @@
     sens: 1.15, enterE: 0.46, enterFluxE: 0.34, enterFluxR: 1.45, exitE: 0.26,
     minGalaxyS: 1.2, exitHoldS: 1.4, enterHoldS: 0.18, cooldownS: 0.6, holeRest: 0.20, holeBase: 0.30,
     powderMinS: 8.0,     // پودرِ عنوان: حداقل ۸ ثانیه، و هرگز کمتر از ۱/۲۰ طولِ آهنگ
-    // §ARTWORK جلدِ آلبوم داخلِ کرهٔ سیاه؛ پنجره‌های ۵ثانیه‌ایِ آغاز/پایان را خودِ پلیر می‌فرستد.
+    // §ARTWORK جلدِ آلبوم داخلِ کرهٔ سیاه؛ پنجره‌های ۷ثانیه‌ایِ آغاز/پایان را خودِ پلیر می‌فرستد.
     // artwork:false ⇒ دقیقاً رفتارِ امروز.
     artwork: true
   };
-  // پوششِ زمانیِ هر فراخوانی: ۰٫۷۵ محوِ ورود + ۳٫۵ نگه‌داشت + ۰٫۷۵ محوِ خروج = ۵ ثانیه
-  // (هم‌خانوادهٔ پودرِ ورود/خروجِ عنوان). پلیر همین را در ۵ ثانیهٔ اول و ۵ ثانیهٔ آخر آهنگ صدا می‌زند.
+  // پوششِ زمانیِ هر فراخوانی: ۰٫۷۵ محوِ ورود + ۵٫۵ نگه‌داشت + ۰٫۷۵ محوِ خروج = ۷ ثانیه
+  // (هم‌خانوادهٔ پودرِ ورود/خروجِ عنوان). پلیر همین را در ۷ ثانیهٔ اول و ۷ ثانیهٔ آخر آهنگ صدا می‌زند.
   // size سقفِ بافت است (مربع، با برشِ مرکزیِ تصویر)؛ dim جلد را کمی به تاریکیِ صحنه نزدیک می‌کند.
-  const ART = { inS: 0.75, holdS: 3.5, outS: 0.75, size: 512, dim: 0.94 };
+  const ART = { inS: 0.75, holdS: 5.5, outS: 0.75, size: 512, dim: 0.94 };
   const ART_SPLIT = { halfW: 1, hard: false };   // §ARTWORK ترتیبِ دوپاس هنگامِ نمایشِ جلد (نیمهٔ نزدیک روی تصویر)
   const BREATH = {
     cyclesPerTrack: 2, minCycleS: 24, maxCycleS: 180, fallbackTrackS: 180, rollFadeS: 18,
@@ -1499,8 +1499,9 @@
     session: (crypto.getRandomValues(new Uint32Array(1))[0] || 1),
     powder: { on: false, appear: 0, prog: 0, key: '', n: 0, buf: null, vao: null, box: [0, 1] },
     // §ARTWORK جلدِ آلبوم: on حلقه را زنده نگه می‌دارد (حتی روی فریمِ فریزشده)، amt وزنِ پوشش،
-    // startedAt لحظهٔ آماده‌شدنِ بافت است و gen بارگذاری‌های کهنه را بی‌اثر می‌کند.
-    art: { on: false, amt: 0, startedAt: 0, src: '', gen: 0, tex: null, ready: false },
+    // startedAt لحظهٔ آماده‌شدنِ بافت است، hold پنجره را برایِ هاورِ عنوان باز نگه می‌دارد و
+    // gen بارگذاری‌های کهنه را بی‌اثر می‌کند.
+    art: { on: false, amt: 0, startedAt: 0, src: '', gen: 0, tex: null, ready: false, hold: false },
     entrance: { pending: false, active: false, elapsed: 0, duration: 1.02, handoff: 0.28, generation: 0, id: null },
     hud: null, hudOn: false, hudT: 0, frames: 0, fps: 0, fpsT: 0, tint: [1, 0.9, 0.7], retimeT: 0
   };
@@ -3179,6 +3180,7 @@ void main(){
     if (!a.startedAt) { a.amt = 0; return; }
     const t = nowS - a.startedAt, holdAt = ART.inS + ART.holdS;
     if (t < ART.inS) a.amt = smoother5(t / ART.inS);
+    else if (a.hold) a.amt = 1;                    // §ARTWORK هاورِ عنوان: پنجره هرگز خودش بسته نمی‌شود
     else if (t < holdAt) a.amt = 1;
     else if (t < holdAt + ART.outS) a.amt = 1 - smoother5((t - holdAt) / ART.outS);
     else { a.amt = 0; a.on = false; }
@@ -3256,6 +3258,39 @@ void main(){
     if (!V.running) startLoop();
     loadArtTexture(src, a.gen);
     return true;
+  }
+  /* §ARTWORK نگه‌داشتنِ جلد تا وقتی موس روی عنوان است. رهاکردن، همان محوِ خروجِ موجود را از همین
+     لحظه آغاز می‌کند؛ اگر بافت هنوز در راه باشد پنجرهٔ عادی‌اش پس از بارگذاری اجرا می‌شود. */
+  function setArtHold(on) {
+    const a = V.art;
+    on = !!on;
+    if (on) {
+      const wasHolding = a.hold;
+      a.hold = true;
+      if (!a.on) return true;
+      const now = performance.now() / 1000;
+      // پنجرهٔ عادی تمام شده بود (هاورِ دیرهنگام): همان ورودِ موجود از صفر تکرار شود.
+      // اگر هولد از قبل برقرار است (هاورِ پیوسته یا بازگشتِ سریع) هرگز ری‌استارت نکن:
+      // amt همین حالا ۱ است و ری‌استارت یعنی پرشِ بی‌دلیلِ انیمیشن.
+      if (!wasHolding && a.startedAt && now - a.startedAt >= ART.inS + ART.holdS) { a.startedAt = now; a.amt = 0; }
+      if (!V.running) startLoop();
+      return true;
+    }
+    if (!a.hold) return false;
+    a.hold = false;
+    if (a.on && a.startedAt) {
+      // خروج از همان شفافیتِ لحظه آغاز شود (هاورِ رهاشده وسطِ ورود نپرد)
+      let u = 0;
+      if (a.amt < 1) {
+        let lo = 0, hi = 1;
+        for (let i = 0; i < 18; i++) { const m = (lo + hi) / 2; if (smoother5(m) < 1 - a.amt) lo = m; else hi = m; }
+        u = (lo + hi) / 2;
+      }
+      a.startedAt = performance.now() / 1000 - (ART.inS + ART.holdS + u * ART.outS);
+      if (a.amt <= 0) a.on = false;
+      if (!V.running) startLoop();
+    }
+    return false;
   }
 
   /* ---------- رسم ---------- */
@@ -3937,9 +3972,10 @@ void main(){
       return true;
     },
     enchantState: function () { return { starts: ENCH.starts, why: ENCH.why, introOn: ENCH.intro.on, introT: Math.round(ENCH.intro.t * 100) / 100, idleX: Math.round(V.idleX * 100) / 100, shader: !!(G && G.ench) }; },
-    // §ARTWORK نمایشِ جلدِ آلبوم داخلِ کرهٔ سیاه (۵ ثانیه هر بار). بدونِ منبعِ تصویر یا بی‌CORS: بی‌اثر.
+    // §ARTWORK نمایشِ جلدِ آلبوم داخلِ کرهٔ سیاه (۷ ثانیه هر بار). بدونِ منبعِ تصویر یا بی‌CORS: بی‌اثر.
     artwork: function (src, opts) { return setArtwork(src, opts); },
-    artworkState: function () { const a = V.art; return { on: a.on, amt: Math.round(a.amt * 1000) / 1000, ready: a.ready, hasTexture: !!a.tex, src: a.src }; },
+    artworkHold: function (on) { return setArtHold(on); },
+    artworkState: function () { const a = V.art; return { on: a.on, amt: Math.round(a.amt * 1000) / 1000, ready: a.ready, hold: a.hold, hasTexture: !!a.tex, src: a.src }; },
     // §ARTWORK آزمونِ نقطهٔ صفحه (CSS px) روی همان دایره‌ای که جلد در آن می‌نشیند؛ پلیر با هاور روی
     // این ناحیه جلد را دوباره می‌آورد. pad هدف را کمی بزرگ‌تر می‌کند تا لبهٔ محو هم بگیرد.
     holeHit: function (x, y, pad) {

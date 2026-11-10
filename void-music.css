@@ -47,8 +47,9 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 .vm-meta.is-out { opacity: 0; }
 .vm-meta.is-blank { visibility: hidden; }
 /* §ARTWORK ردیفِ نمایش فقط نام است (هیچ تصویری کنارِ عنوان نیست، پس متن و ستاره‌ها روی محورِ مرکزی
-   می‌مانند). عنوان وقتی جلد دارد دکمه می‌شود: کلیک/Enter همان پنجرهٔ نمایشِ جلد در کرهٔ سیاه را
-   از نو اجرا می‌کند. والد (.vm-meta) pointer-events ندارد، پس فقط همین متن هدفِ کلیک است. */
+   می‌مانند). عنوان وقتی جلد دارد هدفِ هاور می‌شود: mouseenter همان پنجرهٔ نمایشِ جلد در کرهٔ سیاه را
+   اجرا می‌کند و تا mouseleave باز می‌ماند؛ Enter/Space همان مسیر را برایِ کیبورد نگه می‌دارد.
+   والد (.vm-meta) pointer-events ندارد، پس فقط همین متن هدفِ هاور است. */
 /* ردیفِ نام خودش بالای لایهٔ کلیکِ کهکشان می‌نشیند: پودر شدنِ عنوان opacity را زیرِ ۱ می‌برد و
    همان opacity یک بافتِ پشته می‌سازد؛ اگر z-index روی خودِ عنوان باشد، داخلِ آن بافت زندانی
    می‌شود و لایهٔ کهکشان (z-index:0) رویش می‌افتد. */
@@ -56,6 +57,19 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 .vm-meta.is-art .vm-title { pointer-events: auto; cursor: pointer; }
 .vm-meta.is-art .vm-title:hover { color: #fff; }
 .vm-meta.is-art .vm-title:focus-visible { outline: 1px solid rgba(235, 240, 245, .55); outline-offset: 3px; border-radius: 4px; }
+/* §ARTWORK در طولِ نمایشِ جلد با هاور، کنترل‌های پخش و ردیف‌های کنارِ نام با همان گذارِ خودکارپنهان
+   محو می‌شوند و خودِ عنوان (هدفِ هاور) روشن و قابلِ هدف‌گیری می‌ماند. */
+#void-music-root.is-art-live .vm-dock,
+#void-music-root.is-art-live .vm-corner,
+#void-music-root.is-art-live .vm-artist,
+#void-music-root.is-art-live .vm-repeat,
+/* !important: .vm-dock:hover و :focus-within (بالاتر از این انتخابگر) بعد از کلیک روی پخش
+   فوکوس را نگه می‌دارند؛ نمایشِ جلد باید در هر حال آن‌ها را پنهان کند. */
+#void-music-root.is-art-live .vm-stars { opacity: 0 !important; pointer-events: none !important; }
+#void-music-root.is-art-live .vm-dock *,
+#void-music-root.is-art-live .vm-corner * { pointer-events: none !important; }
+/* پودرِ میانِ دو آهنگ (.is-out) نباید هاورِ در جریان را قطع کند: عنوان تا پایانِ نمایش، هدف می‌ماند. */
+#void-music-root.is-art-live .vm-meta.is-out .vm-title { pointer-events: auto; }
 #void-music-root.is-quiet .vm-meta .vm-title, .vm-meta.is-out .vm-title,
 #void-music-root.is-quiet .vm-meta .vm-repeat, .vm-meta.is-out .vm-repeat { pointer-events: none; }
 .vm-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -67,6 +81,7 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 .vm-artist {
     font-size: 12.5px; color: var(--vm-fg); opacity: .9;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: opacity .28s ease;
 }
 .vm-artist:empty { display: none; }
 
