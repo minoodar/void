@@ -436,6 +436,27 @@ html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
   html.void-tv .vm-meta { margin-bottom: 0; }
 }
 
+/* Chromium 70 has no max(): the base rail/quill/discover lose BOTH top and
+   right (static-position chaos) and the corner loses top. These base-scoped
+   fallbacks restore the right column when TV detection has not activated.
+   Inert in modern engines (max() supported); the html.void-tv rules above
+   outrank them by specificity, so TV positioning is never overridden. */
+@supports not (top: max(0px, 0px)) {
+  .vm-corner { top: 14px; }
+  #void-topnav.void-topnav--rail { top: calc(50% - 103px); right: 18px; }
+  #void-god-quill { top: calc(50% + 59px); right: 18px; }
+  #void-god-discover { top: calc(50% + 107px); right: 18px; }
+}
+/* Below ~775px height the original max() resolves to its 30vh+52 branch;
+   mirror it so 540p/720p keep the star-clearing position. */
+@supports not (top: max(0px, 0px)) {
+  @media (max-height: 774px) {
+    #void-topnav.void-topnav--rail { top: calc(30vh + 52px); }
+    #void-god-quill { top: calc(30vh + 214px); }
+    #void-god-discover { top: calc(30vh + 262px); }
+  }
+}
+
 /* ---------------------------------------------------------------------
    3. Low-effect mode: capability- or frame-sampled, never UA-only
    --------------------------------------------------------------------- */
