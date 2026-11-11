@@ -5,6 +5,7 @@
 //   HMAC-SHA-256(LETTER_SALT, "letters:v1|" + ip)   (letter senders)
 //   HMAC-SHA-256(LETTER_SALT, "visitors:v1|" + ip)  (visitor counting)
 //   HMAC-SHA-256(LETTER_SALT, "votes:v1|" + ip)     (letter votes)
+//   HMAC-SHA-256(LETTER_SALT, "admin:v1|" + ip)     (failed admin logins)
 // and is never stored or logged. The domain prefix keeps the hash spaces
 // independent, so one row can never be matched against another.
 //
@@ -32,6 +33,8 @@ const MAX_TRACKS = 200;
 const PRUNE_PER_RUN = 25;
 const VISITOR_HIT_LIMIT = 60;
 const VISITOR_WINDOW_SEC = 3600;
+// Failed admin logins per IP per hour; a successful login is never counted.
+const ADMIN_AUTH_HOURLY_LIMIT = 10;
 const DEV_SALT = 'DEV_FALLBACK_SALT_DO_NOT_USE_IN_PROD';
 const RESET_CONFIRMATION = 'RESET GALAXY';
 const TRACK_ID_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -135,8 +138,14 @@ export default {
       // One guard for every management route: no handler below can forget auth.
       if (url.pathname.startsWith('/admin/')) {
         const headers = adminHeaders(cors);
+        // Before the secret check, so a blocked caller learns nothing about it.
+        if (await adminAuthBlocked(request, env)) {
+          return json({ ok: false, error: 'rate_limited' }, 429, headers);
+        }
         const auth = await adminAuthorized(request, env);
         if (!auth.ok) {
+          // 503 means the secret is unset: a server fault, not an attempt.
+          if (auth.status !== 503) await adminAuthFailed(request, env);
           return json({ ok: false, error: auth.status === 503 ? 'unavailable' : 'forbidden' }, auth.status, headers);
         }
         if (url.pathname === '/admin/session' && request.method === 'GET') {
@@ -369,6 +378,45 @@ async function recentSubmissionStats(env, senderHash, now) {
 function dailyRetryAfter(stats, now) {
   const oldest = Number(stats && stats.oldest) || now;
   return Math.max(1, oldest + DAY_SEC - now);
+}
+
+// Reuses letter_limits with hourly buckets, so pruneBuckets already collects
+// these rows and no schema change is needed. Only the HMAC of the IP is stored.
+async function adminAuthScope(request, env) {
+  if (!env || !env.DB) return null;
+  const salt = resolveSalt(env);
+  if (!salt) return null;
+  return 'admin:' + await hashIp(clientIp(request), salt, 'admin');
+}
+
+// Fail-open: an unreadable counter must never lock the owner out of the dashboard.
+async function adminAuthBlocked(request, env) {
+  try {
+    const scope = await adminAuthScope(request, env);
+    if (!scope) return false;
+    const now = Math.floor(Date.now() / 1000);
+    const row = await env.DB
+      .prepare('SELECT count FROM letter_limits WHERE scope = ? AND bucket = ?')
+      .bind(scope, Math.floor(now / 3600))
+      .first();
+    return Number(row && row.count) >= ADMIN_AUTH_HOURLY_LIMIT;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function adminAuthFailed(request, env) {
+  try {
+    const scope = await adminAuthScope(request, env);
+    if (!scope) return;
+    const now = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(
+      'INSERT INTO letter_limits (scope, bucket, count) VALUES (?, ?, 1) ' +
+      'ON CONFLICT(scope, bucket) DO UPDATE SET count = count + 1 WHERE count < ?'
+    ).bind(scope, Math.floor(now / 3600), ADMIN_AUTH_HOURLY_LIMIT).run();
+  } catch (e) {
+    // A counter write must never turn a login attempt into a 503.
+  }
 }
 
 async function adminAuthorized(request, env) {
