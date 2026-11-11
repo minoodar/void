@@ -344,7 +344,8 @@ async function readJsonBody(request, maxBytes) {
   } catch (e) {
     return { ok: false, status: 400, error: 'invalid_json' };
   }
-  if (raw.length > max) {
+  // raw.length is UTF-16 code units, not bytes: Persian and emoji doubled the cap.
+  if (new TextEncoder().encode(raw).length > max) {
     return { ok: false, status: 413, error: 'payload_too_large' };
   }
   try {
