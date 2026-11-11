@@ -381,13 +381,43 @@ function dailyRetryAfter(stats, now) {
   return Math.max(1, oldest + DAY_SEC - now);
 }
 
+// IPv6 subscribers rotate the low 64 bits (RFC 4941), so a per-address counter
+// resets for free. Hash the /64 prefix; IPv4 stays per-address.
+function adminIpKey(raw) {
+  let ip = String(raw).trim().toLowerCase();
+  const close = ip.indexOf(']');
+  if (ip[0] === '[' && close !== -1) ip = ip.slice(1, close);
+  const zone = ip.indexOf('%');
+  if (zone !== -1) ip = ip.slice(0, zone);
+  if (ip.indexOf(':') === -1) return ip;
+  const dbl = ip.indexOf('::');
+  const groups = s => (s ? s.split(':').filter(Boolean) : []);
+  const head = groups(dbl === -1 ? ip : ip.slice(0, dbl));
+  const tail = groups(dbl === -1 ? '' : ip.slice(dbl + 2));
+  const parts = tail.length ? tail : head;
+  const last = parts[parts.length - 1] || '';
+  if (last.indexOf('.') !== -1) {
+    const o = last.split('.').map(Number);
+    if (o.length !== 4 || o.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return ip;
+    parts.splice(parts.length - 1, 1, ((o[0] << 8) | o[1]).toString(16), ((o[2] << 8) | o[3]).toString(16));
+  }
+  const fill = 8 - head.length - tail.length;
+  if (dbl === -1 ? head.length !== 8 : fill < 1) return ip;
+  const all = head.concat(new Array(fill).fill('0'), tail);
+  if (all.slice(0, 5).every(g => g === '0') && all[5] === 'ffff') {
+    const n = all.slice(6).map(g => parseInt(g, 16));
+    return [(n[0] >> 8) & 255, n[0] & 255, (n[1] >> 8) & 255, n[1] & 255].join('.');
+  }
+  return all.slice(0, 4).map(g => g.padStart(4, '0')).join(':') + '::/64';
+}
+
 // Reuses letter_limits with hourly buckets, so pruneBuckets already collects
 // these rows and no schema change is needed. Only the HMAC of the IP is stored.
 async function adminAuthScope(request, env) {
   if (!env || !env.DB) return null;
   const salt = resolveSalt(env);
   if (!salt) return null;
-  return 'admin:' + await hashIp(clientIp(request), salt, 'admin');
+  return 'admin:' + await hashIp(adminIpKey(clientIp(request)), salt, 'admin');
 }
 
 // Fail-open: an unreadable counter must never lock the owner out of the dashboard.
