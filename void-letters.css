@@ -109,6 +109,7 @@
     z-index: 3;
     box-sizing: border-box;
     display: flex; flex-direction: column; gap: 7px;
+    width: 264px;
     width: min(264px, calc(100vw - 20px));
     padding: 12px 13px 11px;
     border: 1px solid rgba(235, 240, 245, .16);
@@ -416,6 +417,7 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
 }
 .void-god-discover__core::before {
     z-index: -1;
+    top: -6px; right: -6px; bottom: -6px; left: -6px;
     inset: -6px;
     background: radial-gradient(circle, rgba(251, 191, 36, .28) 0%, rgba(251, 191, 36, .12) 48%, transparent 76%);
     opacity: .68;
@@ -423,6 +425,7 @@ body.vm-quiet #void-galaxy-stats { opacity: .5; }
     animation: void-discover-glow-pulse 3.8s ease-in-out infinite;
 }
 .void-god-discover__core::after {
+    top: -2px; right: -2px; bottom: -2px; left: -2px;
     inset: -2px;
     border: 1px solid rgba(255, 236, 180, .26);
     opacity: .72;
@@ -578,7 +581,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
    داخلِ ریشه و پیش از داک/گوشه/عنوان می‌نشیند، پس فقط فضای خالیِ کهکشان را
    می‌گیرد و هیچ دکمه‌ای را نمی‌بلعد. رنگ، تصویر یا حرکت ندارد. */
 #void-god-galaxy {
-    position: absolute; inset: 0;
+    /* Chromium 70 has no `inset` shorthand; without the offsets the click
+       surface collapses and the galaxy stops receiving clicks. */
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0;
     z-index: 0;
     background: transparent;
     pointer-events: auto;
@@ -678,6 +683,7 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     box-sizing: border-box;
     display: flex; flex-direction: column;
     gap: 10px;
+    width: 380px;
     width: min(380px, calc(100vw - 24px));
     padding: 16px 16px 14px;
     border: 1px solid rgba(236, 241, 247, .15);
@@ -1149,7 +1155,9 @@ body.is-letter-reading #void-god-dialog { display: none !important; }
     overscroll-behavior: contain;
 }
 #void-god-dialog {
+    width: 560px;
     width: min(560px, calc(100vw - 24px));
+    max-height: 760px;
     max-height: min(88vh, 760px);
     max-height: min(88dvh, 760px);
     overflow: auto;
@@ -1738,7 +1746,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
     /* The site rail keeps its 44px column at the middle-right on these widths;
        ending the panel before it keeps every action button clear of the icons. */
     #void-god-panel { width: calc(100vw - 84px); padding: 14px 14px 12px; }
-    body.is-letter-reading #void-god-panel { width: min(380px, calc(100vw - 24px)); }
+    body.is-letter-reading #void-god-panel { width: 380px; width: min(380px, calc(100vw - 24px)); }
     .void-god-panel__actions { gap: 4px; }
     .void-god-form { padding: 14px 14px 13px; gap: 9px; }
     .void-god-text { min-height: 168px; font-size: 16px; }
@@ -1819,7 +1827,7 @@ body.vm-quiet .void-god-btn:disabled { cursor: not-allowed !important; }
         border-radius: 50%;
     }
     /* In this tier the rail lives top-left, so the panel can use the full width. */
-    #void-god-panel { width: min(380px, calc(100vw - 24px)); }
+    #void-god-panel { width: 380px; width: min(380px, calc(100vw - 24px)); }
     /* The three marks start at left:64px, so the pill only has 56px in the
        corner: the live dot sits inside the left padding and the gaps tighten
        to keep the collapsed pill (dot + both counts) off the icons. */

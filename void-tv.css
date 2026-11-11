@@ -130,6 +130,7 @@ html.void-tv .void-golden-modal__all {
 html.void-tv .void-golden-modal__count { font-size: 14px; }
 html.void-tv .void-golden-modal__list {
   height: 260px;
+  max-height: 300px; /* legacy fallback */
   max-height: min(42vh, 300px);
   padding: 2px 6px 2px 0;
 }
@@ -185,7 +186,7 @@ html.void-tv #void-music-root {
   gap: 18px;
   padding-bottom: max(40px, env(safe-area-inset-bottom, 0px));
 }
-html.void-tv .vm-meta { max-width: min(720px, 100%); min-height: 52px; gap: 14px; }
+html.void-tv .vm-meta { max-width: 720px; max-width: min(720px, 100%); min-height: 52px; gap: 14px; }
 html.void-tv .vm-title { font-size: 19px; }
 html.void-tv .vm-artist { font-size: 15px; }
 html.void-tv .vm-btn { width: 52px; height: 52px; }
@@ -317,7 +318,9 @@ html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
   html.void-tv .vm-gs-act__txt small { font-size: 16px; }
 
   html.void-tv #void-golden-modal {
+    width: 1120px; /* legacy fallback */
     width: min(1120px, 56vw, calc(100vw - 144px));
+    max-height: 1040px; /* legacy fallback */
     max-height: min(80vh, 80dvh, 1040px);
     border-radius: 30px;
   }
@@ -326,7 +329,7 @@ html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
   html.void-tv .void-golden-modal__total { font-size: 19px; }
   html.void-tv .void-golden-modal__all { min-height: 60px; padding: 10px 18px; font-size: 19px; }
   html.void-tv .void-golden-modal__count { font-size: 19px; }
-  html.void-tv .void-golden-modal__list { height: 400px; max-height: min(46vh, 460px); }
+  html.void-tv .void-golden-modal__list { height: 400px; max-height: 460px; max-height: min(46vh, 460px); }
   html.void-tv .void-golden-modal__pick { padding: 21px 14px; gap: 20px; }
   html.void-tv .void-golden-modal__pick input { width: 30px; height: 30px; border-radius: 8px; }
   html.void-tv .void-golden-modal__icon,
@@ -340,7 +343,7 @@ html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
   html.void-tv .void-golden-modal__share { width: 56px; height: 56px; }
   html.void-tv .void-golden-modal__share svg { width: 24px; height: 24px; }
 
-  html.void-tv #void-golden-share { width: min(620px, calc(100vw - 144px)); }
+  html.void-tv #void-golden-share { width: 620px; width: min(620px, calc(100vw - 144px)); }
   html.void-tv .void-golden-share__panel { padding: 36px 36px 28px; gap: 14px; }
   html.void-tv .void-golden-share__title { font-size: 28px; }
   html.void-tv .void-golden-share__meta { font-size: 19px; }
@@ -350,6 +353,7 @@ html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
   html.void-tv .void-golden-share__close { width: 56px; height: 56px; font-size: 30px; }
 
   html.void-tv #void-invite {
+    width: 560px; /* legacy fallback */
     width: min(560px, calc(100vw - 144px));
     left: max(48px, env(safe-area-inset-left, 0px));
     bottom: calc(372px + env(safe-area-inset-bottom, 0px));
@@ -362,7 +366,7 @@ html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
   html.void-tv .void-invite__go { min-height: 60px; font-size: 19px; }
   html.void-tv .void-invite__close { width: 56px; height: 56px; font-size: 30px; }
 
-  html.void-tv .vm-meta { max-width: min(1080px, 100%); min-height: 78px; gap: 20px; }
+  html.void-tv .vm-meta { max-width: 1080px; max-width: min(1080px, 100%); min-height: 78px; gap: 20px; }
   html.void-tv #void-music-root { padding-bottom: max(60px, env(safe-area-inset-bottom, 0px)); }
   html.void-tv .vm-title { font-size: 28px; }
   html.void-tv .vm-artist { font-size: 21px; }
@@ -379,6 +383,7 @@ html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
   html.void-tv .vm-vol-pop input[type="range"] { width: 220px; height: 48px; }
 
   html.void-tv #void-god-panel {
+    width: 800px; /* legacy fallback */
     width: min(800px, 52vw, calc(100vw - 192px));
     padding: 30px 30px 26px;
     gap: 16px;
@@ -394,7 +399,9 @@ html.void-tv .vm-seek:focus { box-shadow: 0 0 0 3px rgba(251, 191, 36, .85); }
   html.void-tv #void-god-panel .void-god-btn { min-height: 62px; font-size: 20px; }
 
   html.void-tv #void-god-dialog {
+    width: 1100px; /* legacy fallback */
     width: min(1100px, 58vw, calc(100vw - 192px));
+    max-height: 1120px; /* legacy fallback */
     max-height: min(86vh, 86dvh, 1120px);
   }
   html.void-tv .void-god-form { padding: 36px; gap: 18px; }

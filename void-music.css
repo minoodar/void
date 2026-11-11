@@ -21,7 +21,8 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
     --vm-glass: rgba(8, 10, 14, .62);
     --vm-gold: rgba(251, 191, 36, .85);
     --vm-rose: rgba(232, 176, 150, .82);
-    position: fixed; inset: 0; z-index: 1000;
+    /* Chromium 70 has no `inset` shorthand; the four offsets must stay. */
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; inset: 0; z-index: 1000;
     display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
     gap: 14px;
     padding: 0 12px max(14px, env(safe-area-inset-bottom, 0px));
@@ -39,6 +40,7 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 /* ---- عنوان + جلدِ کوچک و محو ---- */
 .vm-meta {
     display: flex; align-items: center; gap: 12px;
+    max-width: 560px;
     max-width: min(560px, 100%);
     min-height: 44px;
     opacity: 1; transition: opacity .28s ease;
@@ -110,7 +112,7 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
     pointer-events: none;
     transition: opacity .5s ease;
 }
-.vm-arc { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.vm-arc { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .vm-arc-base { fill: none; stroke: url(#vmArcGrad); stroke-width: 1; }
 .vm-arc-fill { fill: none; stroke: var(--vm-gold); stroke-width: 1.6; stroke-linecap: round; opacity: .9; }
 .vm-tick { stroke: rgba(199, 210, 254, .45); stroke-width: 1; stroke-linecap: round; }
@@ -239,7 +241,13 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 
 /* سقفِ سوم: ۱۷۶px = ارتفاعِ داک (≤۱۴۴) + پدینگِ پایینِ ریشه (۱۴) + ۸px حاشیهٔ بالا + لنگرِ پاپ‌اور.
    بدونِ آن، پنلِ ۷۸vh در پنجره‌های کوتاه از لبهٔ بالای دید بیرون می‌زد. */
-.vm-queue-pop { width: min(320px, calc(100vw - 24px)); max-height: min(44vh, 360px, calc(100vh - 176px)); display: flex; flex-direction: column; overflow: hidden; }
+.vm-queue-pop {
+    width: 320px;
+    width: min(320px, calc(100vw - 24px));
+    max-height: 44vh;
+    max-height: min(44vh, 360px, calc(100vh - 176px));
+    display: flex; flex-direction: column; overflow: hidden;
+}
 .vm-queue-head { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--vm-line); }
 .vm-chip {
     flex: 1; min-height: 36px; padding: 0 10px; border: 1px solid var(--vm-line); border-radius: 999px;
@@ -279,6 +287,7 @@ body.void-music-leaving > *:not(#starfield):not(.space-vignette):not(#void-music
 /* ---- پیام کوتاه ---- */
 .vm-toast {
     position: absolute; left: 50%; transform: translate(-50%, 6px);
+    max-width: 420px;
     max-width: min(420px, calc(100vw - 32px)); padding: 8px 14px; border-radius: 999px;
     background: rgba(8, 10, 14, .85); border: 1px solid var(--vm-line);
     font-size: 12px; color: var(--vm-fg-hi); text-align: center;
@@ -327,7 +336,7 @@ body.vm-quiet, body.vm-quiet * { cursor: none !important; }
 /* عنوان به ذرات تبدیل شده؛ نسخهٔ DOM محو می‌ماند */
 #void-music-root.is-powder .vm-meta { opacity: 0 !important; visibility: hidden; }
 
-.vm-viz { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; display: block; }
+.vm-viz { position: fixed; top: 0; right: 0; bottom: 0; left: 0; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; display: block; }
 .vm-hud {
     position: fixed; left: 12px; bottom: 12px; z-index: 5; max-width: calc(100vw - 24px);
     padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, .55); border: 1px solid rgba(255, 255, 255, .12);
@@ -408,15 +417,15 @@ body.void-music-on > #void-music-mini, body.void-music-on > .vm-mini-wrap { visi
 }
 .vm-mini:hover, .vm-mini:focus-visible { border-color: rgba(235, 240, 245, .5); }
 .vm-mini:focus-visible { outline: 2px solid rgba(220, 230, 240, .9); outline-offset: 4px; }
-.vm-orb-viz { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; pointer-events: none; }
+.vm-orb-viz { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; width: 100%; height: 100%; border-radius: 50%; pointer-events: none; }
 /* هالهٔ نفس‌کشیدن؛ فقط opacity (ارزان) */
 .vm-mini::after {
-    content: ''; position: absolute; inset: -5px; border-radius: 50%; pointer-events: none; opacity: 0;
+    content: ''; position: absolute; top: -5px; right: -5px; bottom: -5px; left: -5px; inset: -5px; border-radius: 50%; pointer-events: none; opacity: 0;
     box-shadow: 0 0 16px 2px rgba(251, 191, 36, .38), 0 0 34px 6px rgba(90, 150, 255, .20);
 }
 .vm-mini-wrap.is-playing .vm-mini::after { animation: vmOrbBreath 2.6s ease-in-out infinite; }
 @keyframes vmOrbBreath { 0%, 100% { opacity: .12; } 50% { opacity: .95; } }
-.vm-mini-ring { position: absolute; inset: -3px; width: calc(100% + 6px); height: calc(100% + 6px); fill: none; pointer-events: none; }
+.vm-mini-ring { position: absolute; top: -3px; right: -3px; bottom: -3px; left: -3px; inset: -3px; width: calc(100% + 6px); height: calc(100% + 6px); fill: none; pointer-events: none; }
 .vm-mini-track { stroke: rgba(235, 240, 245, .08); stroke-width: 1.2; }
 .vm-mini-prog { stroke: rgba(251, 191, 36, .9); stroke-width: 1.8; stroke-linecap: round; transition: stroke-dashoffset .26s linear; }
 
@@ -429,7 +438,7 @@ body.void-music-on > #void-music-mini, body.void-music-on > .vm-mini-wrap { visi
 .vm-mini-play { right: -7px; bottom: -7px; width: 26px; height: 26px; }
 .vm-mini-stop { right: -6px; top: -6px; width: 22px; height: 22px; opacity: 0; transform: scale(.8); pointer-events: none; }
 .vm-mini-wrap:hover .vm-mini-stop, .vm-mini-wrap:focus-within .vm-mini-stop { opacity: .9; transform: none; pointer-events: auto; }
-.vm-mini-play::before, .vm-mini-stop::before { content: ''; position: absolute; inset: -9px; border-radius: 50%; }   /* هدفِ لمسیِ بزرگ‌تر */
+.vm-mini-play::before, .vm-mini-stop::before { content: ''; position: absolute; top: -9px; right: -9px; bottom: -9px; left: -9px; inset: -9px; border-radius: 50%; }   /* هدفِ لمسیِ بزرگ‌تر */
 .vm-mini-play:hover, .vm-mini-stop:hover, .vm-mini-play:focus-visible, .vm-mini-stop:focus-visible { color: #fff; border-color: rgba(251, 191, 36, .85); opacity: 1; }
 .vm-mini-play:focus-visible, .vm-mini-stop:focus-visible { outline: 2px solid rgba(220, 230, 240, .9); outline-offset: 2px; }
 .vm-mini-play .vm-ico { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -461,13 +470,13 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
 
 /* WebGL-independent visual layer: dormant in Full Galaxy Mode. */
 #void-music-root .vm-fallback-scene {
-    position: absolute; inset: 0; z-index: -1; overflow: hidden;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; z-index: -1; overflow: hidden;
     visibility: hidden; opacity: 0; pointer-events: none;
     background: radial-gradient(circle at 50% 42%, rgba(5, 7, 20, .14), rgba(1, 2, 8, .08) 62%, transparent 100%);
     transition: opacity .45s ease, visibility 0s linear .45s;
 }
 #void-music-root .vm-fallback-stars {
-    position: absolute; inset: 0; opacity: .34;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; opacity: .34;
     background-image:
         radial-gradient(1px 1px at 13% 22%, rgba(210, 220, 255, .64) 45%, transparent 100%),
         radial-gradient(1px 1px at 28% 71%, rgba(200, 216, 255, .54) 45%, transparent 100%),
@@ -482,16 +491,16 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
     box-shadow: 0 0 0 1px rgba(190, 205, 235, .12), 0 0 22px 3px rgba(99, 126, 190, .13), 0 0 58px 8px rgba(87, 111, 176, .08);
 }
 #void-music-root .vm-fallback-hole::before {
-    content: ''; position: absolute; inset: -42%; border-radius: 50%; pointer-events: none;
+    content: ''; position: absolute; top: -42%; right: -42%; bottom: -42%; left: -42%; inset: -42%; border-radius: 50%; pointer-events: none;
     background: radial-gradient(ellipse, transparent 40%, rgba(116, 139, 196, .10) 54%, rgba(157, 173, 211, .035) 63%, transparent 74%);
     animation: vmFallbackHalo 8s ease-in-out infinite;
 }
 #void-music-root .vm-fallback-hole::after {
-    content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; border-radius: 50%; pointer-events: none;
     background: radial-gradient(circle, transparent 47%, rgba(0, 0, 0, .55) 76%, #000 100%);
 }
 #void-music-root .vm-fallback-art {
-    position: absolute; inset: 11%; width: 78%; height: 78%; display: block;
+    position: absolute; top: 11%; right: 11%; bottom: 11%; left: 11%; inset: 11%; width: 78%; height: 78%; display: block;
     object-fit: cover; border-radius: 50%; opacity: 0; pointer-events: none;
 }
 #void-music-root .vm-fallback-art.is-active { animation: vmFallbackArtwork 5s ease both; }
@@ -530,7 +539,7 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
     100% { opacity: 0; }
 }
 @media (orientation: landscape) {
-    #void-music-root .vm-fallback-hole { top: 45%; width: min(9.68vw, 20.9vh); }
+    #void-music-root .vm-fallback-hole { top: 45%; width: 9.68vw; width: min(9.68vw, 20.9vh); }
     #void-music-root.vm-visual-essential .vm-fallback-hole { height: 9.68vw; max-height: 20.9vh; }
     #void-music-root.vm-visual-essential.vm-fallback-missing::before { top: 45%; width: 9.68vw; height: 9.68vw; max-width: 20.9vh; max-height: 20.9vh; }
     #void-music-root.vm-visual-essential.vm-fallback-missing .vm-essential-art { top: 45%; width: 7.56vw; height: 7.56vw; max-width: 16.4vh; max-height: 16.4vh; }
@@ -543,7 +552,7 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
 
 #void-music-root .vm-graphics-notice {
     position: fixed; z-index: 1100; top: max(14px, env(safe-area-inset-top, 0px)); left: 50%;
-    box-sizing: border-box; width: min(390px, calc(100vw - 28px));
+    box-sizing: border-box; width: 390px; width: min(390px, calc(100vw - 28px));
     display: grid; grid-template-columns: minmax(0, 1fr) 30px; grid-template-rows: auto auto;
     align-items: start; column-gap: 12px; row-gap: 4px; padding: 11px 12px 12px 15px;
     border: 1px solid rgba(235, 240, 245, .16); border-inline-start: 2px solid rgba(202, 171, 99, .72);
@@ -586,7 +595,7 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
 #ai-ntp-quickbar > button, #ai-ntp-menu-btn, #ai-ntp-apps-btn { width: 30px; height: 30px; border-radius: 7px; font-size: 14px; }
 #ai-ntp-music-btn svg, #ai-ntp-fs-btn svg { width: 16px; height: 16px; }
 #ai-ntp-fs-btn { position: relative; margin-inline-start: 2px; }   /* relative لازم است تا ::before فقط دورِ خودِ دکمه بزرگ شود */
-#ai-ntp-fs-btn::before { content: ''; position: absolute; inset: -4px; }       /* هدفِ کلیکِ بزرگ‌تر از آیکون */
+#ai-ntp-fs-btn::before { content: ''; position: absolute; top: -4px; right: -4px; bottom: -4px; left: -4px; inset: -4px; }       /* هدفِ کلیکِ بزرگ‌تر از آیکون */
 @media (max-width: 520px) {
     #ai-ntp-quickbar > button, #ai-ntp-menu-btn, #ai-ntp-apps-btn { width: 32px; height: 32px; }   /* لمسی: کمی بزرگ‌تر */
 }
@@ -628,6 +637,7 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
     top: 0;
     left: 50%;
     z-index: 1100;
+    width: 420px;
     width: min(420px, calc(100vw - 24px));
     height: 0;
     transform: translateX(-50%);
@@ -789,7 +799,7 @@ html[dir="rtl"] #ai-ntp-fs-btn { order: -99; }
     .vm-sound-pop .vm-snd-head { flex-wrap: wrap; }
     .vm-sound-pop .vm-snd-head .vm-snd-title { flex: 1 1 100%; letter-spacing: .02em; }
     /* Keep the panel below the top-left counter instead of grazing it. */
-    #void-music-root .vm-sound-pop { max-height: min(78vh, 580px, calc(100vh - 200px)); }
+    #void-music-root .vm-sound-pop { max-height: 78vh; max-height: min(78vh, 580px, calc(100vh - 200px)); }
 }
 .vm-sound-pop .vm-snd-spec { background: rgba(8, 10, 20, .62); }
 .vm-sound-pop .vm-snd-sel {
