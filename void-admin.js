@@ -55,6 +55,7 @@
     timeout: 'زمان انتظار برای پاسخ سرور به پایان رسید. احتمالاً ارتباط شبکه با سرویس ناپایدار است. لطفاً دوباره تلاش کنید.',
     forbidden: 'رمز مدیریت صحیح نیست. لطفاً رمز را بررسی کنید.',
     unauthorized: 'درخواست احراز هویت معتبر نیست. لطفاً دوباره وارد شوید.',
+    rateLimited: 'تعداد تلاش\u200cهای ورود از این اتصال بیش از حد مجاز بود. برای محافظت از سرویس مدیریت، ورود موقتاً محدود شده است. لطفاً تا یک ساعت دیگر دوباره تلاش کنید.',
     unavailable: 'سرویس مدیریت در حال حاضر آماده پاسخ\u200cگویی نیست. لطفاً کمی بعد دوباره تلاش کنید.'
   };
 
@@ -277,6 +278,7 @@
     if (response.network) return LOGIN_MESSAGES.network;
     if (response.status === 403) return LOGIN_MESSAGES.forbidden;
     if (response.status === 401) return LOGIN_MESSAGES.unauthorized;
+    if (response.status === 429) return LOGIN_MESSAGES.rateLimited;
     if (response.status === 503) return LOGIN_MESSAGES.unavailable;
     var code = response.status ? ' (HTTP ' + response.status + ')' : '';
     return 'پاسخ سرور مدیریت غیرمنتظره بود' + code + '. لطفاً دوباره تلاش کنید.';
