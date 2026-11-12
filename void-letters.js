@@ -1797,8 +1797,8 @@
       panelText.setAttribute('role', 'button');
       panelText.setAttribute('aria-pressed', concealed ? 'false' : 'true');
       panelText.setAttribute('aria-label', concealed
-        ? 'Secret letter, hidden. Activate to reveal.'
-        : 'Secret letter revealed. Activate to hide.');
+        ? 'Whispered letter, hidden. Activate to reveal.'
+        : 'Whispered letter revealed. Activate to hide.');
     } else {
       panelText.removeAttribute('tabindex');
       panelText.removeAttribute('role');
@@ -3972,18 +3972,18 @@
     secretEl.type = 'checkbox';
     secretEl.id = 'void-god-secret-ink';
     secretEl.setAttribute('role', 'switch');
-    secretEl.setAttribute('aria-label', 'Secret Ink');
+    secretEl.setAttribute('aria-label', 'Whisper Ink');
     secretEl.setAttribute('aria-describedby', 'void-god-secret-compose-hint');
     secretLab.appendChild(secretEl);
     var secretCopy = make('span', 'void-god-secret__copy');
-    secretCopy.appendChild(make('span', 'void-god-secret__title', 'Secret Ink'));
+    secretCopy.appendChild(make('span', 'void-god-secret__title', 'Whisper Ink'));
     secretCopy.appendChild(make('span', 'void-god-secret__sub', 'Hidden until a reader taps to reveal.'));
     secretLab.appendChild(secretCopy);
     var secretSwitch = make('span', 'void-god-switch');
     secretSwitch.setAttribute('aria-hidden', 'true');
     secretSwitch.appendChild(make('span', 'void-god-switch__track'));
     secretLab.appendChild(secretSwitch);
-    var secretNote = make('span', 'void-god-sr', 'Secret Ink hides the letter behind a reveal tap in the reader.');
+    var secretNote = make('span', 'void-god-sr', 'Whisper Ink hides the letter behind a reveal tap in the reader.');
     secretNote.id = 'void-god-secret-compose-hint';
     secretLab.appendChild(secretNote);
     fs.appendChild(secretLab);
