@@ -144,8 +144,9 @@ export default {
         }
         const auth = await adminAuthorized(request, env);
         if (!auth.ok) {
-          // 503 means the secret is unset: a server fault, not an attempt.
-          if (auth.status !== 503) await adminAuthFailed(request, env);
+          // Count only a presented-but-wrong credential: 503 is a server fault and a
+          // missing header is a probe, not a guess.
+          if (auth.status === 403 || (auth.status === 401 && request.headers.get('Authorization'))) await adminAuthFailed(request, env);
           return json({ ok: false, error: auth.status === 503 ? 'unavailable' : 'forbidden' }, auth.status, headers);
         }
         if (url.pathname === '/admin/session' && request.method === 'GET') {
