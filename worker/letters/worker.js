@@ -1696,10 +1696,29 @@ async function createTrack(request, env, cors) {
   }
 }
 
-async function deleteTrackWithDomainHistory(rawId,env){const old=await env.DB.prepare('SELECT id,title,artist,created_at FROM tracks WHERE id=?').bind(rawId).first();if(!old)return {deleted:0};const bid=domainBatchId(),now=Math.floor(Date.now()/1000);const r=await env.DB.batch([
+function createdAtEpochSeconds(value){
+  if(typeof value==='number')return Number.isSafeInteger(value)?value:null;
+  if(typeof value!=='string'||!value.trim())return null;
+  const input=value.trim();
+  if(/^[+-]?\d+$/.test(input)){
+    const seconds=Number(input);
+    return Number.isSafeInteger(seconds)?seconds:null;
+  }
+  const iso=input.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2}))?$/i);
+  if(!iso)return null;
+  const year=Number(iso[1]),month=Number(iso[2]),day=Number(iso[3]);
+  const daysInMonth=new Date(Date.UTC(year,month,0)).getUTCDate();
+  if(month<1||month>12||day<1||day>daysInMonth)return null;
+  if(iso[4]&&(Number(iso[4])>23||Number(iso[5])>59||Number(iso[6])>59))return null;
+  const milliseconds=Date.parse(input);
+  if(!Number.isFinite(milliseconds))return null;
+  const seconds=Math.floor(milliseconds/1000);
+  return Number.isSafeInteger(seconds)?seconds:null;
+}
+async function deleteTrackWithDomainHistory(rawId,env){const old=await env.DB.prepare('SELECT id,title,artist,created_at FROM tracks WHERE id=?').bind(rawId).first();if(!old)return {deleted:0};const createdAtSnapshot=createdAtEpochSeconds(old.created_at);if(createdAtSnapshot===null)return {deleted:0,error:'invalid_created_at'};const bid=domainBatchId(),now=Math.floor(Date.now()/1000);const r=await env.DB.batch([
 env.DB.prepare("INSERT INTO domain_audit_batches(batch_id,operation,created_at) VALUES(?,'track_delete',?)").bind(bid,now),
 env.DB.prepare('INSERT INTO domain_audit_targets(batch_id,track_id,track_ref,title_snapshot) VALUES(?,?,?,?)').bind(bid,old.id,old.id,old.title),
-env.DB.prepare('INSERT INTO domain_track_deletions(batch_id,track_id,title_snapshot,artist_snapshot,created_at_snapshot,deleted_at) VALUES(?,?,?,?,?,?)').bind(bid,old.id,old.title,old.artist||'',Number(old.created_at)||0,now),
+env.DB.prepare('INSERT INTO domain_track_deletions(batch_id,track_id,title_snapshot,artist_snapshot,created_at_snapshot,deleted_at) VALUES(?,?,?,?,?,?)').bind(bid,old.id,old.title,old.artist||'',createdAtSnapshot,now),
 env.DB.prepare("INSERT INTO domain_audit_changes(batch_id,track_id,track_ref,title_snapshot,domain,previous_assigned,new_assigned,changed_at) SELECT ?,d.track_id,d.track_id,?,d.domain,1,0,? FROM track_domains d WHERE d.track_id=?").bind(bid,old.title,now,old.id),
 env.DB.prepare('DELETE FROM track_domains WHERE track_id=?').bind(old.id),
 env.DB.prepare('DELETE FROM domain_accepted_tracks WHERE track_id=?').bind(old.id),
@@ -1717,6 +1736,7 @@ async function mutateTrack(rawId, request, env, cors) {
 
     if (request.method === 'DELETE') {
       const result = await deleteTrackWithDomainHistory(rawId,env);
+      if(result.error==='invalid_created_at')return json({ok:false,error:'invalid_track_created_at',deleted:0},422,headers);
       if(!result.deleted)return json({ok:true,id:rawId,deleted:0},200,headers);
       return json({ok:true,id:rawId,deleted:result.deleted,audit_batch_id:result.batch_id},200,headers);
     }

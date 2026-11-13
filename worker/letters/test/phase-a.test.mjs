@@ -2165,6 +2165,46 @@ await test('track deletion removes memberships and acceptance but preserves snap
   equal(env.__raw.prepare('SELECT COUNT(*) n FROM tracks WHERE id=?').get('deleted-track').n, 0, 'undo does not recreate track');
 });
 
+await test('track deletion converts ISO created_at to exact Unix seconds in snapshot', async () => {
+  const env=createEnv(); seedDomainTrack(env,'iso-created-at');
+  env.__raw.prepare('UPDATE tracks SET created_at=? WHERE id=?').run('2023-11-14T22:13:20.987Z','iso-created-at');
+  const del=await domainAdmin(env,'/admin/tracks/iso-created-at','DELETE');
+  equal(del.status,200,'ISO timestamp track deletion succeeds');
+  const snapshot=env.__raw.prepare('SELECT created_at_snapshot FROM domain_track_deletions WHERE track_id=?').get('iso-created-at');
+  equal(snapshot.created_at_snapshot,1700000000,'snapshot stores parsed and floored Unix seconds');
+});
+
+await test('track deletion preserves numeric and numeric-string Unix seconds', async () => {
+  const env=createEnv(); seedDomainTrack(env,'numeric-created-at'); seedDomainTrack(env,'numeric-string-created-at');
+  env.__raw.prepare('UPDATE tracks SET created_at=? WHERE id=?').run(1700000123,'numeric-created-at');
+  env.__raw.prepare('UPDATE tracks SET created_at=? WHERE id=?').run('1700000456','numeric-string-created-at');
+  const numeric=await domainAdmin(env,'/admin/tracks/numeric-created-at','DELETE');
+  const numericString=await domainAdmin(env,'/admin/tracks/numeric-string-created-at','DELETE');
+  equal(numeric.status,200,'numeric Unix timestamp deletion succeeds');
+  equal(numericString.status,200,'numeric-string Unix timestamp deletion succeeds');
+  equal(env.__raw.prepare('SELECT created_at_snapshot FROM domain_track_deletions WHERE track_id=?').get('numeric-created-at').created_at_snapshot,1700000123,'numeric seconds remain unchanged');
+  equal(env.__raw.prepare('SELECT created_at_snapshot FROM domain_track_deletions WHERE track_id=?').get('numeric-string-created-at').created_at_snapshot,1700000456,'numeric-string seconds remain unchanged');
+});
+
+await test('invalid track created_at is rejected before D1 batch with no partial deletion', async () => {
+  const env=createEnv();
+  for(const [id,value] of [['invalid-created-at','not-a-timestamp'],['empty-created-at','']]){
+    seedDomainTrack(env,id);
+    env.__raw.prepare('UPDATE tracks SET created_at=? WHERE id=?').run(value,id);
+  }
+  let batches=0; const originalBatch=env.DB.batch.bind(env.DB);
+  env.DB.batch=async statements=>{batches+=1;return originalBatch(statements);};
+  for(const id of ['invalid-created-at','empty-created-at']){
+    const del=await domainAdmin(env,'/admin/tracks/'+id,'DELETE');
+    equal(del.status,422,id+' receives controlled client error');
+    equal(del.data.error,'invalid_track_created_at',id+' error identifies invalid timestamp');
+    equal(env.__raw.prepare('SELECT COUNT(*) n FROM tracks WHERE id=?').get(id).n,1,id+' track remains intact');
+    equal(env.__raw.prepare('SELECT COUNT(*) n FROM domain_track_deletions WHERE track_id=?').get(id).n,0,id+' has no deletion snapshot');
+  }
+  equal(batches,0,'invalid timestamp aborts before any D1 batch');
+  equal(env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_batches WHERE operation='track_delete'").get().n,0,'no deletion audit batch written');
+});
+
 await test('multiple track deletions report tracks deleted, not trigger side effects', async () => {
   const env=createEnv(); seedDomainTrack(env,'multi-del-a'); seedDomainTrack(env,'multi-del-b');
   await domainAdmin(env,'/admin/domain-classifications','POST',{operation:'add',items:[{id:'multi-del-a',domains:['inner','flow']},{id:'multi-del-b',domains:['beyond']}]});
