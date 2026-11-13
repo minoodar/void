@@ -1,0 +1,204 @@
+/* Void · Golden Folder — three domains (INNER / FLOW / BEYOND)
+   PART 1: emblem artwork tokens (shared by every place an emblem is drawn)
+   PART 2: constellation layout layer (responsive, galaxy overlay, interaction)
+   Compatibility floor: Chromium 70. No max()/min()/clamp(), no inset, no aspect-ratio,
+   no :is(), no :focus-visible, no flex gap. */
+
+/* ------------------------------------------------------------------ */
+/* PART 1 — ARTWORK TOKENS                                            */
+/* ------------------------------------------------------------------ */
+.vem {
+  --vem-dust-a: #F2B6D0;   /* galaxy particle palette: pink  */
+  --vem-dust-b: #A8E3B0;   /* green */
+  --vem-dust-c: #B9A8F0;   /* lilac */
+  --vem-dust-d: #CFE4FF;   /* pale blue */
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vem-inner  { --vem-line: #8E9BFF; --vem-line-hi: #AAB4FF; --vem-star: #E1E5FF; }
+.vem-flow   { --vem-line: #4FD1C5; --vem-line-hi: #72E4DA; --vem-star: #D7FBF6; }
+.vem-beyond { --vem-line: #E8C46A; --vem-line-hi: #F2D78C; --vem-star: #FFF1CE; }
+
+.vem .vem-line path { stroke: var(--vem-line); stroke-width: 1.4; opacity: .85; transition: opacity .35s ease, stroke .35s ease; }
+.vem .vem-star      { fill: var(--vem-star); stroke: none; }
+.vem .vem-star-hi   { fill: #fff; stroke: none; }
+.vem .vem-glow      { fill: var(--vem-star); stroke: none; }   /* hero bloom: stacked circles, no filter */
+.vem .vem-glow-1    { opacity: .14; }
+.vem .vem-glow-2    { opacity: .07; }
+.vem .vem-halo      { stroke: var(--vem-star); stroke-width: 1; opacity: .55; }
+.vem .vem-dust      { stroke: none; opacity: .7; }
+.vem .vem-dust-a { fill: var(--vem-dust-a); }
+.vem .vem-dust-b { fill: var(--vem-dust-b); }
+.vem .vem-dust-c { fill: var(--vem-dust-c); }
+.vem .vem-dust-d { fill: var(--vem-dust-d); }
+.vem .vem-detail    { opacity: .3; transition: opacity .35s ease; }
+.vem .vem-detail *  { stroke: var(--vem-line); stroke-width: 1; }
+.vem .vem-detail .vem-dot { fill: var(--vem-star); stroke: none; }
+
+.vem-target:hover .vem-detail,
+.vem-target:focus .vem-detail,
+.vem-target.is-selected .vem-detail { opacity: .7; }
+.vem-target:hover .vem-line path,
+.vem-target:focus .vem-line path,
+.vem-target.is-selected .vem-line path { stroke: var(--vem-line-hi); stroke-width: 1.7; opacity: 1; }
+
+/* ------------------------------------------------------------------ */
+/* PART 2 — CONSTELLATION LAYER                                       */
+/* ------------------------------------------------------------------ */
+.vdc {
+  --vdc-z: 60;                       /* above the galaxy UI; the host may override */
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  z-index: var(--vdc-z);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;              /* the layer never blocks the player; only targets are interactive */
+  transition: opacity .4s ease, visibility 0s linear .4s;
+  color: #EAECF7;
+  font-family: inherit;
+}
+.vdc.is-open { visibility: visible; opacity: 1; transition: opacity .5s ease; }
+
+/* Dim: dims the galaxy only. The host mounts it between the galaxy canvas and its UI
+   (option dimParent). If no dimParent is given it lives inside the layer instead. */
+.vdc-dim {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  z-index: 1;
+  background: rgba(3, 4, 9, .45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .5s ease;
+}
+.vdc-dim.is-open { opacity: 1; }
+
+/* Sacred-geometry hairlines: three circles of radius r, one on each emblem. */
+.vdc-geometry { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+.vdc-circle {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1;
+  stroke-opacity: .06;
+  transition: stroke-dashoffset .9s ease, stroke-opacity .35s ease, stroke .35s ease;
+}
+.vdc[data-active="inner"]  .vdc-circle--inner  { stroke: #8E9BFF; stroke-opacity: .16; }
+.vdc[data-active="flow"]   .vdc-circle--flow   { stroke: #4FD1C5; stroke-opacity: .16; }
+.vdc[data-active="beyond"] .vdc-circle--beyond { stroke: #E8C46A; stroke-opacity: .16; }
+
+/* Targets */
+.vdc-target {
+  position: absolute;
+  display: block;
+  margin: 0; padding: 0; border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  outline: none;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.vdc.is-in .vdc-target { opacity: 1; transition: opacity .25s ease; transition-delay: 0s; }
+
+.vdc-emblem {
+  display: block;
+  margin: 0 auto;
+  border-radius: 50%;                /* gives the focus ring a round shape in Chromium 70 */
+  transform: scale(.94);
+  transition: transform .35s ease, box-shadow .25s ease;
+}
+.vdc.is-in .vdc-emblem { transform: scale(1); }
+.vdc-target:hover .vdc-emblem { transform: scale(1.03); }
+
+/* Focus ring only for keyboard / remote use (:focus-visible does not exist in Chromium 70;
+   the script sets .vdc--kb after a keydown and clears it after a pointer event). */
+.vdc--kb .vdc-target:focus .vdc-emblem { box-shadow: 0 0 0 2px rgba(255, 255, 255, .7); }
+.vdc--tv.vdc--kb .vdc-target:focus .vdc-emblem { box-shadow: 0 0 0 4px rgba(255, 255, 255, .85); }
+
+/* Selection moment: chosen emblem holds, the others fade */
+.vdc-target.is-selected .vdc-emblem { transform: scale(1.06); transition-delay: 0s; }
+.vdc.is-choosing .vdc-target { transition: opacity .3s ease; transition-delay: 0s; }
+.vdc.is-choosing .vdc-target:not(.is-selected) { opacity: 0; }
+
+/* Labels (plain text outside the SVG, always visible) */
+.vdc-label { display: block; margin: 8px auto 0; }
+.vdc-desc bdi { display: block; }
+.vdc-sep { display: none; }
+.vdc-name {
+  display: block;
+  font-size: 13px; font-weight: 700; letter-spacing: .08em; line-height: 1.25;
+  color: #F1F3FB;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .85), 0 0 8px rgba(0, 0, 0, .6);
+}
+.vdc-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px; line-height: 1.35;
+  color: rgba(234, 236, 247, .72);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .85), 0 0 8px rgba(0, 0, 0, .6);
+}
+.vdc-target:hover .vdc-desc, .vdc-target:focus .vdc-desc, .vdc-target.is-selected .vdc-desc { color: rgba(244, 246, 252, .95); }
+
+/* Label modes chosen by the script so labels never touch the Void */
+.vdc--compact .vdc-name { font-size: 12px; letter-spacing: .06em; }
+.vdc--compact .vdc-desc { font-size: 10px; }
+.vdc--compact.vdc--lang-fa .vdc-desc bdi[lang="en"] { display: none; }   /* compact: one descriptor, in the page language */
+.vdc--compact.vdc--lang-en .vdc-desc bdi[lang="fa"] { display: none; }
+.vdc--bare .vdc-desc { display: none; }
+.vdc--bare .vdc-name { font-size: 11px; letter-spacing: .05em; }
+
+/* Close affordance sits in the center of the black Void, clear of the edge controls. */
+.vdc-close {
+  position: absolute;
+  left: 50%; top: 45%;
+  width: 36px; height: 36px; margin-left: -18px;
+  transform: translateY(-50%);
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(10, 12, 20, .5);
+  color: rgba(255, 255, 255, .8);
+  cursor: pointer;
+  outline: none;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity .2s ease, border-color .25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.vdc.is-in .vdc-close { opacity: 1; }
+.vdc-close:hover { border-color: rgba(255, 255, 255, .45); }
+.vdc--kb .vdc-close:focus { box-shadow: 0 0 0 2px rgba(255, 255, 255, .7); }
+.vdc-close svg { display: block; width: 14px; height: 14px; margin: 0 auto; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; fill: none; }
+
+/* Short screens keep the close affordance centered in the Void. */
+@media (max-height: 499px) {
+  .vdc-close { width: 30px; height: 30px; margin-left: -15px; }
+}
+
+/* Android TV: bigger labels, thicker focus ring, no close button (Back key closes) */
+.vdc--tv .vdc-name { font-size: 20px; }
+.vdc--tv .vdc-desc { font-size: 15px; }
+.vdc--tv .vdc-close { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vdc, .vdc.is-open, .vdc-dim, .vdc-circle, .vdc-target, .vdc-emblem, .vdc-close,
+  .vem .vem-detail, .vem .vem-line path { transition: none !important; }
+  .vdc-emblem { transform: none !important; }
+  .vdc-target, .vdc-close { transition-delay: 0s !important; }
+}
+
+/* Validation host layering: dim the galaxy canvas while controls remain above it. */
+#void-music-root > .vdc-dim { z-index:1; }
+#void-music-root > .vdc.is-open { visibility:visible !important; opacity:1 !important; pointer-events:none !important; }
+#void-music-root > :not(.vm-viz):not(.vm-fallback-scene):not(.void-god-galaxy):not(.vdc-dim):not(.vdc) { z-index:2; }
+.vdc-note { position:fixed; left:50%; bottom:24px; z-index:1100; transform:translate(-50%,12px); max-width:calc(100vw - 32px); padding:10px 16px; border:1px solid rgba(255,255,255,.2); border-radius:18px; background:rgba(5,8,15,.88); color:#f3f5fa; font-family:inherit; font-size:13px; line-height:1.4; text-align:center; opacity:0; pointer-events:none; transition:opacity .2s ease,transform .2s ease; }
+.vdc-note.is-visible { opacity:1; transform:translate(-50%,0); }
+@media (prefers-reduced-motion: reduce) { .vdc-note { transition:none; } }

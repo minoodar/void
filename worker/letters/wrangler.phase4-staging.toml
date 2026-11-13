@@ -1,0 +1,13 @@
+name = "void-galaxy-letters-phase4-staging"
+main = "worker.js"
+compatibility_date = "2024-04-05"
+account_id = "4d7266a6d924fd334d9b76cf5b6feb5e"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "void-galaxy-letters-phase4-staging-20261112"
+database_id = "2ef3cd89-e4d4-45f6-9ec1-73ae1a5aa639"
+
+[vars]
+MUSIC_DOMAINS_ENABLED = "1"

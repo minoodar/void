@@ -125,6 +125,8 @@ export default {
       if (url.pathname === '/tracks' && request.method === 'GET') {
         return await listTracks(env, cors, false);
       }
+      if (url.pathname === '/site/domain-status' && request.method === 'GET') return await musicDomainStatus(env,cors);
+      if (url.pathname === '/tracks/domains' && request.method === 'GET') return await musicDomainTracks(env,cors);
       if (url.pathname === '/visitors/hit' && request.method === 'POST') {
         return await recordVisitorHit(request, env, cors);
       }
@@ -149,6 +151,12 @@ export default {
           if (auth.status === 403 || (auth.status === 401 && request.headers.get('Authorization'))) await adminAuthFailed(request, env);
           return json({ ok: false, error: auth.status === 503 ? 'unavailable' : 'forbidden' }, auth.status, headers);
         }
+        if (url.pathname === '/admin/domain-readiness' && request.method === 'GET') return await adminDomainReadiness(env,cors);
+        if (url.pathname === '/admin/domain-tracks' && request.method === 'GET') return await adminDomainTracks(env,cors);
+        if (url.pathname === '/admin/domain-audit' && request.method === 'GET') return await adminDomainAudit(env,cors);
+        if (url.pathname === '/admin/domain-classifications' && request.method === 'POST') return await adminDomainMutate(request,env,cors);
+        if (url.pathname === '/admin/domain-release/accept' && request.method === 'POST') return await adminDomainAccept(request,env,cors);
+        if (url.pathname.startsWith('/admin/domain-audit/') && url.pathname.endsWith('/undo') && request.method === 'POST') return await adminDomainUndo(url.pathname.slice('/admin/domain-audit/'.length,-'/undo'.length),env,cors);
         if (url.pathname === '/admin/session' && request.method === 'GET') {
           return json({ ok: true, service: 'void-galaxy-letters' }, 200, headers);
         }
@@ -1455,6 +1463,71 @@ async function listTracks(env, cors, admin) {
   }
 }
 
+
+const MUSIC_DOMAINS = ['inner', 'flow', 'beyond'];
+const DOMAIN_MAX_BATCH = 200;
+function domainEnabled(env) { return !!env && (env.MUSIC_DOMAINS_ENABLED === '1' || env.MUSIC_DOMAINS_ENABLED === true); }
+function domainJson(payload, status, cors, admin) { return json(payload, status, Object.assign({ 'Cache-Control': 'no-store' }, admin ? adminHeaders(cors) : cors.headers)); }
+function domainBatchId() { return crypto.randomUUID(); }
+async function domainSchemaReady(env) {
+  try { await env.DB.prepare('SELECT s.version FROM domain_state s JOIN track_domains d ON 1=0 LIMIT 1').first(); return true; }
+  catch (_) { return false; }
+}
+async function domainSnapshot(env) {
+  const [state, unclassified, memberships] = await Promise.all([
+    env.DB.prepare('SELECT version FROM domain_state WHERE singleton_id=1').first(),
+    env.DB.prepare("SELECT t.id,t.title FROM tracks t LEFT JOIN track_domains d ON d.track_id=t.id WHERE d.track_id IS NULL ORDER BY t.position,t.id").all(),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM track_domains').first()
+  ]);
+  const unknown=(unclassified.results||[]).map(x=>({id:x.id,title:x.title}));
+  const accepted=await env.DB.prepare('SELECT track_id FROM domain_accepted_tracks ORDER BY track_id').all();
+  const acceptedIds=(accepted.results||[]).map(x=>x.track_id);
+  const exact=unknown.length===acceptedIds.length && unknown.every(x=>acceptedIds.includes(x.id));
+  const acceptance=await env.DB.prepare('SELECT state_version,accepted_count FROM domain_acceptance WHERE singleton_id=1').first();
+  const validAcceptance=!!acceptance && Number(acceptance.state_version)===Number(state.version) && Number(acceptance.accepted_count)===unknown.length && exact;
+  return {state_version:Number(state.version), unclassified:unknown, membership_count:Number(memberships.n)||0, accepted_ids:acceptedIds, accepted:validAcceptance, ready:unknown.length===0||validAcceptance};
+}
+async function musicDomainStatus(env,cors) {
+  if(!domainEnabled(env)||!env.DB) return domainJson({ok:true,enabled:false},200,cors,false);
+  if(!await domainSchemaReady(env)) return domainJson({ok:true,enabled:false},200,cors,false);
+  try { const s=await domainSnapshot(env); return domainJson({ok:true,enabled:s.ready,ready:s.ready,state_version:s.state_version,unclassified_count:s.unclassified.length},200,cors,false); }
+  catch(_) { return domainJson({ok:true,enabled:false},200,cors,false); }
+}
+async function musicDomainTracks(env,cors) {
+  if(!domainEnabled(env)||!env.DB||!await domainSchemaReady(env)) return domainJson({ok:false,error:'domains_unavailable'},503,cors,false);
+  try {
+    const rows=await env.DB.prepare("SELECT t.id,t.title,t.artist,t.audio_url,t.artwork_url,t.duration,t.tags,t.position,d.domain FROM tracks t JOIN track_domains d ON d.track_id=t.id ORDER BY t.position,t.id,d.domain").all();
+    const map=new Map(); for(const r of rows.results||[]){let x=map.get(r.id);if(!x){x={id:r.id,title:r.title,artist:r.artist,audio_url:r.audio_url,artwork_url:r.artwork_url,duration:r.duration===null?null:Number(r.duration),tags:parseTrackTags(r.tags),position:Number(r.position),domains:[]};map.set(r.id,x);}x.domains.push(r.domain);}
+    return domainJson({ok:true,tracks:Array.from(map.values())},200,cors,false);
+  } catch(_) { return domainJson({ok:false,error:'domains_unavailable'},503,cors,false); }
+}
+async function adminDomainReadiness(env,cors) { const h=adminHeaders(cors); if(!await domainSchemaReady(env))return json({ok:false,error:'domains_unavailable'},503,h); try{return json({ok:true,...await domainSnapshot(env)},200,h);}catch(_){return json({ok:false,error:'domains_unavailable'},503,h);} }
+async function adminDomainTracks(env,cors) { const h=adminHeaders(cors); if(!await domainSchemaReady(env))return json({ok:false,error:'domains_unavailable'},503,h); const r=await env.DB.prepare("SELECT t.id,t.title,t.artist,t.position,COALESCE(GROUP_CONCAT(d.domain,','),'') domains FROM tracks t LEFT JOIN track_domains d ON d.track_id=t.id GROUP BY t.id ORDER BY t.position,t.id").all();return json({ok:true,tracks:(r.results||[]).map(x=>({...x,domains:x.domains?x.domains.split(','):[]}))},200,h); }
+async function adminDomainAudit(env,cors) { const h=adminHeaders(cors); if(!await domainSchemaReady(env))return json({ok:false,error:'domains_unavailable'},503,h); const r=await env.DB.prepare("SELECT b.batch_id,b.operation,b.created_at,b.undo_of_batch_id,b.undone_by_batch_id,c.track_id,c.title_snapshot,c.domain,c.previous_assigned,c.new_assigned FROM domain_audit_batches b LEFT JOIN domain_audit_changes c ON c.batch_id=b.batch_id ORDER BY b.created_at DESC,c.track_id LIMIT 1000").all();return json({ok:true,records:r.results||[]},200,h); }
+async function adminDomainMutate(request,env,cors) {
+ const h=adminHeaders(cors); if(!await domainSchemaReady(env))return json({ok:false,error:'domains_unavailable'},503,h);
+ let b;try{b=await request.json();}catch(_){return json({ok:false,error:'invalid_json'},400,h);}
+ const op=b&&b.operation, items=b&&b.items;
+ if(!['add','remove','set'].includes(op)||!Array.isArray(items)||!items.length||items.length>DOMAIN_MAX_BATCH)return json({ok:false,error:'validation_failed',committed:false,applied:0,details:{items:'must contain 1..200 tracks'}},400,h);
+ const ids=new Set();for(const it of items){if(!it||typeof it.id!=='string'||!TRACK_ID_REGEX.test(it.id)||ids.has(it.id)||!Array.isArray(it.domains)||it.domains.some(d=>!MUSIC_DOMAINS.includes(d))||new Set(it.domains).size!==it.domains.length)return json({ok:false,error:'validation_failed',committed:false,applied:0,details:{track_id:it&&it.id||null,reason:'invalid_or_duplicate_target'}},400,h);ids.add(it.id);}
+ const now=Math.floor(Date.now()/1000), id=domainBatchId(), stmts=[env.DB.prepare('INSERT INTO domain_audit_batches(batch_id,operation,created_at) VALUES(?,?,?)').bind(id,op,now)];
+ for(const it of items) stmts.push(env.DB.prepare(`INSERT INTO domain_audit_targets(batch_id,track_id,track_ref,title_snapshot) SELECT ?,?,(SELECT id FROM tracks WHERE id=?),ifnull((SELECT title FROM tracks WHERE id=?),char(0))`).bind(id,it.id,it.id,it.id));
+ for(const it of items) for(const d of (op==='set'?MUSIC_DOMAINS:it.domains)) { const next=op==='set'?Number(it.domains.includes(d)):Number(op==='add'); stmts.push(env.DB.prepare('INSERT INTO domain_audit_changes(batch_id,track_id,track_ref,title_snapshot,domain,previous_assigned,new_assigned,changed_at) SELECT ?,t.id,t.id,t.title,?,EXISTS(SELECT 1 FROM track_domains x WHERE x.track_id=t.id AND x.domain=?),?,? FROM tracks t WHERE t.id=? AND EXISTS(SELECT 1 FROM track_domains x WHERE x.track_id=t.id AND x.domain=?)<>?').bind(id,d,d,next,now,it.id,d,next)); }
+ for(const it of items) for(const d of (op==='set'?MUSIC_DOMAINS:it.domains)) { if(op==='remove'||(op==='set'&&!it.domains.includes(d))) stmts.push(env.DB.prepare('DELETE FROM track_domains WHERE track_id=? AND domain=?').bind(it.id,d)); else stmts.push(env.DB.prepare('INSERT INTO track_domains(track_id,domain,assigned_at) SELECT id,?,? FROM tracks WHERE id=? ON CONFLICT(track_id,domain) DO NOTHING').bind(d,now,it.id)); }
+ try{const out=await env.DB.batch(stmts);const auditCount=items.reduce((n,it)=>n+(op==='set'?3:it.domains.length),0);const applied=out.slice(1+items.length,1+items.length+auditCount).reduce((n,x)=>n+changesOf(x),0);const attempted=items.reduce((n,it)=>n+(op==='set'?3:it.domains.length),0);return json({ok:true,committed:true,batch_id:id,applied,already_present:attempted-applied},200,h);}catch(e){return json({ok:false,error:/unknown_track/.test(String(e&&e.message))?'unknown_track':'transaction_failed',committed:false,applied:0,details:{reason:'batch_rolled_back'}},/unknown_track/.test(String(e&&e.message))?404:409,h);}
+}
+async function adminDomainUndo(batchId,env,cors) {
+ const h=adminHeaders(cors);if(!await domainSchemaReady(env))return json({ok:false,error:'domains_unavailable'},503,h);if(!/^[0-9a-f-]{36}$/i.test(batchId))return json({ok:false,error:'not_found'},404,h);
+ const undo=domainBatchId(),now=Math.floor(Date.now()/1000);
+ const stmts=[env.DB.prepare("INSERT INTO domain_audit_batches(batch_id,operation,created_at,undo_of_batch_id) SELECT ?, 'undo', ?, b.batch_id FROM domain_audit_batches b WHERE b.batch_id=? AND b.operation IN ('add','remove','set') AND b.undone_by_batch_id IS NULL AND NOT EXISTS(SELECT 1 FROM domain_audit_targets a LEFT JOIN tracks t ON t.id=a.track_id WHERE a.batch_id=b.batch_id AND (t.id IS NULL OR a.track_ref IS NULL)) AND NOT EXISTS(SELECT 1 FROM domain_audit_changes c LEFT JOIN domain_audit_targets a ON a.batch_id=c.batch_id AND a.track_id=c.track_id LEFT JOIN tracks t ON t.id=c.track_id LEFT JOIN track_domains d ON d.track_id=c.track_id AND d.domain=c.domain WHERE c.batch_id=b.batch_id AND (a.track_id IS NULL OR t.id IS NULL OR COALESCE(d.track_id IS NOT NULL,0)<>c.new_assigned OR EXISTS(SELECT 1 FROM domain_audit_changes newer JOIN domain_audit_batches newer_batch ON newer_batch.batch_id=newer.batch_id WHERE newer.track_id=c.track_id AND newer.domain=c.domain AND newer_batch.rowid>b.rowid)))").bind(undo,now,batchId),
+ env.DB.prepare("UPDATE domain_audit_batches SET undone_by_batch_id=? WHERE batch_id=? AND operation IN ('add','remove','set') AND undone_by_batch_id IS NULL AND EXISTS(SELECT 1 FROM domain_audit_batches u WHERE u.batch_id=? AND u.undo_of_batch_id=domain_audit_batches.batch_id) AND NOT EXISTS(SELECT 1 FROM domain_audit_changes c LEFT JOIN tracks t ON t.id=c.track_id LEFT JOIN track_domains d ON d.track_id=c.track_id AND d.domain=c.domain WHERE c.batch_id=? AND (t.id IS NULL OR COALESCE(d.track_id IS NOT NULL,0)<>c.new_assigned))").bind(undo,batchId,undo,batchId),
+ env.DB.prepare("INSERT INTO domain_audit_changes(batch_id,track_id,track_ref,title_snapshot,domain,previous_assigned,new_assigned,changed_at) SELECT ?,c.track_id,c.track_ref,c.title_snapshot,c.domain,c.new_assigned,c.previous_assigned,? FROM domain_audit_changes c JOIN domain_audit_batches o ON o.batch_id=c.batch_id AND o.undone_by_batch_id=?").bind(undo,now,undo),
+ env.DB.prepare("DELETE FROM track_domains WHERE EXISTS(SELECT 1 FROM domain_audit_changes c JOIN domain_audit_batches o ON o.batch_id=c.batch_id AND o.undone_by_batch_id=? WHERE c.track_id=track_domains.track_id AND c.domain=track_domains.domain AND c.new_assigned=1)").bind(undo),
+ env.DB.prepare("INSERT INTO track_domains(track_id,domain,assigned_at) SELECT c.track_id,c.domain,? FROM domain_audit_changes c JOIN domain_audit_batches o ON o.batch_id=c.batch_id AND o.undone_by_batch_id=? WHERE c.new_assigned=0 ON CONFLICT(track_id,domain) DO NOTHING").bind(now,undo)];
+ try{const out=await env.DB.batch(stmts);if(!changesOf(out[0])){const state=await env.DB.prepare("SELECT b.operation,b.undone_by_batch_id,EXISTS(SELECT 1 FROM domain_audit_targets a LEFT JOIN tracks t ON t.id=a.track_id WHERE a.batch_id=b.batch_id AND (t.id IS NULL OR a.track_ref IS NULL)) AS deleted_target,EXISTS(SELECT 1 FROM domain_audit_changes c LEFT JOIN domain_audit_targets a ON a.batch_id=c.batch_id AND a.track_id=c.track_id LEFT JOIN tracks t ON t.id=c.track_id LEFT JOIN track_domains d ON d.track_id=c.track_id AND d.domain=c.domain WHERE c.batch_id=b.batch_id AND (a.track_id IS NULL OR t.id IS NULL OR COALESCE(d.track_id IS NOT NULL,0)<>c.new_assigned OR EXISTS(SELECT 1 FROM domain_audit_changes newer JOIN domain_audit_batches newer_batch ON newer_batch.batch_id=newer.batch_id WHERE newer.track_id=c.track_id AND newer.domain=c.domain AND newer_batch.rowid>b.rowid))) AS state_conflict FROM domain_audit_batches b WHERE b.batch_id=?").bind(batchId).first();const reason=!state?'batch_not_found':state.undone_by_batch_id?'already_undone':state.deleted_target?'track_deleted':!['add','remove','set'].includes(state.operation)?'not_undoable':'membership_or_audit_conflict';return json({ok:false,error:'undo_conflict',committed:false,applied:0,details:{reason,message:reason==='track_deleted'?'A track in this batch was deleted; Undo will not recreate it.':reason==='already_undone'?'This batch has already been undone.':'The current memberships no longer match the batch snapshot.'}},state?409:404,h);}if(!changesOf(out[1]))throw new Error('undo_marker_conflict');return json({ok:true,committed:true,batch_id:undo,undo_of:batchId,applied:changesOf(out[2])},200,h);}catch(e){return json({ok:false,error:/UNIQUE|unique|undo_marker_conflict/i.test(String(e&&e.message))?'undo_conflict':'transaction_failed',committed:false,applied:0,details:{reason:'transaction_rolled_back'}},409,h);}
+}
+async function adminDomainAccept(request,env,cors){const h=adminHeaders(cors);if(!await domainSchemaReady(env))return json({ok:false,error:'domains_unavailable'},503,h);let b;try{b=await request.json();}catch(_){return json({ok:false,error:'invalid_json'},400,h);}if(!Number.isSafeInteger(b&&b.expected_state_version)||b.expected_state_version<0)return json({ok:false,error:'validation_failed'},400,h);const now=Math.floor(Date.now()/1000);try{const out=await env.DB.batch([env.DB.prepare('DELETE FROM domain_accepted_tracks WHERE EXISTS(SELECT 1 FROM domain_state WHERE singleton_id=1 AND version=?)').bind(b.expected_state_version),env.DB.prepare("INSERT INTO domain_accepted_tracks(track_id,title_snapshot,accepted_at) SELECT t.id,t.title,? FROM tracks t LEFT JOIN track_domains d ON d.track_id=t.id WHERE d.track_id IS NULL AND EXISTS(SELECT 1 FROM domain_state WHERE singleton_id=1 AND version=?)").bind(now,b.expected_state_version),env.DB.prepare("INSERT INTO domain_acceptance(singleton_id,accepted_at,state_version,accepted_count) SELECT 1,?,version,(SELECT COUNT(*) FROM domain_accepted_tracks) FROM domain_state WHERE singleton_id=1 AND version=? ON CONFLICT(singleton_id) DO UPDATE SET accepted_at=excluded.accepted_at,state_version=excluded.state_version,accepted_count=excluded.accepted_count").bind(now,b.expected_state_version)]);if(!changesOf(out[2]))return json({ok:false,error:'stale_snapshot',committed:false},409,h);const snap=await domainSnapshot(env);return json({ok:true,accepted_ids:snap.accepted_ids,state_version:snap.state_version},200,h);}catch(e){return json({ok:false,error:'transaction_failed',committed:false},409,h);}}
+
 function validText(value, field, max) {
   if (typeof value !== 'string') return { ok: false, error: field + '_invalid' };
   const clean = value.normalize('NFC').trim();
@@ -1623,6 +1696,17 @@ async function createTrack(request, env, cors) {
   }
 }
 
+async function deleteTrackWithDomainHistory(rawId,env){const old=await env.DB.prepare('SELECT id,title,artist,created_at FROM tracks WHERE id=?').bind(rawId).first();if(!old)return {deleted:0};const bid=domainBatchId(),now=Math.floor(Date.now()/1000);const r=await env.DB.batch([
+env.DB.prepare("INSERT INTO domain_audit_batches(batch_id,operation,created_at) VALUES(?,'track_delete',?)").bind(bid,now),
+env.DB.prepare('INSERT INTO domain_audit_targets(batch_id,track_id,track_ref,title_snapshot) VALUES(?,?,?,?)').bind(bid,old.id,old.id,old.title),
+env.DB.prepare('INSERT INTO domain_track_deletions(batch_id,track_id,title_snapshot,artist_snapshot,created_at_snapshot,deleted_at) VALUES(?,?,?,?,?,?)').bind(bid,old.id,old.title,old.artist||'',Number(old.created_at)||0,now),
+env.DB.prepare("INSERT INTO domain_audit_changes(batch_id,track_id,track_ref,title_snapshot,domain,previous_assigned,new_assigned,changed_at) SELECT ?,d.track_id,d.track_id,?,d.domain,1,0,? FROM track_domains d WHERE d.track_id=?").bind(bid,old.title,now,old.id),
+env.DB.prepare('DELETE FROM track_domains WHERE track_id=?').bind(old.id),
+env.DB.prepare('DELETE FROM domain_accepted_tracks WHERE track_id=?').bind(old.id),
+env.DB.prepare('UPDATE domain_audit_targets SET track_ref=NULL WHERE track_ref=?').bind(old.id),
+env.DB.prepare('UPDATE domain_audit_changes SET track_ref=NULL WHERE track_ref=?').bind(old.id),
+env.DB.prepare('DELETE FROM tracks WHERE id=?').bind(old.id),
+env.DB.prepare('SELECT changes() AS direct_changes')]);return {deleted:Number(r[9]&&r[9].results&&r[9].results[0]&&r[9].results[0].direct_changes)||0,batch_id:bid};}
 async function mutateTrack(rawId, request, env, cors) {
   const headers = adminHeaders(cors);
   if (!env || !env.DB) return json({ ok: false, error: 'unavailable' }, 503, headers);
@@ -1632,8 +1716,9 @@ async function mutateTrack(rawId, request, env, cors) {
     const existing = await env.DB.prepare('SELECT * FROM tracks WHERE id = ?').bind(rawId).first();
 
     if (request.method === 'DELETE') {
-      const result = await env.DB.prepare('DELETE FROM tracks WHERE id = ?').bind(rawId).run();
-      return json({ ok: true, id: rawId, deleted: changesOf(result) }, 200, headers);
+      const result = await deleteTrackWithDomainHistory(rawId,env);
+      if(!result.deleted)return json({ok:true,id:rawId,deleted:0},200,headers);
+      return json({ok:true,id:rawId,deleted:result.deleted,audit_batch_id:result.batch_id},200,headers);
     }
 
     if (!existing) return json({ ok: false, error: 'not_found' }, 404, headers);

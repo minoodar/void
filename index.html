@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="stylesheet" href="void-music.css">
   <link rel="stylesheet" href="void-letters.css?v=20261109">
-  <link rel="stylesheet" href="void-admin.css">
+  <link rel="stylesheet" href="void-admin.css?v=20261113">
   <link rel="stylesheet" href="void-tv.css?v=20261108">
   <link rel="stylesheet" href="void-glass.css?v=20261108g">
   <script src="void-tv.js?v=20261108"></script>
@@ -821,6 +821,7 @@
     }
 
   </style>
+  <link rel="stylesheet" href="void-domains.css">
 </head>
 <body>
   <noscript>Void needs JavaScript to play audio and render the visualizer.</noscript>
@@ -1542,6 +1543,7 @@
       window.VoidGolden = {
         ready: catalogueReady,
         getTracks: snapshotTracks,
+        replaceTracks: function (tracks) { if (!Array.isArray(tracks)) return false; applyTracks(tracks); return true; },
         find: findTrack,
         play: function (id) {
           var tr = findTrack(id);
@@ -1719,6 +1721,7 @@
   <script src="void-letters-api.js?v=20261109" defer></script>
   <script src="void-letters.js?v=20261109" defer></script>
   <script src="void-artwork.js" defer></script>
-  <script src="void-admin.js" defer></script>
+  <script src="void-admin.js?v=20261113" defer></script>
+  <script src="void-domains.js"></script>
 </body>
 </html>

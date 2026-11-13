@@ -33,6 +33,7 @@ const migrationSql = await readFile(join(root, 'migrations', '2026-10-30-daily-l
 const visitorMigrationSql = await readFile(join(root, 'migrations', '2026-10-31-visitor-counter.sql'), 'utf8');
 const voteMigrationSql = await readFile(join(root, 'migrations', '2026-10-31-letter-votes.sql'), 'utf8');
 const voteRetractMigrationSql = await readFile(join(root, 'migrations', '2026-11-01-vote-retract.sql'), 'utf8');
+const domainMigrationSql = await readFile(join(root, 'migrations', '2026-11-12-music-domains.sql'), 'utf8');
 
 const workerUrl = 'data:text/javascript;base64,' + Buffer.from(workerSource, 'utf8').toString('base64');
 const worker = await import(workerUrl);
@@ -1971,6 +1972,209 @@ await test('the vote route keeps its CORS and failure contract', async () => {
 });
 
 // ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// Music Domains Phase 4 transactional regression coverage.
+const clearedDomainEnvs = new WeakSet();
+function seedDomainTrack(env, id, title = id) {
+  if (!clearedDomainEnvs.has(env)) {
+    env.__raw.exec('DELETE FROM track_domains; DELETE FROM domain_audit_changes; DELETE FROM domain_audit_targets; DELETE FROM domain_track_deletions; DELETE FROM domain_audit_batches; DELETE FROM domain_accepted_tracks; DELETE FROM domain_acceptance; DELETE FROM tracks;');
+    clearedDomainEnvs.add(env);
+  }
+  env.__raw.prepare('INSERT INTO tracks(id,title,artist,audio_url,position,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')
+    .run(id, title, 'Test Artist', 'https://example.test/' + id + '.mp3', 1, 1, 1);
+}
+function domainAdmin(env, path, method = 'GET', body) {
+  return call(env, path, { method, body, headers: { Authorization: 'Bearer ' + TEST_ADMIN_SECRET } });
+}
+async function currentDomainVersion(env) {
+  return Number(env.__raw.prepare('SELECT version FROM domain_state WHERE singleton_id=1').get().version);
+}
+
+await test('Music domains migration is repeatable and core tables exist', async () => {
+  const env = createEnv();
+  env.__raw.exec(domainMigrationSql);
+  for (const name of ['track_domains','domain_state','domain_audit_batches','domain_audit_targets','domain_audit_changes','domain_track_deletions','domain_acceptance','domain_accepted_tracks']) {
+    equal(env.__raw.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name=?").get(name).n, 1, name + ' exists');
+  }
+});
+
+await test('domain status is disabled when flag is off and schema failures are graceful', async () => {
+  const env = createEnv({ MUSIC_DOMAINS_ENABLED: '0' });
+  const disabled = await call(env, '/site/domain-status');
+  equal(disabled.status, 200, 'disabled status is successful'); equal(disabled.data.enabled, false, 'flag defaults off');
+  equal((await call(env, '/tracks/domains')).status, 503, 'catalog unavailable while disabled');
+  env.__raw.exec('DROP TRIGGER IF EXISTS domain_membership_insert; DROP TRIGGER IF EXISTS domain_membership_delete; DROP TRIGGER IF EXISTS domain_tracks_insert; DROP TRIGGER IF EXISTS domain_tracks_delete; DROP TABLE domain_audit_changes; DROP TABLE domain_audit_targets; DROP TABLE domain_audit_batches; DROP TABLE domain_accepted_tracks; DROP TABLE domain_acceptance; DROP TABLE domain_track_deletions; DROP TABLE track_domains; DROP TABLE domain_state;');
+  env.MUSIC_DOMAINS_ENABLED = '1';
+  equal((await call(env, '/site/domain-status')).data.enabled, false, 'missing schema is disabled');
+  equal((await call(env, '/tracks')).status, 200, 'legacy tracks route remains available');
+});
+
+await test('domain listing, batch assignment, accurate idempotency and unknown-track rollback', async () => {
+  const env = createEnv({ MUSIC_DOMAINS_ENABLED: '1' }); seedDomainTrack(env, 'domain-track-a'); seedDomainTrack(env, 'domain-track-b');
+  const first = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'domain-track-a',domains:['inner','flow']},{id:'domain-track-b',domains:['beyond']}] });
+  equal(first.status, 200, 'valid batch succeeds'); equal(first.data.committed, true, 'batch commits'); equal(first.data.applied, 3, 'three membership changes');
+  const second = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'domain-track-a',domains:['inner','flow']}] });
+  equal(second.data.applied, 0, 'repeat is idempotent'); equal(second.data.already_present, 2, 'repeat reports present memberships');
+  const listing = await call(env, '/tracks/domains'); equal(listing.status, 200, 'domain list loads'); equal(listing.data.tracks.length, 2, 'classified tracks returned');
+  const before = env.__raw.prepare('SELECT COUNT(*) n FROM domain_audit_batches').get().n;
+  const bad = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'domain-track-a',domains:['beyond']},{id:'unknown-domain-track',domains:['inner']}] });
+  equal(bad.status, 404, 'unknown track is rejected'); equal(bad.data.committed, false, 'bad batch reports rollback'); equal(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains').get().n, 3, 'no membership partially committed'); equal(env.__raw.prepare('SELECT COUNT(*) n FROM domain_audit_batches').get().n, before, 'no audit batch partially committed');
+  const remove = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'remove', items:[{id:'domain-track-a',domains:['flow']}] }); equal(remove.data.applied, 1, 'remove reports applied change');
+});
+
+await test('readiness accepts exact unclassified snapshot and rejects stale version', async () => {
+  const env = createEnv({ MUSIC_DOMAINS_ENABLED: '1' }); seedDomainTrack(env, 'accept-a'); seedDomainTrack(env, 'accept-b');
+  const initial = await domainAdmin(env, '/admin/domain-readiness'); equal(initial.data.ready, false, 'unclassified tracks block readiness'); equal(initial.data.unclassified.length, 2, 'unclassified IDs listed');
+  const accepted = await domainAdmin(env, '/admin/domain-release/accept', 'POST', { expected_state_version: initial.data.state_version }); equal(accepted.status, 200, 'snapshot accepted'); equal(accepted.data.accepted_ids.length, 2, 'exact IDs stored');
+  seedDomainTrack(env, 'accept-new'); const changed = await domainAdmin(env, '/admin/domain-readiness'); equal(changed.data.ready, false, 'new unclassified track invalidates readiness');
+  const stale = await domainAdmin(env, '/admin/domain-release/accept', 'POST', { expected_state_version: initial.data.state_version }); equal(stale.status, 409, 'stale snapshot rejected'); equal(stale.data.committed, false, 'stale request reports no commit');
+  const refreshed = await domainAdmin(env, '/admin/domain-readiness'); const acceptedNew = await domainAdmin(env, '/admin/domain-release/accept', 'POST', { expected_state_version: refreshed.data.state_version }); equal(acceptedNew.status, 200, 'current exact snapshot accepted'); equal(acceptedNew.data.accepted_ids.length, 3, 'current unclassified set captured'); equal((await domainAdmin(env, '/admin/domain-readiness')).data.ready, true, 'readiness follows exact snapshot');
+});
+
+await test('audit is created and eligible Undo reverses only the original membership change', async () => {
+  const env = createEnv(); seedDomainTrack(env, 'undo-good');
+  const add = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'undo-good',domains:['inner']}] });
+  const audit = await domainAdmin(env, '/admin/domain-audit'); assert(audit.data.records.some(r => r.batch_id===add.data.batch_id && r.domain==='inner'), 'audit change exists');
+  const undo = await domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo', 'POST', {}); equal(undo.status, 200, 'eligible undo succeeds'); equal(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains WHERE track_id=?').get('undo-good').n, 0, 'membership reversed');
+  const repeat = await domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo', 'POST', {}); equal(repeat.status, 409, 'repeat undo rejected'); equal(repeat.data.details.reason, 'already_undone', 'repeat reason explained');
+  equal(env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_batches WHERE undo_of_batch_id=?").get(add.data.batch_id).n, 1, 'single undo record');
+});
+
+await test('conflicting Undo is rejected without a partial undo record', async () => {
+  const env = createEnv(); seedDomainTrack(env, 'undo-conflict');
+  const add = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'undo-conflict',domains:['flow']}] });
+  await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'remove', items:[{id:'undo-conflict',domains:['flow']}] });
+  await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'undo-conflict',domains:['flow']}] });
+  const before = env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_batches WHERE operation='undo'").get().n;
+  const rejected = await domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo', 'POST', {}); equal(rejected.status, 409, 'changed membership blocks undo'); equal(rejected.data.committed, false, 'conflict reports no commit'); assert(rejected.data.details.reason.includes('conflict'), 'conflict reason is informative');
+  equal(env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_batches WHERE operation='undo'").get().n, before, 'rejected undo leaves no audit marker');
+});
+
+await test('two concurrent Undo requests cannot both succeed', async () => {
+  const env = createEnv(); seedDomainTrack(env, 'undo-race');
+  const add = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'undo-race',domains:['beyond']}] });
+  const rs = await Promise.all([domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo','POST',{}),domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo','POST',{})]);
+  equal(rs.filter(r=>r.status===200).length, 1, 'only one undo succeeds'); equal(rs.filter(r=>r.status===409).length, 1, 'other request conflicts');
+});
+
+await test('track deletion removes memberships and acceptance but preserves snapshots and blocks Undo recreation', async () => {
+  const env = createEnv(); seedDomainTrack(env, 'deleted-track','Deleted Snapshot Title');
+  const add = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'deleted-track',domains:['inner']}] });
+  seedDomainTrack(env, 'accepted-delete','Accepted Snapshot');
+  const preAccept=await domainAdmin(env,'/admin/domain-readiness');
+  const accepted=await domainAdmin(env,'/admin/domain-release/accept','POST',{expected_state_version:preAccept.data.state_version}); equal(accepted.status,200,'unclassified snapshot accepted before deletion');
+  env.__raw.exec('PRAGMA foreign_keys=OFF');
+  const del = await domainAdmin(env, '/admin/tracks/deleted-track', 'DELETE'); equal(del.status, 200, 'track deleted'); equal(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains WHERE track_id=?').get('deleted-track').n, 0, 'membership removed');
+  equal(env.__raw.prepare('SELECT COUNT(*) n FROM domain_track_deletions WHERE track_id=?').get('deleted-track').n, 1, 'deletion snapshot preserved');
+  equal(env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_changes WHERE track_id=? AND title_snapshot=? AND track_ref IS NULL").get('deleted-track','Deleted Snapshot Title').n, 2, 'both audit snapshots survive without FK');
+  const delAccepted=await domainAdmin(env,'/admin/tracks/accepted-delete','DELETE'); equal(delAccepted.status,200,'accepted unclassified track deleted'); equal(env.__raw.prepare('SELECT COUNT(*) n FROM domain_accepted_tracks WHERE track_id=?').get('accepted-delete').n,0,'accepted ID explicitly removed with foreign keys off');
+  const undo = await domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo','POST',{}); equal(undo.status, 409, 'deleted target cannot be recreated'); equal(undo.data.details.reason, 'track_deleted', 'deletion conflict explained');
+  equal(env.__raw.prepare('SELECT COUNT(*) n FROM tracks WHERE id=?').get('deleted-track').n, 0, 'undo does not recreate track');
+});
+
+await test('batch limit boundary and API validation errors', async () => {
+  const env = createEnv();
+  const boundary = Array.from({length:200},(_,i)=>({id:'limit-'+i,domains:['inner']}));
+  boundary.forEach((item)=>seedDomainTrack(env,item.id));
+  const exact = await domainAdmin(env, '/admin/domain-classifications','POST',{operation:'add',items:boundary}); equal(exact.status,200,'200 target boundary accepted'); equal(exact.data.applied,200,'200 targets commit completely');
+  const over = Array.from({length:201},(_,i)=>({id:'over-'+i,domains:['inner']}));
+  const tooMany = await domainAdmin(env, '/admin/domain-classifications','POST',{operation:'add',items:over}); equal(tooMany.status,400,'201 targets rejected'); equal(tooMany.data.committed,false,'oversized batch not committed');
+  const malformed = await call(env,'/admin/domain-classifications',{method:'POST',body:'{',headers:{Authorization:'Bearer '+TEST_ADMIN_SECRET}}); equal(malformed.status,400,'malformed JSON rejected');
+  const unauth = await call(env,'/admin/domain-readiness'); equal(unauth.status,401,'admin endpoint remains protected');
+});
+
+await test('membership counters match actual D1-target operations from 1 through 200 and rollback stays atomic', async () => {
+  const env = createEnv({ MUSIC_DOMAINS_ENABLED: '1' });
+  for (const size of [1, 3, 20, 200]) {
+    const items = Array.from({length:size}, (_,i) => ({id:'count-'+size+'-'+i,domains:['inner']}));
+    items.forEach(x => seedDomainTrack(env, x.id));
+    const before = Number(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains').get().n);
+    const added = await domainAdmin(env, '/admin/domain-classifications', 'POST', {operation:'add',items});
+    const after = Number(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains').get().n);
+    equal(added.status, 200, size+'-target batch succeeds'); equal(added.data.applied, size, size+'-target API count'); equal(after-before, size, size+' actual membership inserts');
+    const repeat = await domainAdmin(env, '/admin/domain-classifications', 'POST', {operation:'add',items});
+    equal(repeat.data.applied, 0, size+' repeated batch has no changes'); equal(repeat.data.already_present, size, size+' repeated count');
+  }
+  const over = Array.from({length:201}, (_,i) => ({id:'count-over-'+i,domains:['inner']}));
+  over.forEach(x => seedDomainTrack(env, x.id));
+  const beforeOver = Number(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains').get().n);
+  const rejected = await domainAdmin(env, '/admin/domain-classifications', 'POST', {operation:'add',items:over});
+  equal(rejected.status, 400, '201-target batch rejected'); equal(Number(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains').get().n), beforeOver, '201-target batch made no memberships');
+  const partial = [
+    {id:'count-rollback-a',domains:['flow']},
+    {id:'count-rollback-b',domains:['beyond']},
+    {id:'count-rollback-missing',domains:['inner']}
+  ];
+  seedDomainTrack(env, 'count-rollback-a'); seedDomainTrack(env, 'count-rollback-b');
+  const beforePartial = Number(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains').get().n);
+  const failed = await domainAdmin(env, '/admin/domain-classifications', 'POST', {operation:'add',items:partial});
+  equal(failed.status, 404, 'unknown track batch rejected'); equal(failed.data.applied, 0, 'failed batch reports no changes'); equal(Number(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains').get().n), beforePartial, 'failed batch rolled back all memberships');
+});
+
+await test('readiness accepts exact unclassified snapshot and rejects stale version', async () => {
+  const env = createEnv({ MUSIC_DOMAINS_ENABLED: '1' }); seedDomainTrack(env, 'accept-a'); seedDomainTrack(env, 'accept-b');
+  const initial = await domainAdmin(env, '/admin/domain-readiness'); equal(initial.data.ready, false, 'unclassified tracks block readiness'); equal(initial.data.unclassified.length, 2, 'unclassified IDs listed');
+  const accepted = await domainAdmin(env, '/admin/domain-release/accept', 'POST', { expected_state_version: initial.data.state_version }); equal(accepted.status, 200, 'snapshot accepted'); equal(accepted.data.accepted_ids.length, 2, 'exact IDs stored');
+  seedDomainTrack(env, 'accept-new'); const changed = await domainAdmin(env, '/admin/domain-readiness'); equal(changed.data.ready, false, 'new unclassified track invalidates readiness');
+  const stale = await domainAdmin(env, '/admin/domain-release/accept', 'POST', { expected_state_version: initial.data.state_version }); equal(stale.status, 409, 'stale snapshot rejected'); equal(stale.data.committed, false, 'stale request reports no commit');
+  const refreshed = await domainAdmin(env, '/admin/domain-readiness'); const acceptedNew = await domainAdmin(env, '/admin/domain-release/accept', 'POST', { expected_state_version: refreshed.data.state_version }); equal(acceptedNew.status, 200, 'current exact snapshot accepted'); equal(acceptedNew.data.accepted_ids.length, 3, 'current unclassified set captured'); equal((await domainAdmin(env, '/admin/domain-readiness')).data.ready, true, 'readiness follows exact snapshot');
+});
+
+await test('audit is created and eligible Undo reverses only the original membership change', async () => {
+  const env = createEnv(); seedDomainTrack(env, 'undo-good');
+  const add = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'undo-good',domains:['inner']}] });
+  const audit = await domainAdmin(env, '/admin/domain-audit'); assert(audit.data.records.some(r => r.batch_id===add.data.batch_id && r.domain==='inner'), 'audit change exists');
+  const undo = await domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo', 'POST', {}); equal(undo.status, 200, 'eligible undo succeeds'); equal(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains WHERE track_id=?').get('undo-good').n, 0, 'membership reversed');
+  const repeat = await domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo', 'POST', {}); equal(repeat.status, 409, 'repeat undo rejected'); equal(repeat.data.details.reason, 'already_undone', 'repeat reason explained');
+  equal(env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_batches WHERE undo_of_batch_id=?").get(add.data.batch_id).n, 1, 'single undo record');
+});
+
+await test('conflicting Undo is rejected without a partial undo record', async () => {
+  const env = createEnv(); seedDomainTrack(env, 'undo-conflict');
+  const add = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'undo-conflict',domains:['flow']}] });
+  await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'remove', items:[{id:'undo-conflict',domains:['flow']}] });
+  await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'undo-conflict',domains:['flow']}] });
+  const before = env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_batches WHERE operation='undo'").get().n;
+  const rejected = await domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo', 'POST', {}); equal(rejected.status, 409, 'changed membership blocks undo'); equal(rejected.data.committed, false, 'conflict reports no commit'); assert(rejected.data.details.reason.includes('conflict'), 'conflict reason is informative');
+  equal(env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_batches WHERE operation='undo'").get().n, before, 'rejected undo leaves no audit marker');
+});
+
+await test('two concurrent Undo requests cannot both succeed', async () => {
+  const env = createEnv(); seedDomainTrack(env, 'undo-race');
+  const add = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'undo-race',domains:['beyond']}] });
+  const rs = await Promise.all([domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo','POST',{}),domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo','POST',{})]);
+  equal(rs.filter(r=>r.status===200).length, 1, 'only one undo succeeds'); equal(rs.filter(r=>r.status===409).length, 1, 'other request conflicts');
+});
+
+await test('track deletion removes memberships and acceptance but preserves snapshots and blocks Undo recreation', async () => {
+  const env = createEnv(); seedDomainTrack(env, 'deleted-track','Deleted Snapshot Title');
+  const add = await domainAdmin(env, '/admin/domain-classifications', 'POST', { operation:'add', items:[{id:'deleted-track',domains:['inner']}] });
+  seedDomainTrack(env, 'accepted-delete','Accepted Snapshot');
+  const preAccept=await domainAdmin(env,'/admin/domain-readiness');
+  const accepted=await domainAdmin(env,'/admin/domain-release/accept','POST',{expected_state_version:preAccept.data.state_version}); equal(accepted.status,200,'unclassified snapshot accepted before deletion');
+  env.__raw.exec('PRAGMA foreign_keys=OFF');
+  const del = await domainAdmin(env, '/admin/tracks/deleted-track', 'DELETE'); equal(del.status, 200, 'track deleted'); equal(env.__raw.prepare('SELECT COUNT(*) n FROM track_domains WHERE track_id=?').get('deleted-track').n, 0, 'membership removed');
+  equal(del.data.deleted, 1, 'one deleted track reported independent of trigger updates');
+  equal(env.__raw.prepare('SELECT COUNT(*) n FROM domain_track_deletions WHERE track_id=?').get('deleted-track').n, 1, 'deletion snapshot preserved');
+  equal(env.__raw.prepare("SELECT COUNT(*) n FROM domain_audit_changes WHERE track_id=? AND title_snapshot=? AND track_ref IS NULL").get('deleted-track','Deleted Snapshot Title').n, 2, 'both audit snapshots survive without FK');
+  const delAccepted=await domainAdmin(env,'/admin/tracks/accepted-delete','DELETE'); equal(delAccepted.status,200,'accepted unclassified track deleted'); equal(env.__raw.prepare('SELECT COUNT(*) n FROM domain_accepted_tracks WHERE track_id=?').get('accepted-delete').n,0,'accepted ID explicitly removed with foreign keys off');
+  equal(delAccepted.data.deleted,1,'single unclassified track deletion count');
+  const undo = await domainAdmin(env, '/admin/domain-audit/'+add.data.batch_id+'/undo','POST',{}); equal(undo.status, 409, 'deleted target cannot be recreated'); equal(undo.data.details.reason, 'track_deleted', 'deletion conflict explained');
+  equal(env.__raw.prepare('SELECT COUNT(*) n FROM tracks WHERE id=?').get('deleted-track').n, 0, 'undo does not recreate track');
+});
+
+await test('multiple track deletions report tracks deleted, not trigger side effects', async () => {
+  const env=createEnv(); seedDomainTrack(env,'multi-del-a'); seedDomainTrack(env,'multi-del-b');
+  await domainAdmin(env,'/admin/domain-classifications','POST',{operation:'add',items:[{id:'multi-del-a',domains:['inner','flow']},{id:'multi-del-b',domains:['beyond']}]});
+  const beforeTracks=Number(env.__raw.prepare("SELECT COUNT(*) n FROM tracks WHERE id IN ('multi-del-a','multi-del-b')").get().n);
+  const beforeMemberships=Number(env.__raw.prepare("SELECT COUNT(*) n FROM track_domains WHERE track_id IN ('multi-del-a','multi-del-b')").get().n);
+  const a=await domainAdmin(env,'/admin/tracks/multi-del-a','DELETE'); const b=await domainAdmin(env,'/admin/tracks/multi-del-b','DELETE');
+  equal(a.data.deleted,1,'first delete counts one track'); equal(b.data.deleted,1,'second delete counts one track');
+  equal(beforeTracks-Number(env.__raw.prepare("SELECT COUNT(*) n FROM tracks WHERE id IN ('multi-del-a','multi-del-b')").get().n),2,'two tracks actually deleted');
+  equal(beforeMemberships-Number(env.__raw.prepare("SELECT COUNT(*) n FROM track_domains WHERE track_id IN ('multi-del-a','multi-del-b')").get().n),3,'three memberships actually deleted');
+});
 
 const failed = results.filter(r => !r.ok);
 process.stdout.write('\n' + (results.length - failed.length) + '/' + results.length + ' checks passed\n');
