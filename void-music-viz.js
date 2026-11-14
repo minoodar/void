@@ -2556,7 +2556,7 @@ void main(){
     const calm = V.L.aurora < 0.004 &&
       (Math.abs(V.L.galaxy - CFG.holeRest) < 0.008 || (V.idleX < 0.001 && V.L.galaxy < 0.004));
     const visible = !!coreEmblemSvg && V.ok && VM.isOpen() && V.vw > 0 && V.vh > 0 && !V.playing && calm &&
-      !(CFG.idleHalo && V.idleAudio) && !sceneWanted() && !V.art.on && V.art.amt <= 0.0005 &&
+      !(CFG.idleHalo && V.idleAudio) && !V.art.on && V.art.amt <= 0.0005 &&
       V.stage === 'calm' && V.dive <= 0.001 && !V.powder.on && !V.entrance.active && diameter >= 64;
     if (!visible) { el.hidden = true; return; }
     const size = Math.min(diameter * 0.5, 48);
