@@ -87,6 +87,7 @@
   var reorderTimer = 0;
   var previewTimer = 0;
   var editingId = null;
+  var pendingDomainAssignment = null;
   var confirmResolve = null;
   var sortButtons = [];
   var loginInFlight = false;
@@ -419,6 +420,7 @@
 
   function loadAll() {
     loadTracks();
+        loadDomainAdmin();
     loadLetters();
   }
 
@@ -676,6 +678,13 @@
       ? formatDuration(track.duration)
       : '';
     dom.trTags.value = track && track.tags ? track.tags.join(', ') : '';
+    pendingDomainAssignment = null;
+    dom.trDomain.value = '';
+    dom.trDomain.disabled = false;
+    dom.trackDomainField.hidden = !!track;
+    dom.trackDomainRetry.hidden = true;
+    dom.trackDomainRetry.disabled = false;
+    dom.trackDomainRetry.textContent = 'Retry domain assignment';
     trackError('');
     setTrackBusy(false);
     dom.artImg.hidden = true;
@@ -731,8 +740,79 @@
     });
   }
 
+  function showPendingDomainFailure(message) {
+    if (!pendingDomainAssignment) return;
+    trackError('Track created, but ' + pendingDomainAssignment.domain.toUpperCase() + ' membership is not confirmed. ' + message);
+    dom.trackDomainRetry.hidden = false;
+    dom.trackDomainRetry.disabled = false;
+    dom.trackDomainRetry.textContent = 'Retry domain assignment';
+    dom.trackSave.disabled = true;
+    dom.trackSave.textContent = 'Track saved';
+    dom.trackCancel.disabled = false;
+    dom.trDomain.disabled = true;
+    loadTracks();
+    loadDomainAdmin();
+  }
+
+  function assignPendingTrackDomain() {
+    if (!pendingDomainAssignment) return;
+    var pending = pendingDomainAssignment;
+    if (!pending.trackId) {
+      dom.trackDomainRetry.hidden = true;
+      dom.trackSave.disabled = true;
+      dom.trackSave.textContent = 'Finding saved Track...';
+      api('/admin/tracks').then(function (lookup) {
+        var tracks = lookup.data && lookup.data.tracks || [];
+        var matches = lookup.status === 200 && lookup.data && lookup.data.ok ? tracks.filter(function (track) {
+          return track.title === pending.title && track.artist === pending.artist && track.audio_url === pending.audio_url;
+        }) : [];
+        if (matches.length !== 1 || !matches[0].id) {
+          showPendingDomainFailure('The saved Track could not be identified uniquely. Retry the lookup, or classify it later in Music domains.');
+          return;
+        }
+        pending.trackId = matches[0].id;
+        assignPendingTrackDomain();
+      });
+      return;
+    }
+    dom.trackDomainRetry.hidden = true;
+    dom.trackDomainRetry.disabled = true;
+    dom.trackSave.disabled = true;
+    dom.trackSave.textContent = 'Assigning...';
+    api('/admin/domain-classifications', {
+      method: 'POST',
+      body: { operation: 'add', items: [{ id: pending.trackId, domains: [pending.domain] }] }
+    }).then(function (response) {
+      if (response.status === 200 && response.data && response.data.ok && response.data.committed !== false) {
+        return api('/admin/domain-tracks').then(function (check) {
+          var tracks = check.data && check.data.tracks || [];
+          var saved = check.status === 200 && check.data && check.data.ok && tracks.some(function (track) {
+            return track.id === pending.trackId && Array.isArray(track.domains) && track.domains.indexOf(pending.domain) !== -1;
+          });
+          if (!saved) {
+            showPendingDomainFailure('A fresh read did not confirm the membership. Retry is safe, or classify this Track later.');
+            return;
+          }
+          pendingDomainAssignment = null;
+          dom.trDomain.disabled = false;
+          dom.trackDialog.close();
+          toast('Track added and assigned to ' + pending.domain.toUpperCase() + '.');
+          loadTracks();
+          loadDomainAdmin();
+        });
+      }
+      var message = response.network
+        ? 'The connection failed. Retrying is safe.'
+        : (response.status === 401 || response.status === 403)
+          ? 'Admin access needs to be unlocked again before retrying.'
+          : 'The Worker did not confirm the membership. You can retry or classify this Track later.';
+      showPendingDomainFailure(message);
+    });
+  }
+
   function onTrackSubmit(event) {
     event.preventDefault();
+    if (pendingDomainAssignment) { assignPendingTrackDomain(); return; }
     var payload = {
       title: dom.trTitle.value.trim(),
       artist: dom.trArtist.value.trim(),
@@ -767,9 +847,23 @@
         return;
       }
       if ((response.status === 200 || response.status === 201) && response.data && response.data.ok) {
+        if (!editingId && dom.trDomain.value) {
+          var createdTrack = response.data.track || {};
+          pendingDomainAssignment = {
+            trackId: createdTrack.id || response.data.id || response.data.track_id || null,
+            title: payload.title,
+            artist: payload.artist,
+            audio_url: payload.audio_url,
+            domain: dom.trDomain.value
+          };
+          dom.trDomain.disabled = true;
+          assignPendingTrackDomain();
+          return;
+        }
         dom.trackDialog.close();
-        toast(editingId ? 'Track updated.' : 'Track added.');
+        toast(editingId ? 'Track updated.' : 'Track added. Classify it later in Music domains if needed.');
         loadTracks();
+        if (!editingId) loadDomainAdmin();
         return;
       }
       var code = response.data && response.data.error;
@@ -1134,6 +1228,14 @@
     '      </div>',
     '      <div class="va-note" id="va-tracks-note" hidden></div>',
     '      <ul class="va-tracks" id="va-track-list" aria-label="Playlist tracks"></ul>',
+    '      <section class="va-domains" aria-labelledby="va-domains-title">',
+    '        <div class="va-domains__head"><div><h3 id="va-domains-title">Music domains</h3><p id="va-domains-readiness" role="status">Checking domain readiness…</p></div><button class="va-btn" id="va-domains-refresh" type="button">Refresh domains</button></div>',
+    '        <div id="va-domains-tracks" class="va-domains__tracks"></div>',
+    '        <button class="va-btn va-btn--primary" id="va-domains-save" type="button">Save classifications</button>',
+    '        <div class="va-domains__accept"><p id="va-domains-unclassified"></p><button class="va-btn" id="va-domains-accept" type="button" hidden>Accept exact unclassified snapshot…</button></div>',
+    '        <details><summary>Domain audit history</summary><ol id="va-domains-audit"></ol></details>',
+    '      </section>',
+
     '      <p class="va-empty" id="va-tracks-empty" hidden>No tracks in the playlist. Add the first one.</p>',
     '    </section>',
     '    <section class="va-panel" id="va-panel-letters" role="tabpanel" aria-labelledby="va-tab-letters" hidden>',
@@ -1192,7 +1294,9 @@
     '        <label class="va-field va-field--wide" for="va-tr-artwork"><span>Artwork URL <em>optional</em></span><input id="va-tr-artwork" type="text" maxlength="2048" autocomplete="off" spellcheck="false" placeholder="Empty = embedded cover, then cosmic cover"></label>',
     '        <label class="va-field" for="va-tr-duration"><span>Duration</span><input id="va-tr-duration" type="text" maxlength="8" autocomplete="off" placeholder="3:45"></label>',
     '        <label class="va-field" for="va-tr-tags"><span>Tags</span><input id="va-tr-tags" type="text" maxlength="300" autocomplete="off" placeholder="calm, piano"></label>',
+    '        <label class="va-field va-field--wide" id="va-track-domain-field" for="va-tr-domain"><span>Music domain <em>optional</em></span><select id="va-tr-domain"><option value="">No domain (classify later)</option><option value="inner">INNER</option><option value="flow">FLOW</option><option value="beyond">BEYOND</option></select></label>',
     '        <p class="va-form__error" id="va-track-error" role="alert" hidden></p>',
+    '        <button class="va-btn" id="va-track-domain-retry" type="button" hidden>Retry domain assignment</button>',
     '      </div>',
     '    </div>',
     '    <div class="va-dialog__foot">',
@@ -1265,6 +1369,9 @@
     dom.trackCancel = byId('va-track-cancel');
     dom.trackSave = byId('va-track-save');
     dom.trackError = byId('va-track-error');
+    dom.trackDomainField = byId('va-track-domain-field');
+    dom.trackDomainRetry = byId('va-track-domain-retry');
+    dom.trDomain = byId('va-tr-domain');
     dom.trTitle = byId('va-tr-title');
     dom.trArtist = byId('va-tr-artist');
     dom.trAudio = byId('va-tr-audio');
@@ -1289,6 +1396,18 @@
     sortButtons = dom.panelLetters.querySelectorAll('.va-sort');
   }
 
+  function loadDomainAdmin() {
+    var host=byId('va-domains-tracks'), ready=byId('va-domains-readiness'); if(!host||!ready)return;
+    Promise.all([api('/admin/domain-readiness'),api('/admin/domain-tracks'),api('/admin/domain-audit')]).then(function(rs){
+      var rr=rs[0],tr=rs[1],au=rs[2];if(rr.status!==200||!rr.data||!rr.data.ok||tr.status!==200||!tr.data||!tr.data.ok){ready.textContent='Music domains unavailable. Apply migration 2026-11-12-music-domains.sql and enable the feature flag.';host.textContent='';return;}
+      var snap=rr.data;ready.textContent='Readiness: '+(snap.ready?'ready':'incomplete')+' · state '+snap.state_version+' · '+snap.unclassified.length+' unclassified';
+      var un=byId('va-domains-unclassified');un.textContent=snap.unclassified.length?'Unclassified: '+snap.unclassified.map(function(x){return x.title+' ('+x.id+')';}).join(', '):'All tracks have domain classifications.';
+      var accept=byId('va-domains-accept');accept.hidden=!snap.unclassified.length;accept.dataset.version=String(snap.state_version);
+      host.textContent='';(tr.data.tracks||[]).forEach(function(t){var row=document.createElement('fieldset');row.className='va-domains__row';row.dataset.id=t.id;var legend=document.createElement('legend');legend.textContent=t.title+' · '+t.id;row.appendChild(legend);['inner','flow','beyond'].forEach(function(d){var label=document.createElement('label'),box=document.createElement('input');box.type='checkbox';box.value=d;box.checked=t.domains.includes(d);label.append(box,document.createTextNode(d.toUpperCase()));row.appendChild(label);});host.appendChild(row);});
+      var list=byId('va-domains-audit');list.textContent='';(au.data&&au.data.records||[]).slice(0,30).forEach(function(rec){if(!rec.batch_id)return;var li=document.createElement('li');li.textContent=rec.operation+' · '+(rec.title_snapshot||rec.track_id||'batch')+' · '+new Date(Number(rec.created_at)*1000).toLocaleString();if(['add','remove','set'].includes(rec.operation)&&!rec.undone_by_batch_id){var b=document.createElement('button');b.type='button';b.className='va-btn';b.textContent='Undo';b.dataset.undo=rec.batch_id;li.appendChild(b);}list.appendChild(li);});
+    }).catch(function(){ready.textContent='Music domain service unavailable.';});
+  }
+  function saveDomainAdmin(){var items=[];document.querySelectorAll('.va-domains__row').forEach(function(row){items.push({id:row.dataset.id,domains:Array.from(row.querySelectorAll('input:checked')).map(function(x){return x.value;})});});if(!items.length)return;api('/admin/domain-classifications',{method:'POST',body:{operation:'set',items:items}}).then(function(r){if(r.status===200&&r.data&&r.data.ok){toast('Domain classifications saved ('+r.data.applied+' changes).','success');loadDomainAdmin();}else toast('Domain batch failed; no changes were committed.','error');});}
   function bind() {
     dom.loginForm.addEventListener('submit', onLogin);
     dom.reveal.addEventListener('click', function () {
@@ -1300,6 +1419,10 @@
     });
 
     dom.tabMusic.addEventListener('click', function () { setView('music'); });
+    byId('va-domains-refresh').addEventListener('click',loadDomainAdmin);
+    byId('va-domains-save').addEventListener('click',saveDomainAdmin);
+    byId('va-domains-accept').addEventListener('click',function(){var btn=this,version=Number(btn.dataset.version);if(!window.confirm('Accept exactly the currently listed unclassified track IDs? New tracks will not be included.'))return;api('/admin/domain-release/accept',{method:'POST',body:{expected_state_version:version}}).then(function(r){if(r.status===200&&r.data&&r.data.ok){toast('Exact unclassified snapshot accepted.','success');loadDomainAdmin();}else toast('Acceptance rejected; refresh and review the current unclassified tracks.','error');});});
+    byId('va-domains-audit').addEventListener('click',function(e){var id=e.target&&e.target.dataset&&e.target.dataset.undo;if(!id)return;if(!window.confirm('Undo this batch if no conflicting membership changes occurred?'))return;api('/admin/domain-audit/'+encodeURIComponent(id)+'/undo',{method:'POST',body:{}}).then(function(r){if(r.status===200&&r.data&&r.data.ok){toast('Batch undone.','success');loadDomainAdmin();}else toast('Undo conflict; no changes were applied.','error');});});
     dom.tabLetters.addEventListener('click', function () { setView('letters'); });
     dom.tabMusic.addEventListener('keydown', onTabKey);
     dom.tabLetters.addEventListener('keydown', onTabKey);
@@ -1319,6 +1442,7 @@
     dom.trackX.addEventListener('click', function () { dom.trackDialog.close(); });
     dom.trackCancel.addEventListener('click', function () { dom.trackDialog.close(); });
     dom.trackForm.addEventListener('submit', onTrackSubmit);
+    dom.trackDomainRetry.addEventListener('click', assignPendingTrackDomain);
     dom.trTitle.addEventListener('input', queuePreview);
     dom.trAudio.addEventListener('input', queuePreview);
     dom.trArtwork.addEventListener('input', queuePreview);

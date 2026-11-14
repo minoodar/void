@@ -782,6 +782,7 @@ body.void-admin-on > *:not(#void-admin-root) { visibility: hidden !important; }
 .va-form__fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .va-form__fields .va-field--wide { grid-column: 1 / -1; }
 .va-form__fields .va-form__error { grid-column: 1 / -1; }
+.va-form__fields #va-track-domain-retry { grid-column: 1 / -1; justify-self: start; }
 .va-form__error {
     margin: 2px 0 0;
     color: #fda4af;
@@ -894,3 +895,5 @@ body.void-admin-on > *:not(#void-admin-root) { visibility: hidden !important; }
         transition-duration: .001ms !important;
     }
 }
+
+.va-domains{margin-top:28px;padding:18px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.025)}.va-domains__head{display:flex;align-items:center;justify-content:space-between;gap:16px}.va-domains h3{margin:0}.va-domains__head p,.va-domains__accept p{color:var(--muted,#aab0bb);font-size:13px}.va-domains__tracks{display:grid;gap:8px;margin:14px 0}.va-domains__row{display:flex;flex-wrap:wrap;gap:14px;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px}.va-domains__row legend{font-size:12px;color:var(--muted,#aab0bb)}.va-domains__row label{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.08em}.va-domains details{margin-top:16px}.va-domains details li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;font-size:12px}

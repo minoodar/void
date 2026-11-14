@@ -9,6 +9,7 @@
   /* GET /tracks is the only inventory. There is deliberately no hardcoded
      fallback: a failed load says so instead of showing a second catalogue. */
   var DATA = [];
+  var CATALOGUE = [];
   var URLS = new Set();
   var fetching = false;
   /* Recovery state: a terminal failure earns one deferred attempt; every
@@ -313,13 +314,16 @@
   function normalizeTracks(payload) {
     if (!payload || payload.ok !== true || !Array.isArray(payload.tracks)) return null;
     var out = [];
+    var seenIds = Object.create(null);
     for (var i = 0; i < payload.tracks.length; i++) {
       var row = payload.tracks[i];
       if (!row || typeof row.title !== 'string' || typeof row.audio_url !== 'string') continue;
+      if (typeof row.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(row.id) || seenIds[row.id]) return null;
+      seenIds[row.id] = true;
       var audio = resolveMedia(row.audio_url);
       if (!audio) continue;
       out.push({
-        id: typeof row.id === 'string' ? row.id : 'track-' + i,
+        id: row.id,
         title: row.title,
         artist: typeof row.artist === 'string' ? row.artist : '',
         url: audio,
@@ -360,14 +364,16 @@
 
   function showFailure() {
     DATA = [];
+    CATALOGUE = [];
     indexUrls();
     totalEl.textContent = 'Unavailable';
     renderNotice('The Golden Folder could not be loaded.', true);
   }
 
-  function applyTracks(list) {
+  function applyTracks(list, isFilteredView) {
     var checked = {};
     for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) checked[boxes[i].value] = true;
+    if (!isFilteredView) CATALOGUE = list.slice();
     DATA = list;
     indexUrls();
     buildList();
@@ -590,6 +596,20 @@
   window.VoidGolden = {
     ready: catalogueReady,
     getTracks: snapshotTracks,
+    replaceTracks: function (tracks) {
+      if (!Array.isArray(tracks)) return false;
+      var available = Object.create(null);
+      for (var i = 0; i < CATALOGUE.length; i++) available[CATALOGUE[i].id] = CATALOGUE[i];
+      var next = [], seen = Object.create(null);
+      for (var j = 0; j < tracks.length; j++) {
+        var item = tracks[j];
+        if (!item || typeof item.id !== 'string' || !available[item.id] || seen[item.id]) return false;
+        seen[item.id] = true;
+        next.push(available[item.id]);
+      }
+      applyTracks(next, true);
+      return true;
+    },
     find: findTrack,
     play: function (id) {
       var tr = findTrack(id);
