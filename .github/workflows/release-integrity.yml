@@ -1,0 +1,35 @@
+name: Release integrity (Support panel)
+
+# Guards the GitHub Pages production branch (main). The three-option Support
+# panel (Donito IRR + BTC/USDT address & local QR) must stay wired into the
+# release. This check fails if index.html drops the Support scripts, the Support
+# files go missing, or the three methods are removed. It deploys nothing and
+# never touches Cloudflare Workers / D1 / R2. See RELEASE.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  support-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Check Support panel release integrity
+        run: node scripts/check-support-release.mjs
