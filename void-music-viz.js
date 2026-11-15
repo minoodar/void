@@ -2437,6 +2437,7 @@ void main(){
       if (!gl) throw new Error('webgl2 unavailable');
       root.insertBefore(cv, root.firstChild);
       V.canvas = cv; V.gl = gl;
+      ensureCoreEmblem();
       // GPU reset / از دست رفتنِ context: بوم را از نو می‌سازیم (هندسه از seedِ همان نشست دوباره ساخته می‌شود)
       cv.addEventListener('webglcontextlost', function (e) {
         e.preventDefault();
@@ -2532,6 +2533,48 @@ void main(){
   }
 
   // فقط هدفِ رندر (بوم/بافتِ شفق) را با مقیاسِ تازه می‌سازد؛ چیدمان و پودر دست‌نخورده می‌مانند.
+  // Decorative domain mark; geometry and visibility stay owned by the renderer.
+  let coreEmblem = null, coreEmblemSvg = '';
+  function ensureCoreEmblem() {
+    const root = VM.getRoot();
+    if (!root) return null;
+    if (!coreEmblem || !coreEmblem.isConnected) {
+      coreEmblem = document.createElement('div');
+      coreEmblem.className = 'vm-core-domain-emblem';
+      coreEmblem.setAttribute('aria-hidden', 'true');
+      coreEmblem.hidden = true;
+      root.appendChild(coreEmblem);
+    }
+    if (coreEmblemSvg && coreEmblem.innerHTML !== coreEmblemSvg) coreEmblem.innerHTML = coreEmblemSvg;
+    return coreEmblem;
+  }
+  function syncCoreEmblem() {
+    const el = ensureCoreEmblem();
+    if (!el) return;
+    const breathZoom = Number.isFinite(V.breath.zoom) ? clamp(V.breath.zoom, BREATH.startZoom, 1.08) : 1;
+    const mix = Number.isFinite(V.breath.mix) ? clamp(V.breath.mix, 0, 1) : 0;
+    const diameter = 2 * HOLE_R * V.scale * lerp(1, breathZoom, mix);
+    const calm = V.L.aurora < 0.004 &&
+      (Math.abs(V.L.galaxy - CFG.holeRest) < 0.008 || (V.idleX < 0.001 && V.L.galaxy < 0.004));
+    const visible = !!coreEmblemSvg && V.ok && VM.isOpen() && V.vw > 0 && V.vh > 0 && !V.playing && calm &&
+      !(CFG.idleHalo && V.idleAudio) && !sceneWanted() && !V.art.on && V.art.amt <= 0.0005 &&
+      V.stage === 'calm' && V.dive <= 0.001 && !V.powder.on && !V.entrance.active && diameter >= 64;
+    if (!visible) { el.hidden = true; return; }
+    const size = Math.min(diameter * 0.5, 48);
+    el.style.left = V.cx + 'px';
+    el.style.top = V.cy + 'px';
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    el.hidden = false;
+  }
+  function setCoreEmblem(svg) {
+    coreEmblemSvg = typeof svg === 'string' ? svg : '';
+    const el = ensureCoreEmblem();
+    if (el) el.innerHTML = coreEmblemSvg;
+    syncCoreEmblem();
+    return true;
+  }
+
   function sizeTarget(rs) {
     const gl = V.gl; if (!gl || !G) return;
     V.rs = rs;
@@ -2564,6 +2607,7 @@ void main(){
     if (!V.breath.ready) { V.breath.pitch = V.incl; V.breath.ready = true; }
     V.scale = portrait ? V.vw * 0.92 : Math.min(V.vw * 0.44, V.vh * 0.95);
     V.cx = V.vw / 2; V.cy = V.vh * (portrait ? 0.40 : 0.45);
+    syncCoreEmblem();
     V.powder.key = '';    // پودر باید دوباره نمونه‌برداری شود
     V.cosmic.bandDirty = true;   // نسبتِ تصویر عوض شده؛ ستاره‌های نوار دوباره چیده شوند
   }
@@ -3406,6 +3450,7 @@ void main(){
     const haloOn = idleW > 0.0005;
     // §ARTWORK جلد حتی وقتی کهکشان در کم‌نورترین حالت است هم باید دیده شود
     const artOn = V.art.amt > 0.0005;
+    syncCoreEmblem();
     if (dotsOn || haloOn || artOn) {
       const u = G.dots.u, n = Math.max(1500, Math.floor(V.N * V.q));
       const au = G.aurDots.u, aurN = Math.floor(V.auroraN * V.q);
@@ -3961,6 +4006,7 @@ void main(){
   document.addEventListener('fullscreenchange', function () { V.grace = performance.now() + 3500; });
 
   window.VoidMusicViz = {
+    setCoreEmblem: setCoreEmblem,
     debug: toggleHud,
     // §ENCHANT پیش‌نمایشِ دستی از کنسول (بدونِ پخش): window.VoidMusicViz.previewEntrance()
     // (موجِ شوکِ ورود روی هاله؛ افکت‌های کهکشان فقط در پخشِ واقعی اجرا می‌شوند)

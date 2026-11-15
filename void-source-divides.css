@@ -1,0 +1,54 @@
+/* Void · The Source Divides — waiting + hand-off to the domain constellation.
+   Chromium 70 safe: no @property, no inset, no individual transform props.
+   Animates only transform / opacity / stroke-dashoffset. No filters. */
+.sd{position:fixed;left:0;top:0;width:100%;height:100%;z-index:var(--sd-z,61);pointer-events:none;overflow:visible;visibility:hidden}
+.sd.sd-on{visibility:visible}
+.sd .sd-halo{fill:none;stroke:rgba(0,0,0,.6);stroke-width:3.4;opacity:0}
+.sd .sd-ring{fill:none;stroke:#E8C46A;stroke-width:1.1;stroke-linecap:round;opacity:0;transition:stroke-dashoffset .48s cubic-bezier(.4,0,.2,1),opacity .4s ease,stroke .4s ease}
+.sd .sd-glow{fill:url(#sd-grad);opacity:0}
+.sd .sd-pt,.sd .sd-bead{fill:#FFF1CE;opacity:0}
+/* the ignite spark must pulse around its own centre, not the SVG origin */
+.sd .sd-pt{transform-box:fill-box;transform-origin:center}
+.sd-note{position:fixed;z-index:var(--sd-z,61);left:50%;transform:translate(-50%,0);opacity:0;transition:opacity .6s ease;pointer-events:none;
+  font-size:11px;font-weight:400;line-height:1.2;font-family:inherit;letter-spacing:.14em;color:rgba(235,240,245,.58);text-shadow:0 0 6px #000,0 0 2px #000;white-space:nowrap}
+.sd-note.is-on{opacity:1}
+/* ignite: a point acknowledges the click (dormant also gets one soft bloom) */
+.sd.sd-on .sd-pt{animation:sdIgnite .9s ease-out forwards}
+.sd.sd-on .sd-halo{opacity:1}
+.sd.sd-dormant.sd-on .sd-glow{animation:sdBloom .9s ease-out forwards}
+.sd.sd-ringon .sd-ring{opacity:.8}
+.sd.sd-active.sd-ringon .sd-ring{opacity:.55}
+/* wait: breathing ring + one slow, uneven drifting point */
+.sd.sd-wait .sd-ring{animation:sdBreath 5s ease-in-out infinite}
+.sd.sd-active.sd-wait .sd-ring{animation-name:sdBreathA}
+.sd .sd-drift{opacity:0}
+.sd.sd-wait .sd-drift{opacity:1;transition:opacity .6s ease}
+.sd.sd-wait .sd-drift{animation:sdDrift 9s linear infinite}
+.sd.sd-wait .sd-drift circle{fill:#FFF1CE;opacity:.9}
+.sd.sd-long .sd-ring{animation-duration:8s}.sd.sd-long .sd-drift{animation-duration:16s}
+/* divide + reveal */
+.sd .sd-bead{transition:transform .48s cubic-bezier(.22,.8,.2,1),opacity .14s ease}
+.sd.sd-divide .sd-bead{opacity:1}
+.sd.sd-divide .sd-bead.sd-land{opacity:0;transition:transform .48s cubic-bezier(.22,.8,.2,1),opacity .26s ease}
+.sd.sd-divide .sd-ring{animation:none;opacity:0;transition:opacity .6s ease}
+.sd.sd-divide .sd-drift{opacity:0;animation:none;transition:opacity .15s ease}
+/* error: ring opens a gap, turns silver, stops */
+.sd.sd-error .sd-ring{animation:none;stroke:#C9CED8;opacity:.7;stroke-dashoffset:var(--sd-gap)!important}
+.sd.sd-error .sd-drift{opacity:0;animation:none}
+.sd.sd-out{opacity:0;transition:opacity .35s ease}
+.sd.sd-paused *{animation-play-state:paused!important}
+@keyframes sdIgnite{0%{opacity:0;transform:scale(.4)}35%{opacity:1;transform:scale(1.6)}60%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1)}}
+@keyframes sdBloom{0%{opacity:0}30%{opacity:.5}100%{opacity:0}}
+@keyframes sdBreath{0%,100%{opacity:.5}50%{opacity:.85}}
+@keyframes sdBreathA{0%,100%{opacity:.4}50%{opacity:.6}}
+@keyframes sdDrift{0%{transform:rotate(var(--sd-a0))}30%{transform:rotate(calc(var(--sd-a0) + 70deg))}55%{transform:rotate(calc(var(--sd-a0) + 200deg))}100%{transform:rotate(calc(var(--sd-a0) + 360deg))}}
+@media (prefers-reduced-motion:reduce){.sd *,.sd-note{animation:none!important;transition:opacity .2s ease!important}.sd.sd-wait .sd-ring{opacity:.6}}
+.sd.sd-rm *{animation:none!important;transition:opacity .2s ease!important}.sd.sd-rm.sd-wait .sd-ring{opacity:.6}
+
+/* Opt-in constellation hand-off (only when the host opens with defer).
+   While the beads travel, the invisible targets must not catch clicks,
+   and labels emerge after the emblems — never before them. */
+.vdc.vdc--holding .vdc-target,.vdc.vdc--holding .vdc-close{pointer-events:none}
+.vdc.vdc--sd .vdc-label{opacity:0;transition:opacity .3s ease}
+.vdc.vdc--sd.is-in .vdc-label{opacity:1;transition:opacity .35s ease .3s}
+@media (prefers-reduced-motion:reduce){.vdc.vdc--sd .vdc-label,.vdc.vdc--sd.is-in .vdc-label{transition:none}}

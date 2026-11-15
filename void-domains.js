@@ -285,24 +285,33 @@
       close({ restoreFocus: false });
     }
 
-    function open(opener) {
+    function enterIn() {
+      if (!st.open) { return; }
+      layer.classList.remove('vdc--holding');
+      layer.classList.add('is-in');
+      dim.classList.add('is-open');
+      ORDER.forEach(function (id) { circles[id].style.strokeDashoffset = '0px'; });
+      later(function () { if (st.open && !st.selecting) { targets[ORDER[0]].focus({ preventScroll: true }); } }, reduced() ? 0 : 120);
+    }
+
+    function open(opener, defer) {
       build();
       if (st.open) { return; }
       st.open = true; st.selecting = false;
       st.opener = opener || document.activeElement;
       clearTimers();
-      layer.classList.remove('is-choosing', 'is-in');
+      layer.classList.remove('is-choosing', 'is-in', 'vdc--holding', 'vdc--sd');
       ORDER.forEach(function (id) { targets[id].classList.remove('is-selected'); });
       layer.classList.add('is-open');
       layout();                                     // measure while visible-but-transparent
       void layer.offsetWidth;                       // commit initial state
-      global.requestAnimationFrame(function () {
-        if (!st.open) { return; }
-        layer.classList.add('is-in');
+      if (defer) {
+        // Opt-in hand-off: the host emerges the emblems (revealNow) once its beads land.
+        layer.classList.add('vdc--holding', 'vdc--sd');
         dim.classList.add('is-open');
-        ORDER.forEach(function (id) { circles[id].style.strokeDashoffset = '0px'; });
-        later(function () { if (st.open && !st.selecting) { targets[ORDER[0]].focus({ preventScroll: true }); } }, reduced() ? 0 : 120);
-      });
+      } else {
+        global.requestAnimationFrame(function () { enterIn(); });
+      }
       // Web fonts change label heights: measure again once they are ready
       if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
         document.fonts.ready.then(function () { if (st.open) { layout(); } });
@@ -328,7 +337,7 @@
       global.removeEventListener('orientationchange', onResize);
       document.removeEventListener('mousedown', onOutside, true);
       document.removeEventListener('touchstart', onOutside, true);
-      layer.classList.remove('is-open', 'is-in', 'is-choosing', 'vdc--kb');
+      layer.classList.remove('is-open', 'is-in', 'is-choosing', 'vdc--kb', 'vdc--holding', 'vdc--sd');
       dim.classList.remove('is-open');
       layer.removeAttribute('data-active');
       ORDER.forEach(function (id) {
@@ -426,6 +435,7 @@
       open: open,
       close: function () { close({ restoreFocus: true }); },
       isOpen: function () { return st.open; },
+      revealNow: enterIn,
       refresh: function () { if (st.open) { return layout(); } return null; },
       getLayout: function () { return st.layout; },
       verifyGeometry: verifyGeometry,
@@ -443,7 +453,7 @@
   'use strict';
   var button=document.getElementById('void-golden-folder'); if(!button||!window.VoidDomains||!window.VoidDomains.createConstellation)return;
   var base=(window.VoidLettersApi&&typeof window.VoidLettersApi.base==='string')?window.VoidLettersApi.base:'https://void-galaxy-letters.minoodar.workers.dev';
-  var domainKeys=window.VoidDomains.DOMAIN_ORDER, domainData=null, busy=false, activeFilter=false;
+  var domainKeys=window.VoidDomains.DOMAIN_ORDER, domainData=null, busy=false, activeFilter=false, catalogUrls=new Map();
   var root=document.getElementById('void-music-root');
   var note=document.createElement('div'); note.className='vdc-note'; note.setAttribute('role','status'); note.setAttribute('aria-live','polite'); document.body.appendChild(note);
   var noteTimer=0;
@@ -456,11 +466,54 @@
     for(var i=0;i<p.tracks.length;i++){var t=p.tracks[i];if(!t||typeof t.id!=='string'||!t.id||seen.has(t.id)||!Array.isArray(t.domains)||t.domains.some(function(d){return typeof d!=='string'||domainKeys.indexOf(d)<0;})||new Set(t.domains).size!==t.domains.length)return false;seen.add(t.id);}
     return true;
   }
-  async function loadDomains(){var res=await fetch(base+'/tracks/domains',{cache:'no-store'});if(!res.ok)throw new Error('HTTP '+res.status);var payload=await res.json();if(!validPayload(payload))throw new Error('Invalid domain response');domainData=payload.tracks;return domainData;}
+  function canonicalUrl(value){try{return new URL(value,document.baseURI).href;}catch(e){return '';}}
+  function rememberCatalog(){var g=api(),tracks=g&&g.getTracks?g.getTracks():[];tracks.forEach(function(t){if(t&&t.id&&t.url)catalogUrls.set(t.id,canonicalUrl(t.url));});}
+  function updateCurrentEmblem(){
+    var viz=window.VoidMusicViz;if(!viz||typeof viz.setCoreEmblem!=='function')return;
+    if(!domainData){viz.setCoreEmblem(null);return;}
+    rememberCatalog();
+    var state=window.VoidMusic&&window.VoidMusic.getState?window.VoidMusic.getState():null;
+    var url=state&&canonicalUrl(state.currentUrl);
+    var meta=document.querySelector('#void-music-root .vm-meta');
+    if(!url||!meta||!meta.classList.contains('is-golden')){viz.setCoreEmblem(null);return;}
+    var matches=domainData.filter(function(t){return catalogUrls.get(t.id)===url;});
+    if(matches.length!==1||!Array.isArray(matches[0].domains)||matches[0].domains.length!==1){viz.setCoreEmblem(null);return;}
+    var emblem=window.VoidDomains.DOMAIN_EMBLEMS[matches[0].domains[0]];
+    viz.setCoreEmblem(emblem&&emblem.svg||null);
+  }
+  async function loadDomains(){var res=await fetch(base+'/tracks/domains',{cache:'no-store'});if(!res.ok)throw new Error('HTTP '+res.status);var payload=await res.json();if(!validPayload(payload))throw new Error('Invalid domain response');rememberCatalog();domainData=payload.tracks;updateCurrentEmblem();return domainData;}
   function getVoid(){
     var w=window.innerWidth,h=window.innerHeight,R=.37*Math.min(w,h);
-    return {cx:w/2,cy:h*.45,R:R,glow:.14*R+10};
+    var v={cx:w/2,cy:h*.45,R:R,glow:.14*R+10,hole:0};
+    /* Authoritative orb: the visualizer's live geometry (portrait uses .40, not .45).
+       The disc radius is measured through the public holeHit test, never re-derived. */
+    var viz=window.VoidMusicViz,live=viz&&viz._test&&viz._test.V;
+    if(live&&live.ok&&live.vw===w&&live.vh===h&&isFinite(live.cx)&&isFinite(live.cy)){
+      v.cx=live.cx;v.cy=live.cy;
+      if(typeof viz.holeHit==='function'&&viz.holeHit(v.cx,v.cy,0)){
+        var lo=0,hi=Math.min(w,h)/2,i,mid;
+        for(i=0;i<18;i++){mid=(lo+hi)/2;if(viz.holeHit(v.cx+mid,v.cy,0))lo=mid;else hi=mid;}
+        v.hole=lo;
+      }
+      return v;
+    }
+    /* No WebGL: the CSS fallback orb is the rendered truth (lightweight / essential / TV). */
+    var rootEl=document.getElementById('void-music-root');
+    if(rootEl&&(rootEl.classList.contains('vm-visual-lightweight')||rootEl.classList.contains('vm-visual-essential'))){
+      var holeEl=rootEl.querySelector('.vm-fallback-hole'),r=holeEl&&holeEl.getBoundingClientRect();
+      if(r&&r.width>0){v.cx=r.left+r.width/2;v.cy=r.top+r.height/2;v.hole=r.width/2;}
+    }
+    return v;
   }
+  var sdGen=0,sd=null;
+  if(window.VoidSourceDivides){try{sd=window.VoidSourceDivides.create({
+    parent:function(){return document.getElementById('void-music-root')||document.body;},
+    getVoid:getVoid,
+    isActive:function(){var z=window.VoidMusicViz;return !!(z&&z.debugState&&z.debugState().playing);},
+    labels:/^fa/i.test(String(document.documentElement.lang||'en'))
+      ?{wait:'در حال گردآوریِ سه مسیر…',long:'هنوز در حال گردآوری…',error:''}
+      :{wait:'Gathering the three…',long:'Still gathering…',error:''}
+  });}catch(e){sd=null;}}
   function selectDomain(key){
     if(!domainData){fallback();return;}
     var ids=new Set(domainData.filter(function(t){return t.domains.indexOf(key)>=0;}).map(function(t){return t.id;}));
@@ -473,10 +526,13 @@
   var constellation=window.VoidDomains.createConstellation({parent:function(){return document.getElementById('void-music-root')||document.body;},dimParent:function(){return document.getElementById('void-music-root');},
     ignoreSelector:'#void-music-root, #void-topnav, #void-golden-status, #void-golden-modal, #void-golden-share, #void-invite, #void-reopen',
     getVoid:getVoid,onOpen:function(){button.setAttribute('aria-expanded','true');},
-    onClose:function(){button.setAttribute('aria-expanded','false');},onSelect:selectDomain});
-  document.addEventListener('click',function(e){if(e.target===button||button.contains(e.target)){e.preventDefault();e.stopImmediatePropagation();if(constellation.isOpen()){constellation.close();return;}if(busy)return;if(domainData){constellation.open(button);loadDomains().catch(function(){});return;}busy=true;loadDomains().then(function(){constellation.open(button);}).catch(function(err){announce('Domain filter unavailable ('+(err&&err.message||'request failed')+'). Opening the existing Golden Folder.');fallback();}).finally(function(){busy=false;});}},true);
+    onClose:function(){button.setAttribute('aria-expanded','false');if(sd&&sd.state()!=='idle'){sdGen++;sd.cancel();}},onSelect:selectDomain});
+  document.addEventListener('click',function(e){if(e.target===button||button.contains(e.target)){e.preventDefault();e.stopImmediatePropagation();if(constellation.isOpen()){constellation.close();return;}if(busy)return;if(domainData){constellation.open(button);loadDomains().catch(function(){});return;}busy=true;var gen=++sdGen;if(sd)sd.start(button);loadDomains().then(function(){if(gen!==sdGen)return;if(sd){constellation.open(button,true);var l=constellation.getLayout();sd.reveal(l&&l.centers,null,function(){constellation.revealNow();});}else{constellation.open(button);}}).catch(function(err){if(gen!==sdGen)return;if(sd)sd.fail();announce('Domain filter unavailable ('+(err&&err.message||'request failed')+'). Opening the existing Golden Folder.');fallback();}).finally(function(){busy=false;});}},true);
   var dialog=document.getElementById('void-golden-modal');
   if(dialog)dialog.addEventListener('close',function(){if(activeFilter){activeFilter=false;var g=api();if(g&&g.getTracks&&window.__voidDomainOriginal)g.replaceTracks(window.__voidDomainOriginal);window.__voidDomainOriginal=null;}});
   var g0=api();if(g0){var original=g0.replaceTracks;g0.replaceTracks=function(tracks){if(tracks.length){window.__voidDomainOriginal=g0.getTracks();activeFilter=true;}return original.call(g0,tracks);};}
+  window.addEventListener('voidmusic:track',updateCurrentEmblem);
+  window.addEventListener('voidmusic:playing',updateCurrentEmblem);
+  window.addEventListener('voidmusic:mode',updateCurrentEmblem);
   window.__voidDomainConstellation=constellation;
 })();
