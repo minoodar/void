@@ -345,7 +345,7 @@
     clearTimeout(toolsHideTimer);
     // Touch users need time to choose the second action; keep the palette open
     // until the quill or discovery control is activated again.
-    if (!initialIntro && window.matchMedia && window.matchMedia('(hover: none)').matches) {
+    if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
       toolsHideTimer = 0;
       return;
     }
