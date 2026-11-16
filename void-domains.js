@@ -473,7 +473,7 @@
 (function () {
   'use strict';
   var button=document.getElementById('void-golden-folder'); if(!button||!window.VoidDomains||!window.VoidDomains.createConstellation)return;
-  var base=(window.VoidLettersApi&&typeof window.VoidLettersApi.base==='string')?window.VoidLettersApi.base:'https://void-galaxy-letters.minoodar.workers.dev';
+  var base=window.__VOID_API_BASE__||(window.VoidLettersApi&&typeof window.VoidLettersApi.base==='string'?window.VoidLettersApi.base:'https://void-galaxy-letters.minoodar.workers.dev');
   var podcastEnabled=!!window.__VOID_PODCAST_FLAG__, domainKeys=window.VoidDomains.DOMAIN_ORDER, domainData=null, busy=false, activeFilter=false, catalogUrls=new Map();
   var root=document.getElementById('void-music-root');
   var note=document.createElement('div'); note.className='vdc-note'; note.setAttribute('role','status'); note.setAttribute('aria-live','polite'); document.body.appendChild(note);
@@ -537,7 +537,17 @@
   });}catch(e){sd=null;}}
   function selectDomain(key){
     if(key==='podcast'){
-      if(sd){sd.start(constellation.getTarget('podcast')||button);setTimeout(function(){if(sd)sd.cancel();if(constellation&&!constellation.isOpen())constellation.open(button);},1500);}
+      var finish=function(){
+        if(sd)sd.cancel();
+        if(!domainData){fallback();return;}
+        var ids=new Set(domainData.filter(function(t){return t.domains.indexOf(key)>=0;}).map(function(t){return t.id;}));
+        var g=api(), all=g&&g.getTracks?g.getTracks():[];
+        var selected=all.filter(function(t){return ids.has(t.id);});
+        if(!selected.length){announce('PODCAST has no available tracks yet.');fallback();return;}
+        if(!g||!g.replaceTracks){announce('Music list is unavailable. Open Golden Folder to continue.');fallback();return;}
+        g.replaceTracks(selected);g.open();
+      };
+      if(sd){sd.start(constellation.getTarget('podcast')||button);setTimeout(finish,1500);}else{finish();}
       return;
     }
     if(!domainData){fallback();return;}

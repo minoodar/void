@@ -1,6 +1,6 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.VoidPodcastLayout = factory();
+  else if (root.__VOID_PODCAST_FLAG__) root.VoidPodcastLayout = factory();
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   var PHI = 1.618033988749895;

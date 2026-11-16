@@ -5,7 +5,7 @@
 (function (global) {
   'use strict';
 
-  var BASE = 'https://void-galaxy-letters.minoodar.workers.dev';
+  var BASE = global.__VOID_API_BASE__ || 'https://void-galaxy-letters.minoodar.workers.dev';
   var PAGE_SIZE = 20;
   var TIMEOUT_MS = 15000;
   /* Transport classification for the statistics sources. The panel only turns
