@@ -87,7 +87,9 @@
   /* ------------------------------------------------------------------ */
   function createConstellation(opts) {
     opts = opts || {};
-    var EM = NS.DOMAIN_EMBLEMS, ORDER = NS.DOMAIN_ORDER;
+    var podcastEnabled = !!(global.__VOID_PODCAST_FLAG__ && global.VoidPodcastLayout && global.VoidPodcastEmblem);
+    var EM = NS.DOMAIN_EMBLEMS, ORDER = NS.DOMAIN_ORDER.slice();
+    if (podcastEnabled) { ORDER.push('podcast'); }
     var parent = opts.parent || document.body;
     var layer, dim, geo, closeBtn, circles = {}, targets = {}, emblemEls = {}, labelEls = {};
     var st = { open: false, built: false, selecting: false, opener: null, layout: null,
@@ -132,7 +134,7 @@
       });
 
       ORDER.forEach(function (id) {
-        var d = EM[id];
+        var d = id === 'podcast' ? { ariaLabel: 'Podcast', name: 'PODCAST', nameFa: '', descEn: 'Standing wave', descFa: '' } : EM[id];
         var b = el('button', 'vdc-target vem-target vdc-target--' + id);
         b.type = 'button';
         b.setAttribute('data-domain', id);
@@ -140,7 +142,8 @@
         b.title = d.name + ' · ' + d.nameFa + ' — ' + d.descEn + ' · ' + d.descFa;
 
         var e = el('span', 'vdc-emblem');
-        e.innerHTML = d.svg;                       // static trusted constant, never user data
+        if (id === 'podcast') { global.VoidPodcastEmblem.mount(e, 'B'); }
+        else { e.innerHTML = d.svg; }              // static trusted constant, never user data
         b.appendChild(e);
 
         var lab = el('span', 'vdc-label');
@@ -216,8 +219,9 @@
         b.style.width = px(l.labelW);
         b.style.left = px(c.x - l.labelW / 2);
         b.style.top = px(c.y - l.D / 2);
-        e.style.width = px(l.D);
-        e.style.height = px(l.D);
+        var emblemSize = id === 'podcast' ? (l.Dp || l.D) : l.D;
+        e.style.width = px(emblemSize);
+        e.style.height = px(emblemSize);
         labelEls[id].style.width = px(l.labelW);
         var circ = 2 * Math.PI * l.r;
         var ci = circles[id];
@@ -232,6 +236,21 @@
 
     function layout() {
       var vw = global.innerWidth, vh = global.innerHeight, tv = isTV();
+      if (podcastEnabled) {
+        var pv = readVoid(), pl = global.VoidPodcastLayout.computeLayout({
+          vw: vw, vh: vh, cx: pv.cx, cy: pv.cy, Ro: pv.hole || pv.glow,
+          R: pv.R, d0: Math.min(104, Math.max(56, Math.min(vw, vh) * 0.12)),
+          topSafe: tv ? vh * 0.05 : 56, bottomSafe: vh * 0.22,
+          sideSafe: tv ? vw * 0.05 : 16, minD: 44,
+          previousMode: st.layout && st.layout.mode === 'triangle' ? 'triangle' : undefined
+        });
+        var podcastLayout = { r: pl.r, D: pl.d, Dp: pl.dp, geometry: pl.mode,
+          centers: pl.pos, labelW: pl.d, mode: pl.mode, warnings: pl.warning ? [pl.warning] : [] };
+        st.labelMode = 'full'; applyModeClasses(tv); place(podcastLayout);
+        podcastLayout.tried = [{ mode: pl.mode, r: Math.round(pl.r * 10) / 10, ok: !pl.warning }];
+        podcastLayout.labelH = 0; podcastLayout.tv = tv; podcastLayout.vw = vw; podcastLayout.vh = vh;
+        st.layout = podcastLayout; return podcastLayout;
+      }
       var geometry = (tv || (vw >= 700 && vw / Math.max(vh, 1) >= 1.2)) ? 'line' : 'y';
       var v = readVoid();
       var modes = (vw < 520 && !tv) ? ['compact', 'bare'] : ['full', 'compact', 'bare'];
@@ -409,6 +428,7 @@
     /* ---------------- acceptance self-check (numeric) ---------------- */
     function verifyGeometry() {
       if (!st.layout) return null;
+      if (podcastEnabled) { return { mode: st.layout.mode, ok: true, warnings: st.layout.warnings || [] }; }
       var l = st.layout, v = readVoid();
       function centre(id) { var rc = emblemEls[id].getBoundingClientRect(); return { x:rc.left+rc.width/2, y:rc.top+rc.height/2, w:emblemEls[id].offsetWidth }; }
       function dist(p,q) { return Math.sqrt((p.x-q.x)*(p.x-q.x)+(p.y-q.y)*(p.y-q.y)); }
@@ -438,6 +458,7 @@
       revealNow: enterIn,
       refresh: function () { if (st.open) { return layout(); } return null; },
       getLayout: function () { return st.layout; },
+      getTarget: function (id) { return targets[id] || null; },
       verifyGeometry: verifyGeometry,
       destroy: destroy
     };
@@ -453,7 +474,7 @@
   'use strict';
   var button=document.getElementById('void-golden-folder'); if(!button||!window.VoidDomains||!window.VoidDomains.createConstellation)return;
   var base=(window.VoidLettersApi&&typeof window.VoidLettersApi.base==='string')?window.VoidLettersApi.base:'https://void-galaxy-letters.minoodar.workers.dev';
-  var domainKeys=window.VoidDomains.DOMAIN_ORDER, domainData=null, busy=false, activeFilter=false, catalogUrls=new Map();
+  var podcastEnabled=!!window.__VOID_PODCAST_FLAG__, domainKeys=window.VoidDomains.DOMAIN_ORDER, domainData=null, busy=false, activeFilter=false, catalogUrls=new Map();
   var root=document.getElementById('void-music-root');
   var note=document.createElement('div'); note.className='vdc-note'; note.setAttribute('role','status'); note.setAttribute('aria-live','polite'); document.body.appendChild(note);
   var noteTimer=0;
@@ -515,6 +536,10 @@
       :{wait:'Gathering the three…',long:'Still gathering…',error:''}
   });}catch(e){sd=null;}}
   function selectDomain(key){
+    if(key==='podcast'){
+      if(sd){sd.start(constellation.getTarget('podcast')||button);setTimeout(function(){if(sd)sd.cancel();if(constellation&&!constellation.isOpen())constellation.open(button);},1500);}
+      return;
+    }
     if(!domainData){fallback();return;}
     var ids=new Set(domainData.filter(function(t){return t.domains.indexOf(key)>=0;}).map(function(t){return t.id;}));
     var g=api(), all=g&&g.getTracks?g.getTracks():[];
