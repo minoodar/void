@@ -13,3 +13,12 @@
 .void-emblem--podcast.is-loading .pc-wave path{stroke-dasharray:100;animation:pc-draw 1.6s ease-in-out infinite alternate}@keyframes pc-draw{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
 .void-emblem--podcast.is-playing .pc-wave{animation:pc-breathe 3.2s ease-in-out infinite}@keyframes pc-breathe{50%{transform:scaleY(.8)}}
 @media (prefers-reduced-motion:reduce){.void-emblem--podcast,.void-emblem--podcast *{animation:none!important;transition:none!important}}
+/* Phone-width layout correction. This stylesheet loads only when the podcast flag is ON.
+   Selectors outrank void-domains.css (loaded later) without touching it. */
+.vdc--iconic .vdc-label{display:none}
+.vdc .vdc-circle--podcast{stroke:#C0C7D1}
+.vdc[data-active="podcast"] .vdc-circle--podcast{stroke-opacity:.16}
+.vdc .vdc-target{transition:opacity .25s ease,left .4s ease,top .4s ease,width .4s ease}
+.vdc.is-in .vdc-target.vdc-target{transition:opacity .25s ease,left .4s ease,top .4s ease,width .4s ease}
+.vdc .vdc-emblem{transition:transform .35s ease,box-shadow .25s ease,width .4s ease,height .4s ease}
+.vdc .vdc-close{transition:opacity .2s ease,border-color .25s ease,left .4s ease,top .4s ease}

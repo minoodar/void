@@ -108,6 +108,119 @@
       return document.documentElement.classList.contains('void-tv');
     }
 
+    /* ---- Podcast layout adapter: exists only when the feature flag is ON ---- */
+    if (podcastEnabled) {
+      var podcastGen = 0;
+      var podcastDev = (function () {
+        var loc = global.location || {};
+        return loc.hostname === 'localhost' || loc.hostname === '127.0.0.1' || /[?&]voiddebug=1/.test(loc.search || '');
+      })();
+      var podcastLw = function (d) { return Math.max(92, Math.min(104, d)); };
+      var measurePodcastFp = function (d0, minD) {
+        var tables = { full: {}, nodesc: {}, iconic: {} };
+        var saved = ORDER.map(function (id) {
+          return { id: id, bw: targets[id].style.width, lw: labelEls[id].style.width,
+            ew: emblemEls[id].style.width, eh: emblemEls[id].style.height,
+            bt: targets[id].style.transition, et: emblemEls[id].style.transition };
+        });
+        ORDER.forEach(function (id) {
+          targets[id].style.transition = 'none';
+          emblemEls[id].style.transition = 'none';
+          emblemEls[id].style.transform = 'none';   // measure layout size, not the .94 reveal scale
+        });
+        ['full', 'nodesc', 'iconic'].forEach(function (mode) {
+          layer.classList.toggle('vdc--bare', mode === 'nodesc');
+          layer.classList.toggle('vdc--iconic', mode === 'iconic');
+          [['d0', d0], ['min', minD]].forEach(function (pair) {
+            var d = pair[1], lw = podcastLw(d);
+            ORDER.forEach(function (id) {
+              var size = id === 'podcast' ? Math.max(44, d * 0.85) : d;
+              targets[id].style.width = px(mode === 'iconic' ? Math.max(44, size) : lw);
+              labelEls[id].style.width = px(lw);
+              emblemEls[id].style.width = px(size);
+              emblemEls[id].style.height = px(size);
+            });
+            void layer.offsetWidth;
+            var out = {};
+            ORDER.forEach(function (id) {
+              var br = targets[id].getBoundingClientRect(), er = emblemEls[id].getBoundingClientRect();
+              out[id] = { w: br.width, h: br.height, iconD: er.width,
+                iconOffsetY: (er.top + er.height / 2) - (br.top + br.height / 2) };
+            });
+            tables[mode][pair[0]] = out;
+          });
+        });
+        layer.classList.remove('vdc--bare', 'vdc--iconic');
+        saved.forEach(function (s) {
+          targets[s.id].style.width = s.bw; targets[s.id].style.transition = s.bt;
+          labelEls[s.id].style.width = s.lw;
+          emblemEls[s.id].style.width = s.ew; emblemEls[s.id].style.height = s.eh;
+          emblemEls[s.id].style.transition = s.et; emblemEls[s.id].style.transform = '';
+        });
+        return tables;
+      };
+      var podcastRightSafe = function (vw) {
+        var gb = document.getElementById('void-golden-folder');
+        var rail = gb && gb.closest ? (gb.closest('.void-topnav__canopy') || gb.closest('ul') || gb.parentElement) : null;
+        var rr = rail && rail.getBoundingClientRect();
+        return rr && rr.width > 0 && rr.left > vw * 0.6 ? Math.max(0, vw - rr.left) : 0;
+      };
+      var placePodcast = function (pl) {
+        var gen = ++podcastGen;
+        var still = reduced() || layer.classList.contains('vdc--holding') || layer.classList.contains('vdc--sd');
+        var prevMode = st.layout && st.layout.mode;
+        var crossfade = !still && prevMode && prevMode !== pl.mode;
+        layer.setAttribute('data-geometry', pl.mode);
+        ORDER.forEach(function (id) {
+          var p = pl.pos[id], f = pl.footprints[id], b = targets[id], e = emblemEls[id];
+          var size = id === 'podcast' ? pl.dp : pl.d;
+          b.style.transition = still ? 'none' : '';
+          b.style.width = px(f.w);
+          b.style.left = px(p.x - f.w / 2);
+          b.style.top = px(p.y - f.h / 2);
+          e.style.transition = still ? 'none' : '';
+          e.style.width = px(size);
+          e.style.height = px(size);
+          labelEls[id].style.width = px(podcastLw(pl.d));
+          var ci = circles[id], cc = pl.circles[id], circ = 2 * Math.PI * cc.r;
+          var applyGeo = function () {
+            if (gen !== podcastGen) { return; }
+            ci.setAttribute('cx', cc.cx); ci.setAttribute('cy', cc.cy); ci.setAttribute('r', cc.r);
+            ci.style.strokeDasharray = circ + 'px';
+            ci.style.strokeDashoffset = (st.open && layer.classList.contains('is-in') ? 0 : circ) + 'px';
+            ci.style.strokeOpacity = '';
+          };
+          ci.style.transition = still ? 'none' : '';
+          if (crossfade) { ci.style.strokeOpacity = '0'; later(applyGeo, 350); } else { applyGeo(); }
+        });
+        /* X is positioned ONLY from the authoritative orb centre. */
+        closeBtn.style.transition = still ? 'none' : '';
+        closeBtn.style.left = px(pl.center.x);
+        closeBtn.style.top = px(pl.center.y);
+        closeBtn.style.marginLeft = px(-closeBtn.offsetWidth / 2);
+        geo.setAttribute('width', global.innerWidth);
+        geo.setAttribute('height', global.innerHeight);
+        geo.setAttribute('viewBox', '0 0 ' + global.innerWidth + ' ' + global.innerHeight);
+        if (podcastDev) {
+          var assertNow = function () {
+            if (gen !== podcastGen || !st.open) { return; }
+            var xr = closeBtn.getBoundingClientRect();
+            var dx = xr.left + xr.width / 2 - pl.center.x, dy = xr.top + xr.height / 2 - pl.center.y;
+            if (Math.hypot(dx, dy) > 1) { console.error('[void-podcast] X off centre by', dx.toFixed(2), dy.toFixed(2)); }
+            if (pl.mode === 'triangle') {
+              ORDER.forEach(function (id) {
+                var ci = circles[id], r = parseFloat(ci.getAttribute('r'));
+                var dcx = parseFloat(ci.getAttribute('cx')) - pl.center.x;
+                var dcy = parseFloat(ci.getAttribute('cy')) - pl.center.y;
+                if (Math.abs(Math.hypot(dcx, dcy) - r) > 1) { console.error('[void-podcast] circle misses centre:', id); }
+              });
+            }
+          };
+          if (still) { assertNow(); } else { later(assertNow, 450); }
+        }
+      };
+    }
+
     /* ---------------- build (once) ---------------- */
     function build() {
       if (st.built) { return; }
@@ -237,17 +350,23 @@
     function layout() {
       var vw = global.innerWidth, vh = global.innerHeight, tv = isTV();
       if (podcastEnabled) {
-        var pv = readVoid(), pl = global.VoidPodcastLayout.computeLayout({
+        var pv = readVoid(), d0 = Math.min(104, Math.max(56, Math.min(vw, vh) * 0.12));
+        var pl = global.VoidPodcastLayout.computeLayout({
           vw: vw, vh: vh, cx: pv.cx, cy: pv.cy, Ro: pv.hole || pv.glow,
-          R: pv.R, d0: Math.min(104, Math.max(56, Math.min(vw, vh) * 0.12)),
+          R: pv.R, d0: d0, minD: 44,
           topSafe: tv ? vh * 0.05 : 56, bottomSafe: vh * 0.22,
-          sideSafe: tv ? vw * 0.05 : 16, minD: 44,
+          sideSafe: tv ? vw * 0.05 : 16, rightSafe: podcastRightSafe(vw),
+          footprints: measurePodcastFp(d0, 44),
           previousMode: st.layout && st.layout.mode === 'triangle' ? 'triangle' : undefined
         });
+        st.labelMode = pl.labelMode === 'nodesc' ? 'bare' : 'full';
+        applyModeClasses(tv);
+        layer.classList.toggle('vdc--iconic', pl.labelMode === 'iconic');
         var podcastLayout = { r: pl.r, D: pl.d, Dp: pl.dp, geometry: pl.mode,
-          centers: pl.pos, labelW: pl.d, mode: pl.mode, warnings: pl.warning ? [pl.warning] : [] };
-        st.labelMode = 'full'; applyModeClasses(tv); place(podcastLayout);
-        podcastLayout.tried = [{ mode: pl.mode, r: Math.round(pl.r * 10) / 10, ok: !pl.warning }];
+          centers: pl.icons, labelW: podcastLw(pl.d), mode: pl.mode, labelMode: pl.labelMode,
+          warnings: pl.warning ? [pl.warning] : [], podcast: true };
+        placePodcast(pl);
+        podcastLayout.tried = pl.tried;
         podcastLayout.labelH = 0; podcastLayout.tv = tv; podcastLayout.vw = vw; podcastLayout.vh = vh;
         st.layout = podcastLayout; return podcastLayout;
       }
@@ -344,8 +463,11 @@
 
     function retract() {
       if (!st.layout) { return; }
-      var circ = 2 * Math.PI * st.layout.r;
-      ORDER.forEach(function (id) { circles[id].style.strokeDashoffset = circ + 'px'; });
+      ORDER.forEach(function (id) {
+        var rr = parseFloat(circles[id].getAttribute('r'));
+        var circ = 2 * Math.PI * (isFinite(rr) && rr > 0 ? rr : st.layout.r);
+        circles[id].style.strokeDashoffset = circ + 'px';
+      });
     }
 
     function teardown() {
@@ -361,7 +483,8 @@
       layer.removeAttribute('data-active');
       ORDER.forEach(function (id) {
         targets[id].classList.remove('is-selected');
-        var c = circles[id], circ = 2 * Math.PI * (st.layout ? st.layout.r : 1);
+        var c = circles[id], rr = parseFloat(c.getAttribute('r'));
+        var circ = 2 * Math.PI * (isFinite(rr) && rr > 0 ? rr : (st.layout ? st.layout.r : 1));
         c.style.strokeDashoffset = circ + 'px';
       });
     }
