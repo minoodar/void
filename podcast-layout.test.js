@@ -5,6 +5,7 @@ for (const [vw,vh] of cases) {
   const cx=vw/2, cy=vh/2, Ro=Math.min(vw,vh)*.12;
   const l=computeLayout({vw,vh,cx,cy,Ro,R:Math.min(vw,vh)*.37,d0:72,topSafe:56,bottomSafe:vh*.22,sideSafe:Math.max(16,vw*.05),minD:44});
   assert.ok(l.dp>=44, `${vw}x${vh}: podcast hit target`);
+  assert.ok(l.dp >= Math.max(44, l.d * 0.85) - 1e-9, `${vw}x${vh}: podcast size factor`);
   assert.strictEqual(l.pos.flow.x, cx, `${vw}x${vh}: flow axis`);
   assert.strictEqual(l.pos.podcast.x, cx, `${vw}x${vh}: podcast axis`);
   assert.ok(l.pos.inner.y < cy && l.pos.flow.y < cy && l.pos.beyond.y < cy, `${vw}x${vh}: domains above`);

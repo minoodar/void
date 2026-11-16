@@ -4,6 +4,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   var PHI = 1.618033988749895;
+  var PODCAST_FACTOR = 0.85;
   var HYSTERESIS = 1.08;
 
   function finite(n, fallback) { return typeof n === 'number' && isFinite(n) ? n : fallback; }
@@ -28,7 +29,7 @@
     var candidate = null;
 
     function rowFor(size) {
-      var dp = Math.max(44, size * 0.65);
+      var dp = Math.max(44, size * PODCAST_FACTOR);
       var upper = Math.min(r0,
         (0.9 * vw - 2 * sideSafe - size) / 2,
         cy - topSafe - size / 2);
@@ -52,7 +53,7 @@
     }
     if (!candidate) {
       d = Math.max(minD, Math.min(d, d0));
-      var dp = Math.max(44, d * 0.65);
+      var dp = Math.max(44, d * PODCAST_FACTOR);
       var sep = d + 8;
       var baseY = -(Ro + d / 2 + 8);
       var halfBase = sep / 2;

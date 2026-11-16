@@ -1,10 +1,15 @@
-.void-emblem--podcast{display:block;overflow:visible;opacity:.85;transition:opacity .4s ease;--pc-line:#d9dee6;--pc-star:#f3f5f8;--pc-accent:#d8b46a}
-.void-emblem--podcast .pc-construct{fill:none;stroke:var(--pc-line);stroke-width:.6;opacity:.16}
+﻿.void-emblem--podcast{display:block;overflow:visible;opacity:.92;transition:opacity .4s ease;--pc-line:#d9dee6;--pc-star:#f3f5f8;--pc-accent:#d8b46a}
+.void-emblem--podcast .pc-construct{fill:none;stroke:var(--pc-line);stroke-width:.6;opacity:.18}
 .void-emblem--podcast .pc-wave{fill:none;stroke:var(--pc-line);stroke-linecap:round;transform-box:fill-box;transform-origin:50% 50%;transition:transform .6s ease}
-.void-emblem--podcast .pc-wave-a{stroke-width:1.1;opacity:.9}.void-emblem--podcast .pc-wave-b{stroke-width:.8;opacity:.5}
-.void-emblem--podcast .pc-stars circle,.void-emblem--podcast .pc-listener-dot{fill:var(--pc-star)}.void-emblem--podcast .pc-voice-core{fill:var(--pc-accent)}
-.void-emblem--podcast .pc-voice-halo{fill:none;stroke:var(--pc-accent);stroke-width:.6;opacity:.4}.void-emblem--podcast .pc-listener-ring{fill:none;stroke:var(--pc-star);stroke-width:.9}
-.void-emblem--podcast:hover,.void-emblem--podcast.is-hover{opacity:1}.void-emblem--podcast:hover .pc-wave,.void-emblem--podcast.is-hover .pc-wave{transform:scaleY(1.08)}
-.void-emblem--podcast.is-active{opacity:1;transform:scale(.97)}.podcast-node-x .pc-stars circle:last-child{display:none}
-.podcast-node-x:after{content:"";position:absolute;width:8%;height:8%;left:46%;top:46%;border-left:1px solid var(--pc-star);border-top:1px solid var(--pc-star);transform:rotate(45deg);opacity:.9}
+.void-emblem--podcast .pc-wave-a{stroke-width:1.3;opacity:.95}.void-emblem--podcast .pc-wave-b{stroke-width:.9;opacity:.6}
+.void-emblem--podcast .pc-antinode,.void-emblem--podcast .pc-shoulders circle,.void-emblem--podcast .pc-dust circle,.void-emblem--podcast .pc-listener-dot{fill:var(--pc-star)}
+.void-emblem--podcast .pc-shoulders{opacity:.8;transition:opacity .4s ease}.void-emblem--podcast .pc-dust{opacity:.5}
+.void-emblem--podcast .pc-halo,.void-emblem--podcast .pc-listener-halo{fill:none;stroke:var(--pc-star);stroke-width:.4;opacity:.3}
+.void-emblem--podcast .pc-x{fill:none;stroke:var(--pc-star);stroke-width:1.1;stroke-linecap:round}
+.void-emblem--podcast .pc-voice-core{fill:var(--pc-accent)}.void-emblem--podcast .pc-voice-halo{fill:none;stroke:var(--pc-accent);stroke-width:.6;opacity:.45}.void-emblem--podcast .pc-sparkle{fill:none;stroke:var(--pc-accent);stroke-width:.5;opacity:.6}
+.void-emblem--podcast .pc-listener-ring{fill:none;stroke:var(--pc-star);stroke-width:1}
+.void-emblem--podcast:hover,.void-emblem--podcast.is-hover{opacity:1}.void-emblem--podcast:hover .pc-wave,.void-emblem--podcast.is-hover .pc-wave{transform:scaleY(1.08)}.void-emblem--podcast:hover .pc-shoulders,.void-emblem--podcast.is-hover .pc-shoulders{opacity:1}.void-emblem--podcast.is-active{opacity:1;transform:scale(.97)}
+.void-emblem--podcast .pc-antinode{animation:pc-tw 6s ease-in-out infinite}.void-emblem--podcast .pc-antinode:nth-of-type(2){animation-delay:1.5s}.void-emblem--podcast .pc-antinode:nth-of-type(3){animation-delay:3s}.void-emblem--podcast .pc-antinode:nth-of-type(4){animation-delay:4.5s}@keyframes pc-tw{50%{opacity:.55}}
+.void-emblem--podcast.is-loading .pc-wave path{stroke-dasharray:100;animation:pc-draw 1.6s ease-in-out infinite alternate}@keyframes pc-draw{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+.void-emblem--podcast.is-playing .pc-wave{animation:pc-breathe 3.2s ease-in-out infinite}@keyframes pc-breathe{50%{transform:scaleY(.8)}}
 @media (prefers-reduced-motion:reduce){.void-emblem--podcast,.void-emblem--podcast *{animation:none!important;transition:none!important}}
