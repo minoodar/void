@@ -15,7 +15,6 @@ shows, 14 fictional episodes, no audio), `podcast-store.js` + `podcast-store.tes
 (subscriptions + progress under `void.podcast.v1`, corrupt-storage safe). The CSS/JS
 load dynamically from the flag-ON branch of `void-domains.js`; `index.html` is
 untouched. Play buttons only dispatch `podcast:play` and show a marked Stage-2B
-placeholder. First run seeds subscriptions plus one partial and one completed
-sample progress entry. Open locally: serve the worktree root and visit
-`index.html?local-api=1&podcast=1` (local worker on :8787), then Golden Folder →
-Podcast emblem.
+placeholder. With the local dev flag on, first run seeds subscriptions plus one
+partial and one completed sample progress entry; otherwise the library starts
+empty.
