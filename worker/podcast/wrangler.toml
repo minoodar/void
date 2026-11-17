@@ -1,0 +1,10 @@
+name = "void-podcast"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+# Stage 3A: deliberately NO bindings — no D1, no R2, no KV, no secrets,
+# no routes, no cron. The only state is the public Cache API (TTL ~20 min)
+# and an in-memory per-isolate rate-limit map. Audio is never proxied.
+# After the owner deploys, the service lives at:
+#   https://void-podcast.<account-subdomain>.workers.dev
+# (the account subdomain is `minoodar`, matching void-galaxy-letters).
