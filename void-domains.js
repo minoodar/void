@@ -658,17 +658,38 @@
       ?{wait:'در حال گردآوریِ سه مسیر…',long:'هنوز در حال گردآوری…',error:''}
       :{wait:'Gathering the three…',long:'Still gathering…',error:''}
   });}catch(e){sd=null;}}
+  /* Stage 2A: the Podcast emblem opens its own window, never the music panel.
+     index.html is untouched — the window's CSS/JS load dynamically, ON only. */
+  var openPodcastWindow=null;
+  if(podcastEnabled){
+    var pwPromise=null;
+    openPodcastWindow=function(returnFocus){
+      if(!pwPromise){
+        pwPromise=new Promise(function(resolve,reject){
+          var link=document.createElement('link');link.rel='stylesheet';link.href='podcast-window.css?v=20261117';document.head.appendChild(link);
+          var files=['podcast-sample-data.js?v=20261117','podcast-store.js?v=20261117','podcast-window.js?v=20261117'],i=0;
+          var next=function(){
+            if(i>=files.length){resolve();return;}
+            var s=document.createElement('script');s.src=files[i++];
+            s.onload=next;
+            s.onerror=function(){reject(new Error('Podcast window failed to load'));};
+            document.head.appendChild(s);
+          };
+          next();
+        });
+      }
+      pwPromise.then(function(){
+        if(window.VoidPodcastWindow&&window.VoidPodcastWindow.open)window.VoidPodcastWindow.open({returnFocus:returnFocus});
+        else announce('Podcast window unavailable.');
+      }).catch(function(){announce('Podcast window unavailable.');});
+    };
+  }
   function selectDomain(key){
     if(key==='podcast'){
       var finish=function(){
         if(sd)sd.cancel();
-        if(!domainData){fallback();return;}
-        var ids=new Set(domainData.filter(function(t){return t.domains.indexOf(key)>=0;}).map(function(t){return t.id;}));
-        var g=api(), all=g&&g.getTracks?g.getTracks():[];
-        var selected=all.filter(function(t){return ids.has(t.id);});
-        if(!selected.length){announce('PODCAST has no available tracks yet.');fallback();return;}
-        if(!g||!g.replaceTracks){announce('Music list is unavailable. Open Golden Folder to continue.');fallback();return;}
-        g.replaceTracks(selected);g.open();
+        if(openPodcastWindow)openPodcastWindow(constellation.getTarget('podcast')||button);
+        else announce('Podcast window unavailable.');
       };
       if(sd){sd.start(constellation.getTarget('podcast')||button);setTimeout(finish,1500);}else{finish();}
       return;
