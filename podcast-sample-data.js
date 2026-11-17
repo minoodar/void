@@ -1,6 +1,7 @@
 /* Void Podcast — Stage 2A sample catalogue (local only, entirely fictional).
    Loaded dynamically from the flag-ON branch of void-domains.js; never fetched.
-   Artwork is generated (hue + initials), audioUrl stays empty until Stage 2B. */
+   Artwork is generated (graphite + initials); audioUrl stays empty unless a
+   git-ignored podcast-dev-config.local.js supplies test audio. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) { module.exports = factory(); }
   else { root.VoidPodcastSampleData = factory(); }
@@ -9,23 +10,32 @@
 
   var SHOWS = [
     { id: 'show-night-frequencies', title: 'Night Frequencies', titleFa: 'فرکانس‌های شب',
-      publisher: 'Orbital Radio', feedUrl: '', hue: 228, initials: 'NF' },
+      publisher: 'Orbital Radio', feedUrl: '', initials: 'NF' },
     { id: 'show-slow-orbit', title: 'The Slow Orbit', titleFa: 'مدار آهسته',
-      publisher: 'Deep Field Media', feedUrl: '', hue: 174, initials: 'SO' },
+      publisher: 'Deep Field Media', feedUrl: '', initials: 'SO' },
     { id: 'show-paper-lanterns', title: 'Paper Lanterns', titleFa: 'فانوس‌های کاغذی',
-      publisher: 'Sama House', feedUrl: '', hue: 38, initials: 'PL' }
+      publisher: 'Sama House', feedUrl: '', initials: 'PL' }
   ];
 
-  function ep(id, showId, title, titleFa, publishedAt, durationSec, description) {
-    return { id: id, showId: showId, title: title, titleFa: titleFa,
+  function ep(id, showId, title, titleFa, publishedAt, durationSec, description, chapters) {
+    var e = { id: id, showId: showId, title: title, titleFa: titleFa,
       publishedAt: publishedAt, durationSec: durationSec, audioUrl: '', description: description };
+    if (chapters) { e.chapters = chapters; }
+    return e;
   }
 
   var EPISODES = [
     ep('nf-05', 'show-night-frequencies', 'Signals After Midnight', 'سیگنال‌های پس از نیمه‌شب', '2026-11-14T22:00:00Z', 2760,
       'A fictional late-night broadcast about the quiet hum of empty stations and the people who still tune in.'),
     ep('nf-04', 'show-night-frequencies', 'The Last Shortwave', 'آخرین موج کوتاه', '2026-11-07T22:00:00Z', 2400,
-      'An invented story of a shortwave operator trading messages with a station that may not exist.'),
+      'An invented story of a shortwave operator trading messages with a station that may not exist.',
+      [
+        { title: 'Cold Open', titleFa: 'آغازِ سرد', startSec: 0 },
+        { title: 'The Operator’s Log', titleFa: 'دفترِ اپراتور', startSec: 360 },
+        { title: 'Numbers Between Stations', titleFa: 'اعداد میان ایستگاه‌ها', startSec: 900 },
+        { title: 'The Reply', titleFa: 'پاسخ', startSec: 1560 },
+        { title: 'Sign-Off', titleFa: 'خداحافظی', startSec: 2100 }
+      ]),
     ep('nf-03', 'show-night-frequencies', 'Static Gardens', 'باغ‌های برفک', '2026-10-31T22:00:00Z', 3120,
       'Field recordings from a made-up garden where every plant grows a different kind of static.'),
     ep('nf-02', 'show-night-frequencies', 'Numbers, Softly', 'اعداد، آرام', '2026-10-24T22:00:00Z', 1980,

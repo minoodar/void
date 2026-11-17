@@ -1,7 +1,8 @@
-/* Void Podcast — Stage 2A window styles. Sibling of #void-golden-modal:
-   same deep-space glass, sheen, gold accents and entrance, rebuilt with
-   Chromium-70-safe CSS (no min()/max()/clamp(), inset, flex gap, aspect-ratio,
-   dvh or :focus-visible). Loaded only when the podcast flag is ON. */
+/* Void Podcast — window styles (Stage 2A shell + 2B playback chrome). Sibling
+   of #void-golden-modal: same deep-space glass, sheen, gold accents and
+   entrance, rebuilt with Chromium-70-safe CSS (no min()/max()/clamp(), inset,
+   flex gap, aspect-ratio, dvh or :focus-visible). Loaded only when the podcast
+   flag is ON. */
 
 #void-podcast-modal {
   padding: 0;
@@ -87,15 +88,6 @@
   display: flex;
   align-items: baseline;
 }
-.pw__title::before {
-  content: "";
-  display: inline-block;
-  width: 2px;
-  height: 12px;
-  margin-right: 8px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, rgba(251, 191, 36, .82), rgba(251, 191, 36, .22));
-}
 .pw__title-en { letter-spacing: .14em; }
 .pw__title-sep { margin: 0 6px; color: rgba(251, 191, 36, .6); }
 .pw__title-fa { font-size: 12px; font-weight: 400; color: rgba(235, 240, 245, .6); }
@@ -120,6 +112,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   margin-top: 14px;
   scrollbar-width: thin;
   scrollbar-color: rgba(235, 240, 245, .28) rgba(235, 240, 245, .05);
@@ -170,8 +163,8 @@
 .pw__section-en { letter-spacing: .18em; }
 .pw__section-fa { margin-left: 8px; font-weight: 400; letter-spacing: 0; }
 
-/* NEW row — small circles, gold dot = unlistened, no numbers/badges */
-.pw__new { display: flex; flex-wrap: wrap; margin: 0 -5px; }
+/* NEW row — one row, at most 6 circles (count computed in JS), gold dot = unlistened */
+.pw__new { display: flex; flex-wrap: nowrap; overflow: hidden; margin: 0; }
 .pw__newitem {
   position: relative;
   width: 56px;
@@ -208,7 +201,7 @@
 }
 
 /* MY PODCASTS grid — circular show tiles */
-.pw__grid { display: flex; flex-wrap: wrap; margin: 0 -5px; }
+.pw__grid { display: flex; flex-wrap: wrap; margin: 0; }
 .pw__tile {
   width: 104px;
   margin: 0 5px 12px;
@@ -366,7 +359,6 @@ html.void-lowfx #void-podcast-modal::backdrop { background: rgba(2, 3, 7, .86); 
 
 /* RTL */
 html[dir="rtl"] .pw__back svg { transform: scaleX(-1); }
-html[dir="rtl"] .pw__title::before { margin-right: 0; margin-left: 8px; }
 html[dir="rtl"] .pw__section-fa { margin-left: 0; margin-right: 8px; }
 html[dir="rtl"] .pw__dot { right: auto; left: 2px; }
 html[dir="rtl"] .pw__fill { left: auto; right: 0; }
@@ -376,4 +368,188 @@ html[dir="rtl"] .pw__fill { left: auto; right: 0; }
   #void-podcast-modal[open] { animation: none; }
   .pw__sheen, .pw__sheen::after { animation: none; }
   #void-podcast-modal * { transition: none !important; }
+}
+
+/* ==== Stage 2B: playback state + podcast-mode chrome ==== */
+
+/* The engine's empty-library state (.vm-dock.is-empty, set from local tracks
+   only) hides the whole transport and the title row. While a podcast plays,
+   the web source IS the content: restore the engine's own base displays and
+   hide the "open music" affordance instead. Scoped to .vm-podcast (added to
+   the engine root by the player only while active), so flag-OFF and normal
+   music mode are untouched. ID selector outranks the static is-empty rules. */
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-arc,
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-seek,
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-time { display: block; }
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-clock { display: flex; }
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-vol,
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-prev,
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-play,
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-next,
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-queue-btn { display: grid; }
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-open,
+#void-music-root.vm-podcast .vm-dock.is-empty .vm-open-label { display: none; }
+#void-music-root.vm-podcast.vm-root-meta-empty .vm-meta { display: flex; }
+
+/* Currently playing / selected episode row */
+.pw__ep.is-current { background: rgba(251, 191, 36, .055); }
+.pw__ep.is-current .pw__epmeta { opacity: 1; }
+.pw__ep.is-current .pw__play {
+  border-color: rgba(251, 191, 36, .65);
+  background: rgba(251, 191, 36, .12);
+}
+.pw__ep.is-current .pw__eptitle { color: rgba(255, 214, 140, .95); }
+
+/* Chapter ticks on the engine's progress arc (SVG circles added by the player) */
+.pw-tick {
+  fill: rgba(251, 191, 36, .92);
+  stroke: rgba(8, 10, 16, .85);
+  stroke-width: .6;
+  pointer-events: none;
+}
+
+/* Speed chip — sits where the repeat icon sits (same .vm-repeat base) */
+.pw-rate {
+  opacity: .9;
+  min-width: 36px;
+  height: 22px;
+  padding: 2px 7px;
+  justify-content: center;
+  border: 1px solid rgba(251, 191, 36, .38);
+  border-radius: 7px;
+  background: rgba(251, 191, 36, .08);
+  color: rgba(255, 214, 140, .95);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+}
+.pw-rate:hover { opacity: 1; border-color: rgba(251, 191, 36, .7); background: rgba(251, 191, 36, .16); color: #ffe7b0; }
+.pw-rate:focus { outline: 2px solid rgba(251, 191, 36, .85); outline-offset: 2px; }
+
+/* Menu sheet — small transient glass panel from the secondary (sound) button.
+   It wears .vm-sound-pop so the engine's key handler leaves its keys alone;
+   the doubled class outranks the engine's injected .vm-sound-pop layout. */
+.pw-sheet.vm-sound-pop {
+  position: fixed;
+  z-index: 1150;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 14px 16px 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(236, 241, 247, .2);
+  color: rgba(250, 252, 255, .96);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Vazirmatn", Tahoma, sans-serif;
+  background: linear-gradient(180deg, rgba(12, 15, 22, .96), rgba(6, 8, 13, .97));
+  -webkit-backdrop-filter: blur(16px) saturate(118%);
+  backdrop-filter: blur(16px) saturate(118%);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .1);
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(235, 240, 245, .28) rgba(235, 240, 245, .05);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .pw-sheet.vm-sound-pop { background: rgba(7, 9, 14, .98); }
+}
+.pw-sheet.vm-sound-pop[hidden] { display: none !important; }
+.pw-sheet::-webkit-scrollbar { width: 6px; }
+.pw-sheet::-webkit-scrollbar-track { background: rgba(235, 240, 245, .05); border-radius: 3px; }
+.pw-sheet::-webkit-scrollbar-thumb { background: rgba(235, 240, 245, .28); border-radius: 3px; }
+.pw-sheet::-webkit-scrollbar-thumb:hover { background: rgba(235, 240, 245, .44); }
+.pw-sheet :focus { outline: 2px solid rgba(251, 191, 36, .85); outline-offset: 2px; }
+
+.pw-sheet__head { display: flex; align-items: center; }
+.pw-sheet__title {
+  flex: 1 1 auto;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .2em;
+  color: rgba(251, 191, 36, .8);
+}
+.pw-sheet__sec { margin-top: 13px; }
+.pw-sheet__lbl {
+  margin-bottom: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  color: rgba(235, 240, 245, .55);
+}
+.pw-sheet__lbl bdi { margin-left: 6px; font-weight: 400; letter-spacing: 0; }
+.pw-sheet__row { display: flex; flex-wrap: wrap; }
+.pw-sheet__btn {
+  margin: 0 6px 6px 0;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(235, 240, 245, .18);
+  background: rgba(235, 240, 245, .055);
+  color: rgba(250, 252, 255, .9);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, color .18s ease;
+}
+.pw-sheet__btn:hover { background: rgba(235, 240, 245, .11); border-color: rgba(251, 191, 36, .5); }
+.pw-sheet__btn[aria-pressed="true"] {
+  border-color: rgba(251, 191, 36, .7);
+  background: rgba(251, 191, 36, .14);
+  color: #ffe7b0;
+}
+.pw-sheet__wide {
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-sheet__wide.is-at { border-color: rgba(251, 191, 36, .6); color: rgba(255, 214, 140, .95); }
+.pw-sheet__x {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+}
+.pw-sheet__qrow { display: flex; align-items: center; margin-bottom: 6px; }
+.pw-sheet__qtitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-right: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-sheet__empty { font-size: 11.5px; color: rgba(235, 240, 245, .5); }
+.pw-sheet__sleep-line { margin-top: 2px; font-size: 11px; color: rgba(251, 191, 36, .85); min-height: 15px; }
+
+/* TV — bigger targets inside the sheet, D-pad only */
+html.void-tv .pw-sheet.vm-sound-pop { font-size: 16px; padding: 18px 20px 20px; }
+html.void-tv .pw-sheet__btn { padding: 12px 16px; font-size: 15px; }
+html.void-tv .pw-sheet__x { width: 40px; height: 40px; font-size: 19px; }
+html.void-tv .pw-sheet__lbl { font-size: 13px; }
+html.void-tv .pw-sheet__qtitle { font-size: 15px; }
+html.void-tv .pw-sheet__empty, html.void-tv .pw-sheet__sleep-line { font-size: 13px; }
+html.void-tv .pw-rate { min-width: 48px; height: 28px; font-size: 14px; }
+
+/* RTL */
+html[dir="rtl"] .pw-sheet__lbl bdi { margin-left: 0; margin-right: 6px; }
+html[dir="rtl"] .pw-sheet__row .pw-sheet__btn { margin: 0 0 6px 6px; }
+html[dir="rtl"] .pw-sheet__wide { text-align: right; }
+html[dir="rtl"] .pw-sheet__qtitle { margin-right: 0; margin-left: 8px; }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .pw-sheet, .pw-sheet * { transition: none !important; }
 }

@@ -667,7 +667,7 @@
       if(!pwPromise){
         pwPromise=new Promise(function(resolve,reject){
           var link=document.createElement('link');link.rel='stylesheet';link.href='podcast-window.css?v=20261117';document.head.appendChild(link);
-          var files=['podcast-sample-data.js?v=20261117','podcast-store.js?v=20261117','podcast-window.js?v=20261117'],i=0;
+          var files=['podcast-sample-data.js?v=20261117','podcast-store.js?v=20261117','podcast-window.js?v=20261117','podcast-player.js?v=20261117'],i=0;
           var next=function(){
             if(i>=files.length){resolve();return;}
             var s=document.createElement('script');s.src=files[i++];

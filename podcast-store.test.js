@@ -1,5 +1,5 @@
 /* podcast-store — Node tests: empty/corrupt storage, subscriptions, progress,
-   purity of helpers, listener isolation, throwing storage adapters. */
+   queue, purity of helpers, listener isolation, throwing storage adapters. */
 'use strict';
 const assert = require('assert');
 const store = require('./podcast-store.js');
@@ -21,10 +21,11 @@ function memStorage(seed) {
 /* Empty storage -> defaults, nothing persisted yet. */
 {
   const s = store.create(memStorage());
-  eq(s.getState(), { subscriptions: [], progress: {} }, 'empty: defaults');
+  eq(s.getState(), { subscriptions: [], progress: {}, queue: [] }, 'empty: defaults');
   ok(!s.hasPersisted(), 'empty: nothing persisted');
   ok(s.getProgress('nf-01') === null, 'empty: no progress');
   ok(!s.isSubscribed('show-slow-orbit'), 'empty: not subscribed');
+  eq(s.getQueue(), [], 'empty: empty queue');
 }
 
 /* Corrupt / hostile payloads degrade safely. */
@@ -77,11 +78,46 @@ function memStorage(seed) {
   ok(store.listenedFraction(done, 3120) === 1, 'fraction: full');
   const neg = s.setProgress('nf-02', -40, 1980);
   ok(neg.positionSec === 0 && !neg.completed, 'progress: negative clamped to 0');
-  ok(store.isUnlistened(neg), 'unlistened: zero position');
+  ok(!store.isUnlistened(neg), 'started: a zero-position entry still counts as started');
   ok(store.isUnlistened(null), 'unlistened: no entry');
   ok(!store.isUnlistened(done), 'listened: completed entry');
   const restored = store.create(mem).getProgress('nf-03');
   ok(restored && restored.completed && restored.positionSec === 3120, 'round-trip: progress restored');
+}
+
+/* Completion rule: >=95% or the ended flag; just below 95% stays incomplete. */
+{
+  const s = store.create(memStorage());
+  const below = s.setProgress('ep-a', 949, 1000);
+  ok(!below.completed, 'completion: 94.9% not completed');
+  const at = s.setProgress('ep-a', 950, 1000);
+  ok(at.completed, 'completion: exactly 95% completed');
+  const endedEarly = s.setProgress('ep-b', 120, 1000, true);
+  ok(endedEarly.completed && endedEarly.positionSec === 120, 'completion: ended flag forces completed, keeps position');
+  const zeroDur = s.setProgress('ep-c', 50, 0);
+  ok(!zeroDur.completed, 'completion: unknown duration never auto-completes');
+  ok(store.withProgress(store.defaultState(), 'ep-d', 10, 100, 5, false).progress['ep-d'].completed === false, 'completion: explicit false flag');
+}
+
+/* Queue: ids only, dedupe, order kept, persisted, corrupt-safe, pure. */
+{
+  const mem = memStorage();
+  const s = store.create(mem);
+  s.setQueue(['nf-04', 'nf-03', 'nf-04', '', 7, 'nf-02']);
+  eq(s.getQueue(), ['nf-04', 'nf-03', 'nf-02'], 'queue: sanitize + dedupe + order');
+  eq(store.create(mem).getQueue(), ['nf-04', 'nf-03', 'nf-02'], 'queue: round-trip');
+  s.setQueue([]);
+  eq(store.create(mem).getQueue(), [], 'queue: cleared persists');
+  eq(store.parseState('{"queue":"nope"}').queue, [], 'queue: wrong type -> []');
+  eq(store.parseState('{"queue":["a","a",null,"b"]}').queue, ['a', 'b'], 'queue: corrupt entries dropped');
+  const base = store.defaultState();
+  const q = store.withQueue(base, ['x', 'y']);
+  eq(base.queue, [], 'queue: pure mutator');
+  q.queue.push('z');
+  eq(store.withQueue(q, ['x']).queue, ['x'], 'queue: copy isolated from later edits');
+  const got = s.getQueue();
+  got.push('intruder');
+  eq(s.getQueue(), [], 'queue: getQueue returns a copy');
 }
 
 /* Pure helpers never mutate their input. */
@@ -138,6 +174,14 @@ function memStorage(seed) {
   ok(latest.length === 8 && latest[0].publishedAt >= latest[7].publishedAt, 'sample: latest sorted desc');
   ok(sample.showById('show-slow-orbit').publisher === 'Deep Field Media', 'sample: showById');
   ok(sample.showById('nope') === null, 'sample: unknown id -> null');
+  const chaptered = sample.EPISODES.filter(e => Array.isArray(e.chapters) && e.chapters.length > 0);
+  ok(chaptered.length === 1, 'sample: exactly one episode carries chapters');
+  const ch = chaptered[0].chapters;
+  ok(ch[0].startSec === 0, 'sample: chapters start at 0');
+  for (let i = 1; i < ch.length; i++) {
+    ok(ch[i].startSec > ch[i - 1].startSec && ch[i].startSec < chaptered[0].durationSec &&
+      typeof ch[i].title === 'string' && ch[i].title.length > 0, 'sample: chapter order/bounds ' + i);
+  }
 }
 
 console.log('podcast-store: ' + checks + ' assertions passed');
