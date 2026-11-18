@@ -519,6 +519,7 @@
       play.setAttribute('data-ep', ep.id);
       play.setAttribute('aria-pressed', isCur ? 'true' : 'false');
       play.setAttribute('aria-label', (isPlaying ? 'Pause · توقف' : 'Play · پخش') + ' — ' + ep.title);
+      play.title = isPlaying ? 'Pause · توقف' : 'Play · پخش';
       play.innerHTML = isPlaying ? PAUSE_SVG : PLAY_SVG;
       play.addEventListener('click', function () {
         var P = window.VoidPodcastPlayer;
@@ -558,6 +559,7 @@
       star.setAttribute('data-star', ep.id);
       star.setAttribute('aria-pressed', isSavedEp ? 'true' : 'false');
       star.setAttribute('aria-label', (isSavedEp ? 'Remove from saved · حذف از ذخیره‌شده‌ها' : 'Save episode · ذخیرهٔ قسمت') + ' — ' + ep.title);
+      star.title = isSavedEp ? 'Saved — click to remove · ذخیره‌شده؛ برای حذف کلیک کنید' : 'Save to Saved episodes · ذخیره در ذخیره‌شده‌ها';
       star.innerHTML = isSavedEp ? STAR_FILLED : STAR_OUTLINE;
       star.addEventListener('click', function () {
         if (store.isSaved(ep.id)) { store.removeSaved(ep.id); return; }
