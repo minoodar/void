@@ -47,6 +47,13 @@
 .vem-target:focus .vem-line path,
 .vem-target.is-selected .vem-line path { stroke: var(--vem-line-hi); stroke-width: 1.7; opacity: 1; }
 
+.vdc-target--podcast .vdc-emblem { position: relative; }
+.vdc-target--podcast .vdc-label { margin-top: 8px; }
+.vdc-target--podcast .vdc-name { color: #F3F5F8; }
+.vdc-target--podcast .vdc-desc { color: rgba(243,245,248,.68); }
+.vdc-target--podcast:hover .pc-wave,
+.vdc-target--podcast:focus .pc-wave { transform: scaleY(1.08); }
+
 /* ------------------------------------------------------------------ */
 /* PART 2 — CONSTELLATION LAYER                                       */
 /* ------------------------------------------------------------------ */
