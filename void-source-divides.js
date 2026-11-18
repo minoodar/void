@@ -9,7 +9,7 @@
 
   function create(o) {
     o = o || {};
-    var labels = o.labels || { wait: 'Gathering the three…', long: 'Still gathering…', error: '' };
+    var labels = o.labels || { wait: 'Gathering the four…', long: 'Still gathering…', error: '' };
     var st = 'idle', timers = [], svg, root, halo, ring, glow, pt, drift, dot, beads = {}, note, geo = null, onVis;
 
     function later(f, ms) { var t = setTimeout(f, ms); timers.push(t); return t; }

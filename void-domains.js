@@ -655,8 +655,8 @@
     getVoid:getVoid,
     isActive:function(){var z=window.VoidMusicViz;return !!(z&&z.debugState&&z.debugState().playing);},
     labels:/^fa/i.test(String(document.documentElement.lang||'en'))
-      ?{wait:'در حال گردآوریِ سه مسیر…',long:'هنوز در حال گردآوری…',error:''}
-      :{wait:'Gathering the three…',long:'Still gathering…',error:''}
+      ?{wait:'در حال گردآوریِ چهار مسیر…',long:'هنوز در حال گردآوری…',error:''}
+      :{wait:'Gathering the four…',long:'Still gathering…',error:''}
   });}catch(e){sd=null;}}
   /* Stage 2A: the Podcast emblem opens its own window, never the music panel.
      index.html is untouched — the window's CSS/JS load dynamically, ON only. */
