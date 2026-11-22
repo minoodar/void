@@ -307,3 +307,114 @@ test('errorText is bilingual for every worker code', () => {
   });
   assert.ok(Feed.errorText('unknown-code').length > 0);
 });
+/* ---- Phase 2B §A: canonical feed URL, media:content fallback, length, ns prefixes ---- */
+function domShim() { global.DOMParser = function () { this.parseFromString = s => miniDom(s); }; }
+test('Atom rel="self" link becomes resolvedFeedUrl (result + show)', () => {
+  domShim();
+  const xml = ATOM.replace('<link rel="alternate" href="https://atom.example.com"/>',
+    '<link rel="alternate" href="https://atom.example.com"/>\n  <link rel="self" href="https://atom.example.com/canonical.xml"/>');
+  const r = Feed.parseFeed(xml, 'https://atom.example.com/feed.xml');
+  assert.equal(r.ok, true);
+  assert.equal(r.resolvedFeedUrl, 'https://atom.example.com/canonical.xml');
+  assert.equal(r.show.resolvedFeedUrl, 'https://atom.example.com/canonical.xml');
+});
+
+test('itunes:new-feed-url becomes resolvedFeedUrl; non-https is ignored', () => {
+  domShim();
+  const xml = RSS.replace('</channel>',
+    '  <itunes:new-feed-url>https://new.example.com/moved.xml</itunes:new-feed-url>\n</channel>');
+  const r = Feed.parseFeed(xml, FEED_URL);
+  assert.equal(r.resolvedFeedUrl, 'https://new.example.com/moved.xml');
+  assert.equal(r.show.resolvedFeedUrl, 'https://new.example.com/moved.xml');
+  const bad = RSS.replace('</channel>',
+    '  <itunes:new-feed-url>http://insecure.example.com/moved.xml</itunes:new-feed-url>\n</channel>');
+  const rb = Feed.parseFeed(bad, FEED_URL);
+  assert.equal(rb.resolvedFeedUrl, '');
+  assert.equal(rb.show.resolvedFeedUrl, undefined);
+});
+
+test('feeds without self-identification leave resolvedFeedUrl empty', () => {
+  domShim();
+  const r = Feed.parseFeed(RSS, FEED_URL);
+  assert.equal(r.resolvedFeedUrl, '');
+  assert.equal(r.show.resolvedFeedUrl, undefined);
+  const a = Feed.parseFeed(ATOM, 'https://atom.example.com/feed.xml');
+  assert.equal(a.resolvedFeedUrl, '');
+});
+
+test('media:content is used only when no usable enclosure exists', () => {
+  domShim();
+  const onlyMedia = `<?xml version="1.0"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>M</title>
+<item><title>E1</title><guid>m1</guid>
+<media:content url="https://cdn.example.com/m1.mp3" type="audio/mpeg" fileSize="4567"/>
+</item></channel></rss>`;
+  const r1 = Feed.parseFeed(onlyMedia, FEED_URL);
+  assert.equal(r1.ok, true);
+  assert.equal(r1.count, 1);
+  assert.equal(r1.episodes[0].audioUrl, 'https://cdn.example.com/m1.mp3');
+  assert.equal(r1.episodes[0].audioType, 'audio/mpeg');
+  assert.equal(r1.episodes[0].audioBytes, 4567);
+  const both = onlyMedia.replace('<item><title>E1</title><guid>m1</guid>',
+    '<item><title>E1</title><guid>m1</guid>\n<enclosure url="https://cdn.example.com/enc.mp3" type="audio/mpeg" length="99"/>');
+  const r2 = Feed.parseFeed(both, FEED_URL);
+  assert.equal(r2.episodes[0].audioUrl, 'https://cdn.example.com/enc.mp3');
+  assert.equal(r2.episodes[0].audioBytes, 99);
+  const unusableEnc = onlyMedia.replace('<item><title>E1</title><guid>m1</guid>',
+    '<item><title>E1</title><guid>m1</guid>\n<enclosure url="http://cdn.example.com/insecure.mp3" type="audio/mpeg"/>');
+  const r3 = Feed.parseFeed(unusableEnc, FEED_URL);
+  assert.equal(r3.episodes[0].audioUrl, 'https://cdn.example.com/m1.mp3');
+  const neither = onlyMedia.replace(/<media:content[^>]*\/>/, '');
+  const r4 = Feed.parseFeed(neither, FEED_URL);
+  assert.equal(r4.count, 0);
+});
+
+test('enclosure length is captured as audioBytes (0 when absent/garbage)', () => {
+  domShim();
+  const r = Feed.parseFeed(RSS, FEED_URL);
+  const e2 = r.episodes.find(e => e.guid === 'guid-2');
+  const e1 = r.episodes.find(e => e.guid === 'guid-1');
+  assert.equal(e2.audioBytes, 123);
+  assert.equal(e1.audioBytes, 0);
+});
+
+test('namespaced tags match under a different prefix (it:duration, m:content)', () => {
+  domShim();
+  const xml = `<?xml version="1.0"?>
+<rss version="2.0" xmlns:it="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:m="http://search.yahoo.com/mrss/">
+<channel><title>Prefixed</title>
+<item><title>Alt prefix</title><guid>p1</guid>
+<it:duration>12:34</it:duration>
+<m:content url="https://cdn.example.com/p1.mp3" type="audio/mpeg" fileSize="777"/>
+</item></channel></rss>`;
+  const r = Feed.parseFeed(xml, FEED_URL);
+  assert.equal(r.ok, true);
+  assert.equal(r.count, 1);
+  assert.equal(r.episodes[0].durationSec, 754);
+  assert.equal(r.episodes[0].audioUrl, 'https://cdn.example.com/p1.mp3');
+  assert.equal(r.episodes[0].audioBytes, 777);
+});
+
+test('duplicates merge only within one identity; distinct guids never merge', () => {
+  domShim();
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>D</title>
+<item><title>A</title><guid>g</guid><enclosure url="https://cdn.example.com/1.mp3"/></item>
+<item><title>A repeat</title><guid>g</guid><enclosure url="https://cdn.example.com/2.mp3"/></item>
+<item><title>B</title><guid>h</guid><enclosure url="https://cdn.example.com/1.mp3"/></item>
+</channel></rss>`;
+  const r = Feed.parseFeed(xml, FEED_URL);
+  assert.equal(r.count, 2);
+  assert.deepEqual(r.episodes.map(e => e.guid).sort(), ['g', 'h']);
+});
+
+test('empty and malformed feeds report cleanly', () => {
+  domShim();
+  const empty = `<?xml version="1.0"?><rss version="2.0"><channel><title>E</title></channel></rss>`;
+  const r = Feed.parseFeed(empty, FEED_URL);
+  assert.equal(r.ok, true);
+  assert.equal(r.count, 0);
+  assert.deepEqual(r.episodes, []);
+  assert.equal(Feed.parseFeed('<html><body>not a feed</body></html>', FEED_URL).reason, 'not-feed');
+  assert.equal(Feed.parseFeed('   ', FEED_URL).reason, 'not-feed');
+  assert.equal(Feed.parseFeed(null, FEED_URL).reason, 'not-feed');
+});

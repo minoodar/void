@@ -31,6 +31,11 @@
     if (isNaN(d.getTime())) { return ''; }
     return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
   }
+  function fmtStamp(ms) {
+    var d = new Date(ms);
+    if (isNaN(d.getTime())) { return ''; }
+    return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+  }
   function fmtDur(sec) { return Math.max(1, Math.round(sec / 60)) + ' min'; }
   function isTV() { return document.documentElement.classList.contains('void-tv'); }
   /* Fallback artwork is neutral graphite/silver — never the domain hues. */
@@ -183,10 +188,14 @@
   var showTitle = el('h3', 'pw__showtitle');
   var showTitleFa = el('p', 'pw__showtitle-fa'); showTitleFa.dir = 'rtl'; showTitleFa.lang = 'fa';
   var showPub = el('p', 'pw__showpub');
+  var showFetch = el('p', 'pw__showfetch');
+  showFetch.hidden = true;
   showMeta.appendChild(showTitle); showMeta.appendChild(showTitleFa); showMeta.appendChild(showPub);
+  showMeta.appendChild(showFetch);
   showHead.appendChild(showArt); showHead.appendChild(showMeta);
   var showActions = el('div', 'pw__showactions');
   var playNote = el('p', 'pw__placeholder');
+  var errorNote = '';                 /* persistent playback-error text; survives rerender */
   playNote.setAttribute('role', 'status');
   playNote.dir = 'auto';
   playNote.hidden = true;
@@ -262,10 +271,21 @@
             throw { code: (j && j.error) || 'unreachable' };
           }, function () { throw { code: 'unreachable' }; });
         }
-        return res.text();
-      }).then(function (text) {
+        /* The Worker echoes validator metadata in x-void-* headers (2B §C).
+           Stored per show on adopt; display-only for now — no conditional
+           GET until the Worker agrees to honour it (Decision 3). */
+        return res.text().then(function (text) {
+          var hd = res.headers;
+          var get = hd && typeof hd.get === 'function' ? hd.get : function () { return null; };
+          return {
+            text: text,
+            etag: get.call(hd, 'x-void-etag') || '',
+            lastModified: get.call(hd, 'x-void-last-modified') || ''
+          };
+        });
+      }).then(function (fetched) {
         clearTimeout(timer);
-        resolve(text);
+        resolve(fetched);
       }, function (err) {
         clearTimeout(timer);
         reject(err && typeof err.code === 'string' ? err : { code: ctrl && ctrl.signal.aborted ? 'timeout' : 'network' });
@@ -273,9 +293,10 @@
     });
   }
   function addFeed(url) {
-    return fetchFeedText(url).then(function (text) {
-      var parsed = Feed.parseFeed(text, url);
+    return fetchFeedText(url).then(function (fetched) {
+      var parsed = Feed.parseFeed(fetched.text, url);
       if (!parsed.ok) { throw { code: parsed.reason || 'not-feed' }; }
+      parsed.fetchedMeta = { etag: fetched.etag, lastModified: fetched.lastModified };
       return parsed;
     });
   }
@@ -286,6 +307,8 @@
     show.lastFetchedAt = Date.now();
     catalogSet(show, parsed.episodes);
     store.registerShow(show, parsed.episodes);
+    var meta = parsed.fetchedMeta || {};
+    store.setFetchMeta(show.id, { lastFetchedAt: show.lastFetchedAt, etag: meta.etag || '', lastModified: meta.lastModified || '' });
     return show;
   }
 
@@ -324,6 +347,83 @@
     previewBox.appendChild(add); previewBox.appendChild(x);
   }
 
+  /* ---- local library search (2B §C) ----
+     Runs against registered subscriptions and cached episodes only — no
+     provider API, no network (Decision 2 scope). Results reuse the preview
+     box; actions are plain buttons so no new CSS is needed. */
+  function localSearch(q) {
+    var needle = q.toLowerCase();
+    var st = store.getState();
+    var shows = [], episodes = [], truncated = false;
+    st.subscriptions.forEach(function (id) {
+      /* تورِ جستجو باید با همان چیزی که کتابخانه نشان می‌دهد یکی باشد؛
+        نمایش‌های نمونهٔ محلی (data.SHOWS) در store.shows ثبت نمی‌شوند. */
+      var sh = st.shows[id] || data.showById(id);
+      if (!sh) { return; }
+      var shHay = ((sh.title || '') + ' ' + (sh.titleFa || '') + ' ' + (sh.publisher || '')).toLowerCase();
+      if (shHay.indexOf(needle) >= 0) { shows.push(sh); }
+      var eps = data.episodesOf(id);
+      for (var i = 0; i < eps.length; i++) {
+        var ep = eps[i];
+        var epHay = ((ep.title || '') + ' ' + (ep.titleFa || '')).toLowerCase();
+        if (epHay.indexOf(needle) >= 0) {
+          if (episodes.length < 8) { episodes.push({ ep: ep, show: sh }); }
+          else { truncated = true; }
+        }
+      }
+    });
+    if (shows.length > 6) { shows = shows.slice(0, 6); truncated = true; }
+    return { shows: shows, episodes: episodes, truncated: truncated };
+  }
+  function playFromSearch(hit) {
+    var P = window.VoidPodcastPlayer;
+    try {
+      window.dispatchEvent(new CustomEvent('podcast:play', { detail: { episode: hit.ep, show: hit.show, placeholder: !P } }));
+    } catch (err) { /* CustomEvent unavailable */ }
+    if (!P) { return; }
+    var st = P.getState();
+    if (st.active && st.episodeId === hit.ep.id) { P.toggle(); return; }
+    P.play(hit.ep, hit.show);
+  }
+  function renderSearchResults(res) {
+    previewBox.textContent = '';
+    preview = null;
+    if (!res.shows.length && !res.episodes.length) { previewBox.hidden = true; return; }
+    previewBox.hidden = false;
+    var list = el('div', 'pw__searchhits');
+    res.shows.forEach(function (sh) {
+      var b = el('button', 'pw__subbtn', sh.title + (sh.publisher ? ' — ' + sh.publisher : ''));
+      b.type = 'button';
+      b.addEventListener('click', function () { openShow(sh.id, b); });
+      list.appendChild(b);
+    });
+    res.episodes.forEach(function (hit) {
+      var label = hit.ep.title + (hit.show.title ? ' — ' + hit.show.title : '');
+      var b = el('button', 'pw__subbtn', '▶ ' + label);
+      b.type = 'button';
+      b.setAttribute('dir', 'auto');
+      b.addEventListener('click', function () { playFromSearch(hit); });
+      list.appendChild(b);
+    });
+    if (res.truncated) { list.appendChild(el('p', 'pw__previewpub', 'More matches exist · نتایج بیشتری هست')); }
+    previewBox.appendChild(list);
+  }
+  /* Same feed reachable under two URL spellings (http/https, itunes:new-feed-url
+     redirect) parses to a show whose self-resolved URL matches an existing
+     subscription. Same-URL re-adds keep the "Update" path via show id. */
+  function resolvedDupe(parsed, typedUrl) {
+    var resolved = parsed.show.resolvedFeedUrl || '';
+    if (!resolved || resolved === typedUrl) { return null; }
+    var st = store.getState();
+    var found = null;
+    st.subscriptions.forEach(function (id) {
+      if (found) { return; }
+      var sh = st.shows[id];
+      if (sh && (sh.feedUrl === resolved || sh.resolvedFeedUrl === resolved)) { found = sh; }
+    });
+    return found;
+  }
+
   searchForm.addEventListener('submit', function (e) {
     e.preventDefault();
     if (busy) { return; }
@@ -332,13 +432,27 @@
     preview = null;
     renderPreview();
     var url = Feed.looksLikeUrl(text);
-    if (!url) { showNote('Search arrives soon · جستجو به‌زودی'); return; }
+    if (!url) {
+      var res = localSearch(text);
+      renderSearchResults(res);
+      if (!res.shows.length && !res.episodes.length) {
+        showNote('No matches in your library · در کتابخانه‌تان چیزی یافت نشد');
+      } else {
+        searchNote.hidden = true;
+      }
+      return;
+    }
     if (!/^https:\/\//i.test(url)) { showNote(Feed.errorText('invalid-url')); return; }
     busy = true;
     addBtn.disabled = true;
     searchInput.disabled = true;
     showNote('Fetching feed… · در حال دریافت فید…');
     addFeed(url).then(function (parsed) {
+      if (resolvedDupe(parsed, url)) {
+        showNote('Already in your podcasts · از قبل در پادکست‌هایتان است');
+        searchInput.value = '';
+        return;
+      }
       preview = parsed;
       renderPreview();
       searchNote.hidden = true;
@@ -502,7 +616,14 @@
     showTitleFa.textContent = sh.titleFa || '';
     showTitleFa.hidden = !sh.titleFa;
     showPub.textContent = isSavedView ? (list.length + ' episodes · قسمت') : sh.publisher;
-    playNote.hidden = true;
+    if (!isSavedView && sh.lastFetchedAt) {
+      showFetch.textContent = 'Refreshed ' + fmtStamp(sh.lastFetchedAt) + ' · آخرین به‌روزرسانی ' + fmtStamp(sh.lastFetchedAt);
+      showFetch.hidden = false;
+    } else {
+      showFetch.hidden = true;
+    }
+    playNote.hidden = !errorNote;
+    if (errorNote) { playNote.textContent = errorNote; }
     renderShowActions(showId);
     epList.textContent = '';
     if (!list.length) {
@@ -842,6 +963,20 @@
   store.onChange(rerender);
   ['podcast:episode', 'podcast:playing'].forEach(function (name) {
     window.addEventListener(name, function () { if (isOpen()) { rerender(); } });
+  });
+  /* Phase 1: surface playback errors in the dialog's existing status note while
+     the dialog is open (the orb overlay covers the dialog-closed case). The
+     wording is deliberately neutral — it asserts no CORS or network diagnosis. */
+  window.addEventListener('podcast:error', function (e) {
+    errorNote = (e && e.detail && e.detail.message) ||
+      'Podcast playback stopped — this episode could not be played · پخش این قسمت متوقف شد';
+    if (isOpen()) { playNote.textContent = errorNote; playNote.hidden = false; }
+  });
+  window.addEventListener('podcast:playing', function (e) {
+    if (e && e.detail && e.detail.playing) {
+      errorNote = '';
+      if (isOpen() && !playNote.hidden) { playNote.hidden = true; }
+    }
   });
 
   /* The NEW row count depends on the measured width: refit on resize while open. */

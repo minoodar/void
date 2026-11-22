@@ -21,7 +21,7 @@ function memStorage(seed) {
 /* Empty storage -> defaults, nothing persisted yet. */
 {
   const s = store.create(memStorage());
-  eq(s.getState(), { subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {} }, 'empty: defaults');
+  eq(s.getState(), { subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {}, rate: 1 }, 'empty: defaults');
   ok(!s.hasPersisted(), 'empty: nothing persisted');
   ok(s.getProgress('nf-01') === null, 'empty: no progress');
   ok(!s.isSubscribed('show-slow-orbit'), 'empty: not subscribed');
@@ -384,6 +384,115 @@ function memStorage(seed) {
   eq(JSON.stringify(sv), svSnap, 'purity: saved base untouched');
   ok(s1.saved.length === 1 && s2.saved.length === 0, 'purity: saved chain');
   ok(store.withSaved(sv, { id: 'no-audio' }).saved.length === 0, 'purity: invalid snapshot ignored');
+}
+
+/* ---- Phase 2B §B: schema versioning, migration, rate, resolvedFeedUrl ---- */
+{
+  ok(store.SCHEMA_VERSION === 2, '2B: current schema version is 2');
+
+  const v1 = {
+    subscriptions: ['feed-aaa'],
+    progress: { 'ep-1': { episodeId: 'ep-1', positionSec: 42, completed: false, updatedAt: 1000 } },
+    queue: ['ep-1'],
+    shows: { 'feed-aaa': { id: 'feed-aaa', title: 'V1 Show', feedUrl: 'https://v1.example.com/f.xml', addedAt: 5 } },
+    episodes: { 'feed-aaa': [{ id: 'ep-1', showId: 'feed-aaa', title: 'Ep', guid: 'g1', audioUrl: 'https://cdn.example.com/a.mp3' }] },
+    opened: { 'feed-aaa': 99 }
+  };
+
+  const m = store.migratePayload(JSON.parse(JSON.stringify(v1)));
+  ok(m.from === 1 && m.to === 2 && m.changed === true, '2B: v1 payload migrates 1->2');
+  eq(m.state.rate, 1, '2B: migration gives rate a default');
+
+  const s2 = store.parseState(m.state);
+  ok(s2.shows['feed-aaa'].resolvedFeedUrl === '', '2B: sanitize keeps resolvedFeedUrl field present');
+  eq(s2.rate, 1, '2B: parsed migrated state carries rate');
+  eq(s2.subscriptions, ['feed-aaa'], '2B: migration preserves subscriptions');
+  eq(s2.progress['ep-1'].positionSec, 42, '2B: migration preserves progress');
+  eq(s2.queue, ['ep-1'], '2B: migration preserves queue');
+  eq(s2.opened['feed-aaa'], 99, '2B: migration preserves opened');
+  eq(s2.shows['feed-aaa'].title, 'V1 Show', '2B: migration preserves show metadata');
+  eq(s2.episodes['feed-aaa'].length, 1, '2B: migration preserves cached episodes');
+
+  const again = store.migratePayload(m.state);
+  ok(again.changed === false && again.from === 2, '2B: migration is idempotent on v2 payload');
+
+  const future = store.migratePayload({ v: 9, subscriptions: ['feed-zzz'], shows: {}, episodes: {}, opened: {}, progress: {}, queue: [] });
+  ok(future.future === true && future.state.subscriptions[0] === 'feed-zzz', '2B: future payload passes through untouched');
+
+  ok(store.parseState('not json').rate === 1, '2B: corrupt payload degrades with rate default');
+  ok(store.parseState({ v: 'x', rate: 1.5 }).rate === 1.5, '2B: parseState accepts objects (migration path)');
+
+  // round trip through a real adapter: v1 payload stored raw -> create() migrates -> persisted payload is v2
+  const st = memStorage({ 'void.podcast.v1': JSON.stringify(v1) });
+  const s = store.create(st);
+  ok(s.getShow('feed-aaa').title === 'V1 Show', '2B: create migrates a stored v1 payload');
+  s.setRate(1.5);
+  const persisted = JSON.parse(st.dump()['void.podcast.v1']);
+  ok(persisted.v === 2, '2B: persisted payload is marked v2');
+  eq(persisted.rate, 1.5, '2B: rate persists');
+  ok(s.getRate() === 1.5, '2B: getRate returns persisted value');
+
+  const sFresh = store.create(memStorage());
+  ok(sFresh.getRate() === 1, '2B: fresh install starts at rate 1');
+  sFresh.setRate(9);
+  ok(sFresh.getRate() === 4, '2B: rate clamps to the sane range');
+  sFresh.setRate(0);
+  ok(sFresh.getRate() === 0.25, '2B: rate clamps low');
+  sFresh.setRate('x');
+  ok(sFresh.getRate() === 1, '2B: garbage rate falls back to 1');
+
+  const sNoStore = store.create(null);
+  ok(sNoStore.setRate(2) === 2, '2B: rate works without persistent storage');
+
+  // resolvedFeedUrl survives registerShow + persistence
+  const s2b = store.create(memStorage());
+  s2b.registerShow({ id: 'feed-r', title: 'R', feedUrl: 'https://r.example.com/f.xml', resolvedFeedUrl: 'https://r.example.com/canonical.xml' }, []);
+  ok(s2b.getShow('feed-r').resolvedFeedUrl === 'https://r.example.com/canonical.xml', '2B: registerShow keeps resolvedFeedUrl');
+  // setFetchMeta round trip (now wired by the window)
+  const s3 = store.create(memStorage());
+  s3.registerShow({ id: 'feed-m', title: 'M', feedUrl: 'https://m.example.com/f.xml' }, []);
+  s3.setFetchMeta('feed-m', { lastFetchedAt: 1234, etag: '"e1"', lastModified: 'Tue, 04 Nov 2026' });
+  ok(s3.getShow('feed-m').lastFetchedAt === 1234, '2B: setFetchMeta keeps lastFetchedAt');
+  ok(s3.getShow('feed-m').etag === '"e1"', '2B: setFetchMeta keeps etag');
+  ok(s3.getShow('feed-m').lastModified === 'Tue, 04 Nov 2026', '2B: setFetchMeta keeps lastModified');
+
+  const ex = store.create(memStorage());
+  ex.registerShow({ id: 'feed-x', title: 'X', feedUrl: 'https://x.example.com/f.xml', resolvedFeedUrl: 'https://x.example.com/c.xml' }, []);
+  const payload = ex.exportPayload();
+  ok(payload.schemaVersion === 1, '2B: export contract stays schemaVersion 1');
+  eq(payload.rate, 1, '2B: export includes rate');
+  eq(payload.shows['feed-x'].resolvedFeedUrl, 'https://x.example.com/c.xml', '2B: export includes resolvedFeedUrl');
+}
+
+/* ---- Phase 2B.1 §4: v1->v2 migration preserves the separate saved key ---- */
+{
+  const v1 = {
+    subscriptions: ['feed-aaa'],
+    progress: { 'ep-1': { episodeId: 'ep-1', positionSec: 42, completed: false, updatedAt: 1000 } },
+    queue: ['ep-1'],
+    shows: { 'feed-aaa': { id: 'feed-aaa', title: 'V1 Show', feedUrl: 'https://v1.example.com/f.xml', addedAt: 5 } },
+    episodes: { 'feed-aaa': [{ id: 'ep-1', showId: 'feed-aaa', title: 'Ep', guid: 'g1', audioUrl: 'https://cdn.example.com/a.mp3' }] },
+    opened: { 'feed-aaa': 99 }
+  };
+  const savedRaw = JSON.stringify([{
+    id: 'ep-s', guid: 'gs', showId: 'feed-s', title: 'Saved One', showTitle: 'S Show',
+    showFeedUrl: 'https://s.example.com/f.xml', audioUrl: 'https://cdn.example.com/s.mp3',
+    audioType: 'audio/mpeg', durationSec: 300, publishedAt: '2026-11-01T00:00:00.000Z',
+    artUrl: '', description: ''
+  }]);
+  const mem = memStorage({
+    'void.podcast.v1': JSON.stringify(v1),
+    [store.SAVED_KEY]: savedRaw
+  });
+  const s = store.create(mem);
+  ok(s.getShow('feed-aaa').title === 'V1 Show', 'saved-migration: v1 payload migrated in memory');
+  s.setRate(1.5);   // first mutation persists the migrated payload (same flow as the 2B round-trip test)
+  ok(JSON.parse(mem.dump()[store.KEY]).v === 2, 'saved-migration: main payload migrated to v2');
+  eq(mem.dump()[store.SAVED_KEY], savedRaw, 'saved-migration: saved key bytes untouched by the migration write');
+  ok(s.isSaved('ep-s'), 'saved-migration: saved episode readable through the migrated store');
+  eq(s.getSaved()[0].audioUrl, 'https://cdn.example.com/s.mp3', 'saved-migration: snapshot intact');
+  ok(store.create(mem).isSaved('ep-s'), 'saved-migration: saved survives a re-open');
+  ok(s.getShow('feed-aaa').title === 'V1 Show', 'saved-migration: migrated main state still intact alongside');
 }
 
 console.log('podcast-store: ' + checks + ' assertions passed');

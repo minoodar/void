@@ -1,0 +1,19 @@
+/* Void Podcast Voice Thread overlay. Loaded only while the Podcast flag is on.
+   z-index 1150 keeps the thread above the Music galaxy canvas but below the
+   Podcast dialog (1200), so the thread self-hides while the dialog covers the
+   orb (approved occlusion) and reappears when it is dismissed. Chromium 70
+   safe: position/transform/opacity/max-width only, no inset/aspect-ratio/gap. */
+.void-podcast-thread{position:fixed;z-index:1150;display:block;pointer-events:none}
+.void-podcast-thread.is-hidden{visibility:hidden}
+.void-podcast-thread__canvas{display:block;width:100%;height:100%}
+.void-podcast-thread__status{
+  position:absolute;left:50%;top:74%;transform:translateX(-50%);max-width:82%;
+  font:12px/1.45 system-ui,sans-serif;text-align:center;color:rgba(216,180,106,.92);
+  background:rgba(6,8,16,.55);border:1px solid rgba(216,180,106,.30);border-radius:10px;
+  padding:6px 12px;white-space:normal;opacity:0;transition:opacity .3s ease
+}
+.void-podcast-thread__status:not([hidden]){opacity:1}
+.void-podcast-thread__status[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){
+  .void-podcast-thread__status{transition:none}
+}

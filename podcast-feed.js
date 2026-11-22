@@ -152,10 +152,28 @@
 
   /* ---- DOM extraction (browser DOMParser; Node tests inject a shim) ---- */
   function textOf(node) { return node ? String(node.textContent || '').trim() : ''; }
+  /* Namespaced tags must not depend on the publisher's prefix choice:
+     <itunes:duration>, <it:duration> and <x xmlns="…itunes…"><duration> all match
+     "itunes:duration". Bare tags stay exact (XML is case-sensitive). The Node
+     shim has no localName/namespaceURI, so those branches simply never fire. */
+  function tagMatches(node, tag) {
+    if (!node || node.nodeType !== 1) { return false; }
+    var t = node.tagName;
+    if (t === tag) { return true; }
+    var ci = tag.indexOf(':');
+    if (ci < 0) { return false; }
+    var local = tag.slice(ci + 1).toLowerCase();
+    var nt = String(t).toLowerCase();
+    if (nt.length > local.length && nt.charAt(nt.length - local.length - 1) === ':' &&
+        nt.slice(nt.length - local.length) === local) { return true; }
+    var ns = String(node.namespaceURI || '').toLowerCase();
+    return ns.indexOf(tag.slice(0, ci).toLowerCase()) >= 0 &&
+      String(node.localName || '').toLowerCase() === local;
+  }
   function childEl(parent, tag) {
     var n = parent.childNodes || [];
     for (var i = 0; i < n.length; i++) {
-      if (n[i].nodeType === 1 && n[i].tagName === tag) { return n[i]; }
+      if (tagMatches(n[i], tag)) { return n[i]; }
     }
     return null;
   }
@@ -166,6 +184,7 @@
     var audioUrl = safeMediaUrl(raw.audioUrl);
     if (!audioUrl) { return null; }
     var ms = parseDateMs(raw.publishedAt);
+    var bytes = parseInt(raw.audioBytes, 10);
     return {
       id: episodeId(feedUrl, raw.guid, audioUrl),
       showId: show.id,
@@ -176,12 +195,13 @@
       durationSec: parseDuration(raw.duration),
       audioUrl: audioUrl,
       audioType: String(raw.audioType || ''),
+      audioBytes: isFinite(bytes) && bytes > 0 ? Math.round(bytes) : 0,
       description: truncate(stripHtml(raw.description), DESC_CAP),
       artUrl: safeMediaUrl(raw.artUrl) || show.artUrl,
       chaptersUrl: safeMediaUrl(raw.chaptersUrl) || ''
     };
   }
-  function finishFeed(kind, show, episodes) {
+  function finishFeed(kind, show, episodes, resolvedFeedUrl) {
     var seen = {}, out = [];
     episodes.forEach(function (ep) {
       if (!ep || seen[ep.id]) { return; }
@@ -194,7 +214,16 @@
       return a.publishedAt < b.publishedAt ? 1 : a.publishedAt > b.publishedAt ? -1 : 0;
     });
     out = out.slice(0, MAX_EPISODES);
-    return { ok: true, kind: kind, show: show, episodes: out, count: out.length };
+    var resolved = safeFeedUrl(resolvedFeedUrl) || '';
+    if (resolved && show) { show.resolvedFeedUrl = resolved; }
+    return { ok: true, kind: kind, show: show, episodes: out, count: out.length, resolvedFeedUrl: resolved };
+  }
+  /* Feed self-identification (atom rel="self", itunes:new-feed-url) must be a
+     usable https URL; anything else is ignored and the requested URL stands. */
+  function safeFeedUrl(u) {
+    var p;
+    try { p = new URL(String(u == null ? '' : u).trim()); } catch (e) { return ''; }
+    return p.protocol === 'https:' && !p.username && !p.password ? p.toString() : '';
   }
 
   function extractFeed(doc, feedUrl) {
@@ -224,29 +253,45 @@
         enc = childEl(it, 'enclosure');
         var chap = childEl(it, 'podcast:chapters');
         var epImg = childEl(it, 'itunes:image');
+        var audioUrl = enc ? enc.getAttribute('url') : '';
+        var audioType = enc ? (enc.getAttribute('type') || '') : '';
+        var audioBytes = enc ? parseInt(enc.getAttribute('length'), 10) : NaN;
+        if (!safeMediaUrl(audioUrl)) {
+          /* media:content only fills in when no usable enclosure exists; a
+             valid enclosure always wins so distinct sources never merge. */
+          var mc = childEl(it, 'media:content');
+          var mu = mc ? mc.getAttribute('url') : '';
+          if (mu) {
+            audioUrl = mu;
+            audioType = mc.getAttribute('type') || '';
+            audioBytes = parseInt(mc.getAttribute('fileSize'), 10);
+          }
+        }
         raw = {
           guid: childText(it, 'guid'),
           title: childText(it, 'title'),
           publishedAt: childText(it, 'pubDate') || childText(it, 'dc:date'),
           duration: childText(it, 'itunes:duration'),
-          audioUrl: enc ? enc.getAttribute('url') : '',
-          audioType: enc ? enc.getAttribute('type') : '',
+          audioUrl: audioUrl,
+          audioType: audioType,
+          audioBytes: audioBytes,
           description: childText(it, 'description') || childText(it, 'content:encoded'),
           artUrl: epImg ? epImg.getAttribute('href') : '',
           chaptersUrl: chap ? chap.getAttribute('url') : ''
         };
         episodes.push(makeEpisode(url, show, raw));
       }
-      return finishFeed('rss', show, episodes);
+      return finishFeed('rss', show, episodes, safeFeedUrl(childText(channel, 'itunes:new-feed-url')));
     }
 
     if (feedEl) {
-      var links = feedEl.childNodes || [], altHref = '', encHref = '';
+      var links = feedEl.childNodes || [], altHref = '', selfHref = '';
       for (i = 0; i < links.length; i++) {
         if (links[i].nodeType !== 1 || links[i].tagName !== 'link') { continue; }
         var rel = links[i].getAttribute('rel') || '';
         var href = links[i].getAttribute('href') || '';
         if (!altHref && (rel === 'alternate' || rel === '')) { altHref = href; }
+        if (!selfHref && rel === 'self') { selfHref = href; }
       }
       var author = childEl(feedEl, 'author');
       var aImg = childEl(feedEl, 'itunes:image');
@@ -263,12 +308,21 @@
       items = doc.getElementsByTagName('entry');
       for (i = 0; i < items.length; i++) {
         it = items[i];
-        var eLinks = it.childNodes || [], audio = '', atype = '';
+        var eLinks = it.childNodes || [], audio = '', atype = '', aBytes = NaN;
         for (var j = 0; j < eLinks.length; j++) {
           if (eLinks[j].nodeType === 1 && eLinks[j].tagName === 'link' && (eLinks[j].getAttribute('rel') || '') === 'enclosure') {
             audio = eLinks[j].getAttribute('href') || '';
             atype = eLinks[j].getAttribute('type') || '';
             break;
+          }
+        }
+        if (!safeMediaUrl(audio)) {
+          var amc = childEl(it, 'media:content');
+          var amu = amc ? amc.getAttribute('url') : '';
+          if (amu) {
+            audio = amu;
+            atype = amc.getAttribute('type') || '';
+            aBytes = parseInt(amc.getAttribute('fileSize'), 10);
           }
         }
         var aChap = childEl(it, 'podcast:chapters');
@@ -280,13 +334,14 @@
           duration: childText(it, 'itunes:duration'),
           audioUrl: audio,
           audioType: atype,
+          audioBytes: aBytes,
           description: childText(it, 'summary') || childText(it, 'content'),
           artUrl: aEpImg ? aEpImg.getAttribute('href') : '',
           chaptersUrl: aChap ? aChap.getAttribute('url') : ''
         };
         episodes.push(makeEpisode(url, show, raw));
       }
-      return finishFeed('atom', show, episodes);
+      return finishFeed('atom', show, episodes, safeFeedUrl(selfHref));
     }
 
     return { ok: false, reason: 'not-feed' };

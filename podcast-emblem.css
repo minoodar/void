@@ -22,3 +22,13 @@
 .vdc.is-in .vdc-target.vdc-target{transition:opacity .25s ease,left .4s ease,top .4s ease,width .4s ease}
 .vdc .vdc-emblem{transition:transform .35s ease,box-shadow .25s ease,width .4s ease,height .4s ease}
 .vdc .vdc-close{transition:opacity .2s ease,border-color .25s ease,left .4s ease,top .4s ease}
+/* Phase 1 Voice Thread emblem states, owned by void-podcast-thread.js. The
+   player keeps is-playing (pause/play); the thread adds loading/buffering/
+   failed from the media signals. These rules sit after the existing state
+   rules so they win at equal specificity, and the reduced-motion block above
+   still overrides every animation via !important. Chromium 70 safe. */
+.void-emblem--podcast.is-buffering .pc-wave{animation:pc-buffer 2.6s ease-in-out infinite;opacity:.4}
+@keyframes pc-buffer{50%{opacity:.14}}
+.void-emblem--podcast.is-failed .pc-wave,.void-emblem--podcast.is-failed .pc-construct,.void-emblem--podcast.is-failed .pc-stars{opacity:.16}
+.void-emblem--podcast.is-failed .pc-x{stroke:var(--pc-accent);stroke-width:2;opacity:1}
+.void-emblem--podcast.is-failed *{animation:none!important}

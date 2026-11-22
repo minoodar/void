@@ -1,12 +1,15 @@
-/* Void Podcast — Stage 2B playback controller.
+/* Void Podcast — Phase 2B playback controller.
    Part 1: pure logic (UMD, Node-testable) — resume, queue, sleep, seek, formats.
    Part 2: browser controller (flag-ON only). A second hidden <audio> (no
-   crossOrigin, no analyser) is attached through the engine's PUBLIC web-source
-   API (VoidMusic.attachWeb/detachWeb), so the music engine files stay untouched:
-   title row, play state, arc, time, seek and volume are driven by the engine
-   from this element's own events; prev/next arrive as cmd('previoustrack'/
-   'nexttrack') and become -15s/+30s. Music starting detaches us (engine calls
-   onDetach), we save progress and pause — music never auto-resumes.
+   crossOrigin, no analyser) is hosted by the engine through the Phase 2B guest
+   API (VoidMusic.hostGuest/unhostGuest): the chrome (title row, play state, arc,
+   time, seek) follows this element while hosted, but Music's own playback,
+   queue, remotes and visualizer are untouched — this element never becomes the
+   engine's S.audio owner and never dispatches voidmusic:playing. Podcast owns
+   its MediaSession while active; the engine reclaims it when music plays or the
+   podcast stops. Playback is EXCLUSIVE (Phase 2B.2): starting or resuming either
+   player pauses the other one's Audio Element; a paused player never reclaims
+   the MediaSession merely because it has a selected episode or track.
    Chromium 70 safe: no ?. no ?? no replaceAll, no clamp()/min()/max() in CSS. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) { module.exports = factory(); }
@@ -99,7 +102,7 @@
   if (!window.__VOID_PODCAST_FLAG__) { return; }
   var L = window.VoidPodcastPlayerLogic;
   var VM = window.VoidMusic, data = window.VoidPodcastSampleData, Store = window.VoidPodcastStore;
-  if (!L || !VM || typeof VM.attachWeb !== 'function' || typeof VM.detachWeb !== 'function' || !data || !Store) { return; }
+  if (!L || !VM || typeof VM.hostGuest !== 'function' || typeof VM.unhostGuest !== 'function' || !data || !Store) { return; }
   if (window.VoidPodcastPlayer) { return; }
 
   /* The engine builds #void-music-root in enter(); before that we may only
@@ -143,24 +146,39 @@
   audio.preload = 'metadata';
   audio.style.display = 'none';
   audio.setAttribute('aria-hidden', 'true');
-  audio.__web = true;                 // engine applies volume/mute directly (void-music.js applyVolume)
-  audio.tabId = 'podcast';            // engine's web-source id namespace
+  /* Phase 2B.1: the engine never swaps S.audio to this element, so Music's
+     volume/mute path (applyVolume) can no longer reach it — this element
+     keeps its own volume for the whole session. */
   root.appendChild(audio);
 
   var current = null;                 // { episode, show }
   var active = false;
-  var rate = 1;
+  var rate = restoreRate();
   var sleep = { choice: 'off', deadline: 0, timer: 0 };
   var lastSave = 0;
   var pendingSeek = null;
   var chip = null, ticks = [], sheet = null, sheetTick = 0;
-  var sndBtn = null, sndIntercept = null, localGuard = null;
+  var sndBtn = null, sndIntercept = null;
+  var retriedSrc = '', retryTimer = 0;
 
   function saveProgress() {
     if (!current) { return; }
     var ep = current.episode;
     store.setProgress(ep.id, audio.currentTime || 0, ep.durationSec, audio.ended === true);
     lastSave = Date.now();
+  }
+
+  /* Restore the persisted playback rate; snap unknown stored values (older
+     payloads, hand-edits) to the nearest known step. */
+  function restoreRate() {
+    var r = Store.parseRate ? Store.parseRate(store.getRate()) : store.getRate();
+    if (L.RATES.indexOf(r) >= 0) { return r; }
+    var best = 1, d = Infinity;
+    L.RATES.forEach(function (x) {
+      var dd = Math.abs(x - r);
+      if (dd < d) { d = dd; best = x; }
+    });
+    return best;
   }
 
   /* ---- emblem is-playing (constellation may rebuild while we play) ---- */
@@ -185,8 +203,14 @@
     bodyObs.observe(document.body, { childList: true });
   }
 
-  /* ---- Media Session: metadata only while active; engine handlers already
-     route play/pause/next/prev/seek through S.audio, so none are overridden. ---- */
+  /* ---- Media Session ownership ----
+     The podcast claims the OS session when playback STARTS (play() only —
+     pause/resume never re-claims). The claim is recorded by the engine
+     (hostGuest -> sessionOwner 'guest'); Music reclaims on its own playback
+     (playId -> sessionOwner 'music') and on unhostGuest while the guest still
+     owns. Exactly one writer at a time. Teardown is owner-aware (Phase 2B.1):
+     after a Music takeover, stopping the podcast must not clear or overwrite
+     Music's metadata or handlers. */
   function publishMetadata() {
     if (!('mediaSession' in navigator) || !window.MediaMetadata || !current) { return; }
     try {
@@ -198,6 +222,30 @@
   function clearMetadata() {
     if (!('mediaSession' in navigator)) { return; }
     try { navigator.mediaSession.metadata = null; } catch (e) { /* unsupported */ }
+  }
+  /* Phase 2B.2: the single choke point for every genuine Podcast start/resume
+     (play, transport toggle-resume, bounded retry). hostGuest is the engine's
+     exclusive-playback claim: it pauses Music's element and records the guest
+     as session owner; claimSession republishes the episode metadata/handlers. */
+  function engageGuest() {
+    if (!current) { return; }
+    VM.hostGuest(audio, { title: current.episode.title, artist: current.show.title });
+    claimSession();
+  }
+  function claimSession() {
+    if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setActionHandler !== 'function') { return; }
+    var set = function (name, fn) {
+      try { navigator.mediaSession.setActionHandler(name, fn); } catch (e) { /* unsupported action */ }
+    };
+    publishMetadata();
+    set('play', function () { toggle(); });
+    set('pause', function () { toggle(); });
+    set('previoustrack', function () { seekBy(L.SKIP_BACK_SEC * -1); });
+    set('nexttrack', function () { seekBy(L.SKIP_FWD_SEC); });
+    set('seekbackward', function (d) { seekBy(-1 * ((d && d.seekOffset) || L.SKIP_BACK_SEC)); });
+    set('seekforward', function (d) { seekBy((d && d.seekOffset) || L.SKIP_FWD_SEC); });
+    set('seekto', function (d) { if (d && typeof d.seekTime === 'number') { seekTo(d.seekTime); } });
+    set('stop', function () { stop(); });
   }
 
   /* ---- chapter ticks on the engine's arc (own overlay nodes, removed on stop) ---- */
@@ -274,17 +322,13 @@
   function setRate(r) {
     if (L.RATES.indexOf(r) < 0) { return; }
     rate = r;
+    store.setRate(r);
     try { audio.playbackRate = r; } catch (e) { /* engine clamps unsupported rates */ }
     if (chip) { chip.textContent = L.rateLabel(r); }
     if (sheet && !sheet.hidden) { renderSheet(); }
   }
 
   /* ---- mode enter / teardown ---- */
-  function onLocalPlay() {
-    /* Backup for any music-start path that bypasses the engine's detach:
-       save podcast progress first, then hand the source back to music. */
-    if (active) { stop(); }
-  }
   function enterMode() {
     active = true;
     root.classList.add('vm-podcast');
@@ -299,13 +343,14 @@
       };
       sndBtn.addEventListener('click', sndIntercept, true);
     }
-    var la = VM.getLocalAudio && VM.getLocalAudio();
-    if (la && !localGuard) {
-      localGuard = function () { onLocalPlay(); };
-      la.addEventListener('play', localGuard, true);
-    }
-    publishMetadata();
+    /* Metadata is published by claimSession() right after the explicit
+       hostGuest claim in play() — never before the claim. */
     syncEmblem();
+    /* Synthetic Voice Thread owns the central orb only during a Podcast session.
+       It never touches playback, Web Audio, crossOrigin or the Music analyser. */
+    if (window.VoidPodcastThread && typeof window.VoidPodcastThread.start === 'function') {
+      window.VoidPodcastThread.start(audio, { getGeometry: window.VoidDomains && window.VoidDomains.getOrbGeometry });
+    }
   }
   function teardownMode() {
     if (!active) { return; }
@@ -317,19 +362,16 @@
     if (sndBtn && sndIntercept) { sndBtn.removeEventListener('click', sndIntercept, true); }
     sndBtn = null; sndIntercept = null;
     root.classList.remove('vm-podcast');
-    clearMetadata();
+    /* Phase 2B.1: only the owner clears. If Music took over while this
+       episode kept playing (playId -> unhostGuest), stopping here must not
+       clear or overwrite Music's MediaSession metadata. */
+    if (!(VM.sessionOwner && VM.sessionOwner() === 'music')) { clearMetadata(); }
     syncEmblem();
+    if (window.VoidPodcastThread && typeof window.VoidPodcastThread.stop === 'function') { window.VoidPodcastThread.stop(); }
     current = null;
     emit('podcast:episode', { episodeId: null, showId: null, active: false, playing: false });
   }
 
-  /* The engine calls this when local music starts (detachWeb({pauseSite:true}))
-     or when we stop. Save first; pause only the podcast; never touch music. */
-  audio.onDetach = function (opts) {
-    saveProgress();
-    if (opts && opts.pauseSite) { try { audio.pause(); } catch (e) { /* paused */ } }
-    teardownMode();
-  };
   audio.cmd = function (name) {
     if (!active) { return; }
     if (name === 'nexttrack') { seekBy(L.SKIP_FWD_SEC); }
@@ -339,6 +381,10 @@
   function seekBy(delta) {
     var dur = isFinite(audio.duration) ? audio.duration : (current ? current.episode.durationSec : 0);
     try { audio.currentTime = L.skipTarget(audio.currentTime, delta, dur); } catch (e) { /* not seekable yet */ }
+  }
+  function seekTo(t) {
+    var dur = isFinite(audio.duration) ? audio.duration : (current ? current.episode.durationSec : 0);
+    try { audio.currentTime = Math.max(0, Math.min(t, dur > 0 ? dur : t)); } catch (e) { /* not seekable yet */ }
   }
 
   /* ---- element events ---- */
@@ -381,6 +427,32 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden && active) { saveProgress(); }
   });
+  window.addEventListener('pagehide', function () {
+    if (active) { saveProgress(); }
+  });
+
+  /* ---- bounded retry: exactly one re-issue for a transient network failure ----
+     MEDIA_ERR_NETWORK (2) is the only eligible class; unsupported or decode
+     errors are permanent and never retried. The retry replays the SAME source
+     in place: no queue change, no extra events, no state faking — if it fails
+     again the audio element keeps its error and the thread shows ERROR. */
+  audio.addEventListener('error', function () {
+    if (!active || !current) { return; }
+    var err = audio.error;
+    if (!err || err.code !== 2) { return; }
+    var src = audio.currentSrc || audio.src || '';
+    if (!src || retriedSrc === src) { return; }
+    retriedSrc = src;
+    if (retryTimer) { clearTimeout(retryTimer); }
+    retryTimer = setTimeout(function () {
+      retryTimer = 0;
+      if (!active || !current) { return; }
+      try { audio.load(); } catch (e) { return; }
+      engageGuest();   // Phase 2B.2: the retry is a genuine resume — pause Music, re-claim
+      var pr = audio.play();
+      if (pr && pr.catch) { pr.catch(function () { /* retry failed: error state stands */ }); }
+    }, 1500);
+  });
 
   /* ---- public play / stop ---- */
   function play(episode, show) {
@@ -394,6 +466,8 @@
     store.setProgress(episode.id, start, episode.durationSec);   // entry exists -> NEW dot clears
     store.setQueue(L.queueFrom(data.episodesOf(show.id), episode.id));
     pendingSeek = start;
+    retriedSrc = '';
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; }
     audio.src = src;
     try { audio.playbackRate = rate; } catch (e) { /* default 1 */ }
     /* The podcast-mode UI (title row, arc, chip, sheet) lives in the engine's
@@ -402,7 +476,16 @@
     if (!document.body.classList.contains('void-music-on') && typeof VM.enter === 'function') { VM.enter(); }
     ensureRoot();
     if (!active) { enterMode(); } else { drawTicks(); publishMetadata(); }
-    VM.attachWeb(audio, { title: episode.title, artist: show.title, art: null });
+    /* Host the podcast as the engine's GUEST: the chrome (title row, arc,
+       transport) follows this audio while hosted, and the engine pauses
+       Music's OWN element (Phase 2B.2 exclusive playback). Nothing else of
+       Music is touched — no S.web, no curId displacement, no remote
+       deactivation, no S.audio swap (the engine reads this element via
+       S.guest only, so Music's element identity, volume and the
+       visualizer's getAudio() never see it), and no voidmusic:playing
+       dispatch from this element, so the visualizer can never enter a
+       podcast-driven cosmic session. */
+    engageGuest();
     var pr = audio.play();
     if (pr && pr.catch) { pr.catch(function () { /* gesture policy: UI shows paused, play button resumes */ }); }
     emit('podcast:episode', { episodeId: episode.id, showId: show.id, active: true, playing: !audio.paused });
@@ -410,15 +493,19 @@
   }
   function stop() {
     if (!active) { return; }
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; }
     saveProgress();
     try { audio.pause(); } catch (e) { /* paused */ }
     teardownMode();
-    VM.detachWeb({ pauseSite: true, quiet: false });   // restores music UI; never resumes music
+    /* Hand the chrome and the MediaSession back to the engine. Never resumes
+       music; never touches this (already paused) audio. */
+    VM.unhostGuest();
     try { audio.removeAttribute('src'); audio.load(); } catch (e) { /* release the buffer */ }
   }
   function toggle() {
     if (!active) { return; }
     if (audio.paused) {
+      engageGuest();   // Phase 2B.2: resuming is a genuine start — pause Music, claim the session
       var pr = audio.play();
       if (pr && pr.catch) { pr.catch(function () { /* blocked */ }); }
     } else { audio.pause(); }
