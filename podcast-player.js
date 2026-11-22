@@ -36,19 +36,33 @@
     return pos < 0 ? 0 : pos;
   }
 
-  /* Episode queue: ids of the show's episodes (newest first) from the current
-     one onward — ending an episode rolls into the next older one. */
+  /* Episode queue (Phase 2B.4): the ids of the show's episodes, newest first,
+     with the current one left in place. Older rollover and Prev/Next both walk
+     this one list, so a skipped row (removed with ×) is skipped by both. When
+     the current id is not in the feed at all, the queue is that id alone: an
+     episode we cannot locate must not become a bridge to other episodes. */
   function queueFrom(episodes, currentId) {
     var ids = episodes.map(function (e) { return e.id; });
-    var i = ids.indexOf(currentId);
-    return i < 0 ? [currentId] : ids.slice(i);
+    return ids.indexOf(currentId) < 0 ? [currentId] : ids;
   }
   function nextInQueue(queue, currentId) {
     var i = queue.indexOf(currentId);
     return i >= 0 && i + 1 < queue.length ? queue[i + 1] : null;
   }
+  /* The mirror of nextInQueue: index 0 (and an id missing from the queue) have
+     no older episode, so Previous is a no-op rather than a wrap-around. */
+  function prevInQueue(queue, currentId) {
+    var i = queue.indexOf(currentId);
+    return i > 0 ? queue[i - 1] : null;
+  }
   function withoutId(queue, id) {
     return queue.filter(function (x) { return x !== id; });
+  }
+  /* Rows still ahead of the current episode (the UP NEXT list) — the tail the
+     queue used to hold by construction. An id missing from the queue leaves
+     indexOf at -1, so the whole list is ahead. */
+  function upcomingFrom(queue, currentId) {
+    return queue.slice(queue.indexOf(currentId) + 1);
   }
 
   /* Sleep timer: 'end' fires on episode end (no deadline); minutes give a
@@ -91,6 +105,7 @@
     RATES: RATES, SLEEP_MINUTES: SLEEP_MINUTES,
     REWIND_SEC: REWIND_SEC, SKIP_BACK_SEC: SKIP_BACK_SEC, SKIP_FWD_SEC: SKIP_FWD_SEC,
     resumePosition: resumePosition, queueFrom: queueFrom, nextInQueue: nextInQueue,
+    prevInQueue: prevInQueue, upcomingFrom: upcomingFrom,
     withoutId: withoutId, sleepDeadline: sleepDeadline, sleepRemainingMs: sleepRemainingMs,
     skipTarget: skipTarget, chapterIndexAt: chapterIndexAt, fmtTime: fmtTime, rateLabel: rateLabel
   };
@@ -147,8 +162,11 @@
   audio.style.display = 'none';
   audio.setAttribute('aria-hidden', 'true');
   /* Phase 2B.1: the engine never swaps S.audio to this element, so Music's
-     volume/mute path (applyVolume) can no longer reach it — this element
-     keeps its own volume for the whole session. */
+     volume/mute path (applyVolume) can no longer reach it. Phase 2B.4 gives
+     this element its OWN volume: restored from the Podcast store here, and
+     written only through the `setVol` verb below — Music's slider keeps its
+     own state in void-music.js and never reaches this element. */
+  audio.volume = restoreVolume();
   root.appendChild(audio);
 
   var current = null;                 // { episode, show }
@@ -180,6 +198,21 @@
     });
     return best;
   }
+
+  /* Podcast-scoped volume (Phase 2B.4). Same tolerant restore shape as
+     restoreRate: an old payload (or a hand-edited one) degrades to the store's
+     default instead of throwing, and nothing here ever reads Music's volume. */
+  function restoreVolume() {
+    return Store.parseVolume ? Store.parseVolume(store.getVolume()) : store.getVolume();
+  }
+  /* The one write path for this element's volume, reached only from the shared
+     dock slider while the Podcast owns the session. */
+  audio.setVol = function (v) {
+    var vol = Store.parseVolume ? Store.parseVolume(v) : Math.max(0, Math.min(1, v));
+    audio.volume = vol;
+    store.setVolume(vol);
+    return vol;
+  };
 
   /* ---- emblem is-playing (constellation may rebuild while we play) ---- */
   function syncEmblem() {
@@ -240,8 +273,11 @@
     publishMetadata();
     set('play', function () { toggle(); });
     set('pause', function () { toggle(); });
-    set('previoustrack', function () { seekBy(L.SKIP_BACK_SEC * -1); });
-    set('nexttrack', function () { seekBy(L.SKIP_FWD_SEC); });
+    /* Phase 2B.4 (Option B): the OS/hardware track keys match the dock's
+       Prev/Next buttons (episode steps); the ±15/±30 second jumps stay on the
+       seek actions the OS shows as its own controls. */
+    set('previoustrack', function () { stepEpisode(-1); });
+    set('nexttrack', function () { stepEpisode(1); });
     set('seekbackward', function (d) { seekBy(-1 * ((d && d.seekOffset) || L.SKIP_BACK_SEC)); });
     set('seekforward', function (d) { seekBy((d && d.seekOffset) || L.SKIP_FWD_SEC); });
     set('seekto', function (d) { if (d && typeof d.seekTime === 'number') { seekTo(d.seekTime); } });
@@ -385,10 +421,15 @@
     emit('podcast:episode', { episodeId: null, showId: null, active: false, playing: false });
   }
 
-  audio.cmd = function (name) {
+  /* Verbs from the shared dock chrome (void-music.js) while the Podcast owns
+     the session. Phase 2B.4 (Option B): Prev/Next are episode steps, the ±
+     second shortcuts stay seeks. arg is the engine's own delta (seconds). */
+  audio.cmd = function (name, arg) {
     if (!active) { return; }
-    if (name === 'nexttrack') { seekBy(L.SKIP_FWD_SEC); }
-    else if (name === 'previoustrack') { seekBy(L.SKIP_BACK_SEC * -1); }
+    if (name === 'nexttrack') { stepEpisode(1); }
+    else if (name === 'previoustrack') { stepEpisode(-1); }
+    else if (name === 'seekforward') { seekBy(typeof arg === 'number' ? Math.abs(arg) : L.SKIP_FWD_SEC); }
+    else if (name === 'seekbackward') { seekBy(-1 * (typeof arg === 'number' ? Math.abs(arg) : L.SKIP_BACK_SEC)); }
   };
 
   function seekBy(delta) {
@@ -477,7 +518,7 @@
     var start = L.resumePosition(store.getProgress(episode.id), episode.durationSec);
     current = { episode: episode, show: show };
     store.setProgress(episode.id, start, episode.durationSec);   // entry exists -> NEW dot clears
-    store.setQueue(L.queueFrom(data.episodesOf(show.id), episode.id));
+    store.setQueue(L.queueFrom(data.episodesOf(show.id), episode.id));   // Phase 2B.4: the whole show, current left in place -> Prev has somewhere to go
     pendingSeek = start;
     retriedSrc = '';
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; }
@@ -522,6 +563,30 @@
       var pr = audio.play();
       if (pr && pr.catch) { pr.catch(function () { /* blocked */ }); }
     } else { audio.pause(); }
+  }
+
+  /* ---- Phase 2B.4 (Option B): Previous / Next Episode ----
+     The navigation domain is the stored queue, i.e. the current show's
+     episodes in feed order — so a step can never leave the show and never
+     invents an episode. An unavailable step (first row, last row, or an id the
+     feed no longer carries) returns a reason and changes NOTHING: the current
+     episode stays loaded and playing, the MediaSession keeps its owner, and
+     stop() is never reached, so the chrome and the Voice Thread survive.
+     A successful step is an ordinary play() of the neighbour, which re-claims
+     the session through engageGuest exactly like any other start. */
+  function stepEpisode(direction) {
+    if (!active || !current) { return { ok: false, reason: 'not-playing' }; }
+    var dir = direction < 0 ? -1 : 1;
+    var queue = store.getQueue();
+    var id = dir < 0 ? L.prevInQueue(queue, current.episode.id) : L.nextInQueue(queue, current.episode.id);
+    if (!id) { return { ok: false, reason: dir < 0 ? 'no-previous' : 'no-next' }; }
+    var ep = findEpisode(id);
+    if (!ep) { return { ok: false, reason: 'episode-missing' }; }
+    var sh = data.showById(ep.showId);
+    if (!sh) { return { ok: false, reason: 'show-missing' }; }
+    var res = play(ep, sh);
+    if (!res.ok) { return res; }
+    return { ok: true, episodeId: ep.id, showId: sh.id, direction: dir };
   }
 
   /* ---- menu sheet (glass, transient) from the existing secondary button ----
@@ -660,7 +725,7 @@
 
     var qSec = sheetSection('UP NEXT', 'در ادامه');
     var queue = store.getQueue();
-    var upcoming = queue.filter(function (id) { return id !== current.episode.id; });
+    var upcoming = L.upcomingFrom(queue, current.episode.id);
     if (!upcoming.length) {
       var none = document.createElement('div');
       none.className = 'pw-sheet__empty';
@@ -762,6 +827,7 @@
     play: play,
     stop: stop,
     toggle: toggle,
+    stepEpisode: stepEpisode,
     setRate: setRate,
     setSleep: setSleep,
     openSheet: function () { openSheet(); },
@@ -772,11 +838,13 @@
         showId: current ? current.show.id : null,
         playing: active && !audio.paused,
         rate: rate,
+        volume: audio.volume,
+        queueLength: store.getQueue().length,
         sleepChoice: sleep.choice,
         sleepRemainingMs: L.sleepRemainingMs(Date.now(), sleep.deadline)
       };
     },
     logic: L,
-    _test: { audio: audio, sourceFor: sourceFor, saveProgress: saveProgress }
+    _test: { audio: audio, sourceFor: sourceFor, saveProgress: saveProgress, stepEpisode: stepEpisode }
   };
 })();

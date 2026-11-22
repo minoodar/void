@@ -1,7 +1,10 @@
 /* podcast-player controller (Part 2) — Node tests with a minimal fake DOM.
    Covers Phase 2B §D: rate persistence + safe restore, bounded retry (one,
    transient-only), pagehide flush, MediaSession claim, guest hosting contract,
-   ERROR-vs-PAUSED preservation and queue integrity across a retry. */
+   ERROR-vs-PAUSED preservation and queue integrity across a retry.
+   Phase 2B.4 adds: the Podcast element's own volume (persist + tolerant
+   restore), stepEpisode across the show queue with safe boundary no-ops, and
+   the dock/MediaSession verbs (Prev/Next = episodes, ± seconds = seeks). */
 'use strict';
 const assert = require('assert');
 const path = require('path');
@@ -410,6 +413,135 @@ const ACTIONS = ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 
   ok(b.hostCount === h0 + 1, 'retry-resume: re-hosts the guest (engine pauses Music there)');
   ok(b.sessionWrites.length > w0, 'retry-resume: re-claims the MediaSession');
   ok(b.ctl.getState().active === true && b.audio.paused === false, 'retry-resume: playback re-issued');
+}
+
+/* ---- Phase 2B.4: the Podcast element carries its OWN volume ---- */
+{
+  const b = boot();
+  ok(b.audio.volume === 1, 'volume: a fresh element is restored to the store default');
+  ok(typeof b.audio.setVol === 'function', 'volume: the element exposes the setVol verb the engine writes through');
+  b.ctl.play(EP, SHOW);
+  ok(b.audio.setVol(0.4) === 0.4, 'volume: setVol reports what it wrote');
+  ok(b.audio.volume === 0.4, 'volume: the PODCAST element level changed');
+  ok(b.store.getVolume() === 0.4, 'volume: the level went into the Podcast store (not Music localStorage)');
+  ok(b.store.getState().volume === 0.4, 'volume: the stored payload carries volume');
+  ok(b.ctl.getState().volume === 0.4, 'volume: getState reports the element level');
+  ok(b.audio.setVol(9) === 1 && b.audio.volume === 1, 'volume: setVol clamps instead of throwing');
+  ok(b.audio.setVol(-2) === 0 && b.store.getVolume() === 0, 'volume: clamped low value persisted');
+}
+{
+  /* restore is tolerant, exactly like rate: whatever an old or hand-edited
+     payload holds degrades to the default instead of poisoning playback. */
+  const mk = (volume) => JSON.stringify({ v: 2, subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {}, rate: 1.5, volume: volume });
+  const kept = boot({ seed: { 'void.podcast.v1': mk(0.25) } });
+  ok(kept.audio.volume === 0.25, 'volume: persisted level restored on boot');
+  ok(kept.ctl.getState().rate === 1.5, 'volume: restoring volume leaves rate independent');
+  const clampHigh = boot({ seed: { 'void.podcast.v1': mk(5) } });
+  ok(clampHigh.audio.volume === 1, 'volume: out-of-range payload clamps on restore');
+  const junk = boot({ seed: { 'void.podcast.v1': mk('loud') } });
+  ok(junk.audio.volume === 1, 'volume: garbage payload restores the default');
+  const preVolume = boot({ seed: { 'void.podcast.v1': JSON.stringify({ subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {} }) } });
+  ok(preVolume.audio.volume === 1, 'volume: a pre-volume payload restores the default (no migration needed)');
+  preVolume.ctl.play(EP, SHOW);
+  ok(preVolume.ctl.getState().rate === 1, 'volume: pre-volume payload still restores rate');
+}
+
+/* ---- Phase 2B.4 (Option B): Prev/Next step episodes inside the show ---- */
+function threeEpisodeShow(b) {
+  const sd = global.window.VoidPodcastSampleData;
+  const mk = (id, n) => ({
+    id: id, showId: 's1', guid: 'g' + n, title: 'Episode ' + n, durationSec: 600,
+    publishedAt: '2026-11-0' + n + 'T08:00:00Z', audioUrl: 'https://cdn.example.com/' + id + '.mp3',
+    audioType: 'audio/mpeg', description: '', artUrl: '', chaptersUrl: '', chapters: null
+  });
+  sd.EPISODES.length = 0;
+  sd.EPISODES.push(mk('e3', 3), mk('e2', 2), mk('e1', 1));   // feed order, newest first
+  sd.episodesOf = (showId) => (showId === 's1' ? sd.EPISODES.slice() : []);
+  return sd;
+}
+{
+  const b = boot();
+  const sd = threeEpisodeShow(b);
+  b.ctl.play(sd.EPISODES[0], SHOW);       // e3 (newest)
+  eq(b.store.getQueue(), ['e3', 'e2', 'e1'], 'step: the queue is the whole show, current left in place');
+  ok(b.audio.setVol(0.5) === 0.5, 'step precondition: podcast level set before stepping');
+
+  let r = b.ctl.stepEpisode(1);
+  ok(r.ok === true && r.episodeId === 'e2' && b.ctl.getState().episodeId === 'e2', 'step: Next walks to the older row');
+  ok(b.audio.src === 'https://cdn.example.com/e2.mp3', 'step: the element re-sourced the new episode');
+  ok(b.audio.volume === 0.5, 'step: the level survives the episode change (same element, not recreated)');
+  r = b.ctl.stepEpisode(1);
+  ok(r.ok === true && r.episodeId === 'e1', 'step: Next again reaches the oldest row');
+  r = b.ctl.stepEpisode(1);
+  ok(r.ok === false && r.reason === 'no-next', 'step: past the last row there is no next (never wraps)');
+  eq([b.ctl.getState().episodeId, b.ctl.getState().active, b.ctl.getState().playing], ['e1', true, true], 'step: an unavailable Next leaves playback exactly as it was');
+  r = b.ctl.stepEpisode(-1);
+  ok(r.ok === true && r.episodeId === 'e2' && r.direction === -1, 'step: Previous walks back to the newer row');
+  b.ctl.stepEpisode(-1);
+  r = b.ctl.stepEpisode(-1);
+  ok(r.ok === false && r.reason === 'no-previous' && b.ctl.getState().episodeId === 'e3', 'step: at the first row Previous is a no-op');
+  ok(typeof b.sessionHandlers.nexttrack === 'function' && typeof b.sessionHandlers.previoustrack === 'function', 'step: the session handlers survive every step and every no-op');
+  eq(b.metaWrites[b.metaWrites.length - 1], 'Episode 3', 'step: the published metadata follows the stepped episode');
+  r = b.ctl.stepEpisode(0);
+  ok(r.ok === true && r.direction === 1, 'step: a non-negative direction is forward (no garbage throws)');
+}
+{
+  const b = boot();
+  const sd = threeEpisodeShow(b);
+  b.ctl.play(sd.EPISODES[1], SHOW);       // e2, paused by the user
+  b.audio.pause();
+  ok(b.ctl.getState().playing === false, 'step precondition: podcast paused');
+  const r = b.ctl.stepEpisode(1);
+  ok(r.ok === true && b.ctl.getState().episodeId === 'e1' && b.ctl.getState().playing === true, 'step: stepping while paused starts the neighbour (same rule as a library row and the end-of-episode rollover)');
+  b.ctl.stop();
+  eq(b.ctl.stepEpisode(1), { ok: false, reason: 'not-playing' }, 'step: nothing to step through after stop');
+  ok(b.ctl.getState().active === false, 'step: stop state untouched by the refused step');
+}
+{
+  /* the queue is the whole navigation domain: an id it does not carry is
+     unreachable, and a row the feed lost is a refusal, not a silent swap. */
+  const b = boot();
+  const sd = threeEpisodeShow(b);
+  b.ctl.play(sd.EPISODES[0], SHOW);       // e3
+  b.store.setQueue(['e3', 'gone']);
+  eq(b.ctl.stepEpisode(1), { ok: false, reason: 'episode-missing' }, 'step: a queue id the feed no longer carries is refused');
+  ok(b.ctl.getState().episodeId === 'e3' && b.audio.paused === false, 'step: the refusal leaves the current episode playing');
+  b.store.setQueue(['other']);
+  eq(b.ctl.stepEpisode(1), { ok: false, reason: 'no-next' }, 'step: no advance outside the queue that holds the current row');
+  eq(b.ctl.stepEpisode(-1), { ok: false, reason: 'no-previous' }, 'step: no step back outside that queue either');
+  ok(b.ctl.getState().episodeId === 'e3', 'step: the current episode never moved');
+}
+{
+  /* The verbs the dock and the OS actually call. */
+  const b = boot();
+  const sd = threeEpisodeShow(b);
+  b.ctl.play(sd.EPISODES[0], SHOW);       // e3
+  b.audio.currentTime = 100;
+  b.sessionHandlers.nexttrack();
+  ok(b.ctl.getState().episodeId === 'e2', 'action: MediaSession nexttrack steps the episode (Phase 2B.4, was +30s)');
+  ok(b.audio.currentTime === 100, 'action: the step did not seek the new episode');
+  b.audio.currentTime = 100;
+  b.sessionHandlers.previoustrack();
+  ok(b.ctl.getState().episodeId === 'e3', 'action: MediaSession previoustrack steps back');
+  b.audio.currentTime = 100;
+  b.sessionHandlers.seekforward({ seekOffset: 30 });
+  ok(b.audio.currentTime === 130 && b.ctl.getState().episodeId === 'e3', 'action: seekforward keeps ±30 second seeking');
+  b.sessionHandlers.seekbackward({});
+  ok(b.audio.currentTime === 115, 'action: seekbackward without an offset keeps the 15 second default');
+  b.audio.cmd('seekforward', 5);
+  ok(b.audio.currentTime === 120, 'verb: the dock Shift+Arrow size reaches the podcast element');
+  b.audio.currentTime = 20;
+  b.audio.cmd('previoustrack');
+  eq(b.ctl.getState().episodeId, 'e3', 'verb: dock Previous at the newest row is a safe no-op');
+  ok(b.audio.currentTime === 20, 'verb: the refused step did not fall back to a −15 second seek');
+  b.audio.cmd('nexttrack');
+  eq(b.ctl.getState().episodeId, 'e2', 'verb: dock Next asks for the next episode');
+  b.audio.cmd('unknown-verb');
+  b.audio.cmd();
+  ok(b.audio.currentTime === 20 && b.ctl.getState().episodeId === 'e2', 'verb: an unknown command changes nothing');
+  b.ctl.stop();
+  b.audio.cmd('nexttrack');
+  ok(b.ctl.getState().active === false, 'verb: after teardown the element ignores dock commands');
 }
 
 console.log('podcast-player-controller: ' + checks + ' assertions passed');

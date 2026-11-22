@@ -13,7 +13,14 @@
    D  MediaSession ownership follows ACTUAL playback: paused music with a
       selected track never reclaims on unhost; resuming claims + restores
       metadata; a paused podcast never reclaims when Music stops,
-   E  teardown idempotence + listener unbind (double stop/unhost is a no-op).
+   E  teardown idempotence + listener unbind (double stop/unhost is a no-op),
+   V  Phase 2B.4 volume: the shared slider writes the PODCAST element while the
+      podcast owns the session — no Music element is created, no Music volume
+      is written, M is a no-op, and the reported level follows the owner after
+      a takeover in both directions,
+   K  Phase 2B.4 verbs: Prev/Next hand the episode step to the guest and the
+      ± second shortcuts hand seeks; after a Music takeover both go back to
+      Music and nothing reaches the hosted-but-not-owned podcast element.
    The engine's MUSIC element is marked _silent: the real onPlayState writes the
    built chrome (browser-verified), so Node reads el.paused directly instead of
    firing element events. */
@@ -63,6 +70,10 @@ FakeAudio.prototype.setAttribute = function (k, v) { this._attrs[k] = v; if (k =
 FakeAudio.prototype.getAttribute = function (k) { return k in this._attrs ? this._attrs[k] : null; };
 FakeAudio.prototype.removeAttribute = function (k) { delete this._attrs[k]; if (k === 'src') { this.src = ''; this.currentSrc = ''; } };
 FakeAudio.prototype.load = function () { this.currentSrc = this.src; };
+/* Phase 2B.4: the Podcast player attaches a setVol verb to its OWN element and
+   the engine writes guest volume only through it, so the verb has to exist on
+   the fake to be observable (and the counter proves it was the path taken). */
+FakeAudio.prototype.setVol = function (v) { this._volWrites = (this._volWrites || 0) + 1; this.volume = v; return v; };
 FakeAudio.prototype.play = function () { this.paused = false; if (!this._silent) { fire(this, 'play'); } return Promise.resolve(); };
 FakeAudio.prototype.pause = function () { if (!this.paused) { this.paused = true; if (!this._silent) { fire(this, 'pause'); } } };
 FakeAudio.prototype.appendChild = function () {};
@@ -520,6 +531,94 @@ function seedTrack(b) {
     await tick();
     ok(pod.paused === true && music.paused === false, 'F3: system Media key resumes Music and pauses the podcast');
     ok(b.VM.sessionOwner() === 'music', 'F3: ownership moved with the audible player');
+  }
+
+  /* ---- V: Phase 2B.4 — Podcast-scoped volume on the shared dock slider ----
+     The shipped defect: setVolume()/toggleMute() opened with ensureAudio(), so
+     during a Podcast session the slider moved a Music element that never made
+     a sound (and M created one). Both paths must now follow the owner. */
+  {
+    const b = bootEngine();
+    const pod = new FakeAudio();
+    pod.src = 'https://cdn.example.com/ep.mp3'; pod.currentSrc = pod.src;
+    pod.volume = 1; pod.paused = false;
+    b.VM.hostGuest(pod, { title: 'Episode Nine', artist: 'Void Show' });
+    ok(b.VM.sessionOwner() === 'guest' && b.VM.getAudio() === null, 'V precondition: podcast owns, Music has no element');
+
+    ok(b.VM.setVolume(0.35) === true, 'V: the slider succeeds through the guest path');
+    ok(pod.volume === 0.35 && pod._volWrites === 1, 'V: the PODCAST element volume is what changed (via its own verb)');
+    ok(b.VM.getAudio() === null && b.VM.getLocalAudio() === null, 'V: the guest volume path creates no Music element');
+    ok(global.localStorage.getItem('voidMusic.volume') === null, 'V: Music volume setting not written to storage');
+    ok(b.VM._test.S.vol === 0.8 && b.VM._test.S.muted === false, 'V: Music own volume/mute state untouched');
+    ok(b.VM.volume() === 0.35 && b.VM.getState().vol === 0.35 && b.VM.getState().musicAudio === false, 'V: the chrome reports the owner level');
+
+    ok(b.VM.toggleMute() === false, 'V: M while the podcast owns playback is a no-op');
+    ok(b.VM.getAudio() === null, 'V: M created no Music element');
+    ok(pod.volume === 0.35 && pod.muted === false && pod.paused === false && pod._volWrites === 1, 'V: M left the podcast playing at its own level, no extra write');
+
+    ok(b.VM.setVolume('loud') === false && b.VM.setVolume(NaN) === false && b.VM.setVolume(undefined) === false, 'V: garbage refused on the guest path too');
+    ok(pod.volume === 0.35 && pod._volWrites === 1, 'V: a refused set leaves the podcast level alone');
+    ok(b.VM.setVolume(0) === true && pod.volume === 0 && b.VM.volume() === 0, 'V: podcast silence = its own element at 0');
+  }
+
+  /* V2: with BOTH elements alive, the slider follows the owner and never
+     crosses over in either direction. */
+  {
+    const b = bootEngine();
+    const music = startMusic(b, { volume: 0.6 });
+    const lsBefore = global.localStorage.getItem('voidMusic.volume');
+    seedTrack(b);
+    const pod = new FakeAudio(); pod.paused = false; pod.volume = 1;
+    b.VM.hostGuest(pod, { title: 'Episode Nine', artist: 'Void Show' });
+    const before = snapshot(music);
+
+    b.VM.setVolume(0.2);
+    ok(pod.volume === 0.2 && pod._volWrites === 1, 'V2: podcast level written');
+    sameSnapshot(before, snapshot(music), 'V2: the guest path never reaches the MUSIC element');
+    ok(b.VM._test.S.vol === 0.6 && global.localStorage.getItem('voidMusic.volume') === lsBefore, 'V2: Music volume state and setting kept');
+
+    b.handlers.play();                        // real takeover: Music claims the session back
+    await tick();
+    ok(b.VM.sessionOwner() === 'music' && music.paused === false && pod.paused === true, 'V2: Music took the session and paused the podcast');
+    ok(b.VM.setVolume(0.5) === true, 'V2: the slider now takes the Music path');
+    ok(music.volume === 0.5 && b.VM._test.S.vol === 0.5, 'V2: with Music owning, the slider writes MUSIC');
+    ok(pod.volume === 0.2 && pod._volWrites === 1, 'V2: and NEVER the podcast element');
+    ok(global.localStorage.getItem('voidMusic.volume') === '0.5', 'V2: Music volume setting persisted on the Music path');
+    ok(b.VM.volume() === 0.5 && b.VM.getState().vol === 0.5, 'V2: chrome follows the new owner');
+    ok(b.VM.toggleMute() === true && music.muted === true && pod.volume === 0.2, 'V2: M belongs to Music again, podcast untouched');
+  }
+
+  /* ---- K: Phase 2B.4 — dock verbs: Prev/Next step episodes, ± seconds seek ---- */
+  {
+    const b = bootEngine();
+    const music = startMusic(b);
+    seedTrack(b);
+    const calls = [];
+    const pod = new FakeAudio(); pod.paused = false;
+    pod.cmd = function (name, arg) { calls.push([name, arg]); };
+    b.VM.hostGuest(pod, { title: 'Episode Nine', artist: 'Void Show' });
+
+    b.VM.next(); b.VM.prev();
+    eq(calls.map(function (c) { return c[0]; }), ['nexttrack', 'previoustrack'], 'K: shared Prev/Next hand the step to the guest (episode steps live there)');
+    calls.length = 0;
+
+    music.currentTime = 12.5;
+    b.VM._test.seekBy(15);
+    b.VM._test.seekBy(-5);
+    eq(calls, [['seekforward', 15], ['seekbackward', 5]], 'K: ± second shortcuts become guest seeks (Shift+Arrow sizes pass through)');
+    ok(music.currentTime === 12.5, 'K: no ± second write reaches the MUSIC element while the podcast owns playback');
+    calls.length = 0;
+
+    b.handlers.play();                        // takeover: the guest stays hosted but stops owning
+    await tick();
+    ok(b.VM.sessionOwner() === 'music' && pod.paused === true, 'K precondition: Music owns, guest still hosted');
+    music.currentTime = 12.5;
+    b.VM.prev();
+    eq(music.currentTime, 0, 'K: with Music owning, Prev is Music rewind (not an episode step)');
+    b.VM._test.seekBy(15);
+    eq(music.currentTime, 15, 'K: ± seconds go back to the MUSIC element when Music owns');
+    eq(calls, [], 'K: nothing is sent to the hosted-but-not-owned podcast verbs');
+    ok(pod.paused === true && pod.volume === 1, 'K: the podcast element stays paused and untouched');
   }
 
   console.log('void-music-guest: ' + checks + ' assertions passed');

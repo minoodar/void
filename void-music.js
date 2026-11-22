@@ -107,7 +107,7 @@
     seed: 0, token: 0, failures: 0, failStreak: 0, grantAdvised: false, grantTrack: null, permRoots: 0, toastLog: [], scan: null,
     libLoaded: false, savedTitle: null,
     dragging: false, dragFrac: 0,
-    vol: 0.8, muted: false, outGain: null,
+    vol: 0.8, muted: false, guestVol: null, outGain: null,
     mini: null, fsByUs: false, widgetShown: false, widgetWasVisible: true, ptrDown: false,
     roots: new Map(), permCache: new Map(), copyMode: false, copyDone: 0, copyTotal: 0, swept: [],
     shuffle: false, repeat: 0, query: '', starsFor: null, flownId: null, starsTimer: 0,
@@ -817,6 +817,9 @@
     publishSession(tr, null);
     bindSession();           // موزیک شروع شد: MediaSession دوباره از میهمانِ پادکست پس گرفته می‌شود
     S.sessionOwner = 'music';   // Phase 2B.1: claim صریحِ موزیک
+    /* فاز ۲B.۴: هر claim جایگاهِ اسلایدرِ مشترک را هم به صاحبِ تازه برگردانده
+       می‌کند (syncVolume تا built بودن خودش را نگهبانی می‌کند). */
+    syncVolume();
     if (remote) resolveRemoteCover(tr, tok);
     pushRemote(true);
     try { window.dispatchEvent(new CustomEvent('voidmusic:track', { detail: { id: id, title: tr.title, seed: S.seed } })); } catch (e) {}
@@ -929,14 +932,17 @@
     if (tr && S.audio && S.audio.src) trackFailed(tr, 'voidMusicUnsupported');
   }
 
+  /* فاز ۲B.۴ (گزینه B): دکمه‌های Prev/Next درِ متحرک، با میهمانِ مالک به
+     پخش‌کنندهٔ پادکست می‌روند و آنجا «اپیزودِ قبلی/بعدی» است (نه ± ثانیه)؛
+     سِک‌ها فرمانِ جداگانهٔ خودشان را دارند. با موزیکِ مالک، مسیرِ همیشگی. */
   function next() {
-    if (S.guest && S.guest.cmd) { S.guest.cmd('nexttrack'); return; }   // میهمانِ پادکست: +۳۰ ثانیه
+    if (S.sessionOwner === 'guest' && S.guest && S.guest.cmd) { S.guest.cmd('nexttrack'); return; }
     if (S.web) { S.web.cmd('nexttrack'); return; }
     const id = drawNext();
     if (id) playId(id); else releasePlayback();
   }
   function prev() {
-    if (S.guest && S.guest.cmd) { S.guest.cmd('previoustrack'); return; }   // میهمانِ پادکست: −۱۵ ثانیه
+    if (S.sessionOwner === 'guest' && S.guest && S.guest.cmd) { S.guest.cmd('previoustrack'); return; }
     if (S.web) { S.web.cmd('previoustrack'); return; }
     const a = S.audio;
     if (a && a.currentTime > 3) { a.currentTime = 0; return; }
@@ -960,6 +966,7 @@
         if (!granted) return;
         pauseGuestElement();                      // فاز ۲B.۳: انحصار در مرزِ ادامهٔ موزیک (مستقل از return زودهنگامِ بالا)
         S.sessionOwner = 'music';   // Phase 2B.1: ادامهٔ پخشِ موزیک هم claim است
+        syncVolume();
         const tr = trackById(S.curId);
         if (tr) publishSession(tr, S.coverUrl);   // فاز ۲B.۲: ادامه، متادیتای پاک‌شده را هم برمی‌گرداند
         playbackLog('audio-play-invoked', { readyState: a.readyState, paused: a.paused, muted: a.muted, volume: a.volume, hasSource: !!a.currentSrc });
@@ -972,7 +979,13 @@
     if (!a || !isFinite(a.duration)) return;
     a.currentTime = clamp(sec, 0, a.duration);
   }
-  function seekBy(d) { if (S.audio) seekTo(S.audio.currentTime + d); }
+  /* فاز ۲B.۴: میانبرهای ± ثانیه (Arrow و Shift+Arrow) همان‌جا که صدا هست می‌روند:
+     با میهمانِ مالک به فرمانِ seek خودِ پخش‌کنندهٔ پادکست، وگرنه به عنصرِ موزیک.
+     خطِ زمانِ درگ‌شونده (scrub) عمداً دست‌نخورده مانده — بیرونِ این تسک است. */
+  function seekBy(d) {
+    if (S.sessionOwner === 'guest' && S.guest && S.guest.cmd) { S.guest.cmd(d < 0 ? 'seekbackward' : 'seekforward', Math.abs(d)); return; }
+    if (S.audio) seekTo(S.audio.currentTime + d);
+  }
   // یک مدلِ واحدِ صدا: اگر ویژولایزر گراف ساخته باشد، بلندی را GainNode می‌دهد (تا تحلیل
   // مستقل از ولوم بماند)، وگرنه خودِ <audio>. منبعِ تب استثناست: صدایش در Void Tab پخش نمی‌شود
   // (گراف فقط تحلیل می‌کند و خروجی‌اش بی‌صداست)، پس ولوم باید به همان تب فرستاده شود.
@@ -992,14 +1005,47 @@
     }
     playbackLog('volume-applied', { muted: a.muted, volume: a.volume, gain: S.outGain ? S.outGain.gain.value : null });
   }
+  /* فاز ۲B.۴: ولومِ میهمان فقط از مسیرِ خودِ پادکست نوشته می‌شود (audio.setVol).
+     applyVolume هرگز به S.guest دست نمی‌زند — تفکیکِ عنصرها و گرافِ صحنه حفظ
+     می‌شود. مقدارِ true/false می‌گوید اسلایدر الان به چه کسی تعلق دارد. */
+  function applyGuestVolume(v) {
+    const g = S.guest;
+    if (!g || typeof g.setVol !== 'function') return false;
+    g.setVol(v);
+    S.guestVol = typeof g.volume === 'number' ? g.volume : v;
+    return true;
+  }
+  /* سطحِ نمایش‌داده‌شدهٔ اسلایدر: ولومِ همان پخش‌کننده‌ای که الان صدا دارد. */
+  function volumeShown() {
+    if (S.sessionOwner === 'guest' && S.guest) {
+      if (typeof S.guest.volume === 'number' && isFinite(S.guest.volume)) return S.guest.volume;
+      return typeof S.guestVol === 'number' ? S.guestVol : 1;
+    }
+    return S.muted ? 0 : S.vol;
+  }
   function setVolume(v) {
+    const isNum = typeof v === 'number' && isFinite(v);
+    if (S.sessionOwner === 'guest' && S.guest) {
+      if (!isNum) return false;
+      if (!applyGuestVolume(v)) return false;   /* پادکست مالک است: موزیک اصلاً ساخته/دست‌خورد نمی‌شود */
+      syncVolume();
+      return true;
+    }
+    if (!isNum) return false;
     ensureAudio();
     S.vol = clamp(v, 0, 1);
     if (S.vol > 0) S.muted = false;
     try { localStorage.setItem(VOL_KEY, String(S.vol)); } catch (e) {}
     applyVolume(); syncVolume();
+    return true;
   }
-  function toggleMute() { ensureAudio(); S.muted = !S.muted; applyVolume(); syncVolume(); }
+  /* فاز ۲B.۴: با میهمانِ مالک، «M» هیچ المانی نمی‌سازد و صدای پادکست را هم
+     تغییر نمی‌دهد — سکوتِ پادکست از همان اسلایدرِ ولوم انجام می‌شود. */
+  function toggleMute() {
+    if (S.sessionOwner === 'guest' && S.guest) return false;
+    ensureAudio(); S.muted = !S.muted; applyVolume(); syncVolume();
+    return true;
+  }
 
   /* ------------------------------------------------------------------ */
   /* Media Session (کلیدهای مدیایِ کیبورد/سیستم‌عامل — همان فرمان‌ها)       */
@@ -1030,6 +1076,7 @@
         if (!granted) return;
         pauseGuestElement();                      // فاز ۲B.۲: ادامهٔ موزیک، پادکست را واقعاً مکث می‌کند
         S.sessionOwner = 'music';                 // شروع/ادامهٔ واقعی = claim
+        syncVolume();
         const tr = trackById(S.curId);
         if (tr) publishSession(tr, S.coverUrl);
         a.play().catch(function () { if (a.paused) releasePlayback(); });
@@ -1676,13 +1723,18 @@
     if (on && S.built && !CLK.iv) { tickClock(); CLK.iv = setInterval(tickClock, 1000); }
     else if (!on && CLK.iv) { clearInterval(CLK.iv); CLK.iv = 0; }
   }
+  /* فاز ۲B.۴: آینهٔ اسلایدر از volumeShown() می‌خواند، پس در پخشِ پادکست همان
+     درصدِ ولومِ عنصرِ پادکست را نشان می‌دهد (نه S.volِ موزیک را). */
   function syncVolume() {
-    const muted = !!(S.muted || S.vol === 0);
+    if (!S.built) return;                     // همان حفاظِ updateProgress: در صفحهٔ نساخته هیچ els‌ای نیست
+    const guest = S.sessionOwner === 'guest' && !!S.guest;
+    const shown = volumeShown();
+    const muted = guest ? shown === 0 : !!(S.muted || S.vol === 0);
     els.vol.dataset.muted = muted ? '1' : '0';
-    const pct = Math.round((muted ? 0 : S.vol) * 100);
-    els.vol.dataset.level = muted ? '0' : (S.vol < 0.34 ? '1' : '2');
-    els.volRange.value = String(Math.round(S.vol * 100));
-    els.volRange.style.setProperty('--p', Math.round(S.vol * 100) + '%');
+    const pct = Math.round((muted ? 0 : shown) * 100);
+    els.vol.dataset.level = muted ? '0' : (shown < 0.34 ? '1' : '2');
+    els.volRange.value = String(Math.round(shown * 100));
+    els.volRange.style.setProperty('--p', Math.round(shown * 100) + '%');
     els.volRange.setAttribute('aria-valuetext', pct + '%');
     els.volVal.textContent = muted ? '0%' : pct + '%';
   }
@@ -2009,10 +2061,13 @@
   }
   function hostGuest(el, meta) {
     if (!el) return;
+    /* فاز ۲B.۴: در لحظهٔ مالکیت، جایگاهِ اسلایدر هم باید به همان پخش‌کننده
+       برگردد؛ وگرنه درصدِ ولومِ موزیک روی صدای پادکست نمایش داده می‌شود. */
     if (S.guest === el) {
       pauseMusicElement();                       // فاز ۲B.۲: ادامهٔ پادکست، موزیک را واقعاً مکث می‌کند
       S.sessionOwner = 'guest';
       if (meta && S.built) setMeta(meta.title, meta.artist, null);
+      syncVolume();
       return;
     }
     if (S.guest) unbindGuest();
@@ -2026,6 +2081,7 @@
     if (meta && S.built) setMeta(meta.title, meta.artist, null);
     if (S.built) { onPlayState(); }
     updateProgress();
+    syncVolume();
   }
   function unbindGuest() {
     const el = S.guest; if (!el) return;
@@ -2055,7 +2111,7 @@
     if (S.built) {
       const tr = trackById(S.curId);
       setMeta(tr ? tr.title : '', tr ? tr.artist : '', null);
-      onPlayState(); updateProgress();
+      onPlayState(); updateProgress(); syncVolume();   // فاز ۲B.۴: اسلایدر با بازگشتِ مالکیت به موزیک هم هم‌خط می‌شود
     }
     bindSession();
   }
@@ -2532,7 +2588,7 @@
     if (k === 'Escape') { if (anyPop()) { closePops(); els.queueBtn.focus({ preventScroll: true }); } else exit(); }
     else if (k === ' ' || k === 'k') { if (onBtn) { e.stopImmediatePropagation(); return; } toggle(); }
     else if (k === 'ArrowLeft' || k === 'ArrowRight') { if (onRange || onSeek) return; seekBy((k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 15 : 5)); }
-    else if (k === 'ArrowUp' || k === 'ArrowDown') { if (onRange || onSeek) return; setVolume(S.vol + (k === 'ArrowUp' ? .05 : -.05)); closePops(); setPop('vol', true); }
+    else if (k === 'ArrowUp' || k === 'ArrowDown') { if (onRange || onSeek) return; setVolume(volumeShown() + (k === 'ArrowUp' ? .05 : -.05)); closePops(); setPop('vol', true); }   /* فاز ۲B.۴: مبنا ولومِ صاحبِ سشن */
     else if (k === 'm') toggleMute();
     else if (k === 'f') toggleFullscreen();
     else if (k === 'w') setWidget(!S.widgetShown);
@@ -3006,6 +3062,10 @@
     setWidgetSelector: setWidgetSelector, setWidget: setWidget, toggleFullscreen: toggleFullscreen, dismiss: dismissMini,
     // ویژولایزر گرافِ Web Audio می‌سازد و بلندی را به این GainNode می‌سپارد
     setOutputGain: function (node) { S.outGain = node || null; applyVolume(); },
+    /* فاز ۲B.۴: همان مسیرِ عمومیِ اسلایدر و کیبورد برای ولوم/سکوت. صاحبِ
+       MediaSession تعیین می‌کند کدام عنصر نوشته می‌شود؛ volume() سطحی است که
+       اسلایدر الان نشان می‌دهد. (برایِ آزمون و پخش‌کنندهٔ پادکست.) */
+    setVolume: setVolume, toggleMute: toggleMute, volume: volumeShown,
     setPowder: function (on) { if (S.built) root.classList.toggle('is-powder', !!on); },
     // ستاره‌های امتیازِ آهنگِ جاری (زیرِ عنوان): مرکزِ هر ستاره برای شروعِ پروازِ دنباله‌دار، و پنهان‌کردنِ هر ستاره هم‌زمان با زادنِ دنباله‌دارش
     getStarRects: function () {
@@ -3036,13 +3096,14 @@
       }
       return { title: rect(els.title), artist: rect(els.artist), stars: stars };
     },
-    getState: function () { const t = trackById(S.curId); return { tracks: S.tracks.length, current: S.curId, currentUrl: t && t.url ? t.url : null, ended: !!(S.audio && S.audio.ended), playing: !!(S.audio && !S.audio.paused), bag: S.bag.length, history: S.history.length, vol: S.vol, muted: S.muted, quiet: !!(root && root.classList.contains('is-quiet')), popOpen: !!(S.built && anyPop()), widget: S.widgetShown, mini: !!(S.miniWrap && S.miniWrap.classList.contains('is-on')) }; },
+    getState: function () { const t = trackById(S.curId); return { tracks: S.tracks.length, current: S.curId, currentUrl: t && t.url ? t.url : null, ended: !!(S.audio && S.audio.ended), playing: !!(S.audio && !S.audio.paused), bag: S.bag.length, history: S.history.length, vol: volumeShown(), muted: S.muted, musicAudio: !!S.audio, quiet: !!(root && root.classList.contains('is-quiet')), popOpen: !!(S.built && anyPop()), widget: S.widgetShown, mini: !!(S.miniWrap && S.miniWrap.classList.contains('is-on')) }; },
     /* سطحِ آزمون، به همان الگوی void-music-viz.js: پیمایشِ پوشه، مجوز و علت‌هایِ خرابی
        بدونِ DOM و بدونِ تقلیدِ منطق قابلِ راندن باشند (آینه‌سازیِ مجدد = ریسکِ واگرایی). */
     _test: {
       S: S, newScan: newScan, walkDir: walkDir, addFolderHandle: addFolderHandle, addEntries: addEntries,
       grant: grant, fileOf: fileOf, trackFailed: trackFailed, regrantAndPlay: regrantAndPlay,
       probePermissions: probePermissions, grantAllRoots: grantAllRoots, renderQueue: renderQueue,
+      seekBy: seekBy,                              /* فاز ۲B.۴: مسیرِ ± ثانیه (کلیدها و آزمون) */
       FAIL_KEY: FAIL_KEY, FAIL_GRANTABLE: FAIL_GRANTABLE, SCAN_MAX_DEPTH: SCAN_MAX_DEPTH, FAIL_STREAK_MAX: FAIL_STREAK_MAX
     }
   };

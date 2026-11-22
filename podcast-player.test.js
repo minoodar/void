@@ -24,19 +24,29 @@ function eq(a, b, msg) { assert.deepStrictEqual(a, b, msg); checks++; }
 
 /* Queue: from current onward in newest-first order; advance; remove; purity. */
 {
+  /* Phase 2B.4: the queue is the WHOLE show (feed order, newer first, current
+     left in place), so end-of-episode rollover and Previous/Next walk one and
+     the same list — index +1 is the next older episode, index -1 the newer one. */
   const eps = sample.episodesOf('show-night-frequencies');
   const q = L.queueFrom(eps, 'nf-03');
-  eq(q, ['nf-03', 'nf-02', 'nf-01'], 'queue: current + older, newest-first order');
-  eq(L.queueFrom(eps, 'nf-01'), ['nf-01'], 'queue: last episode alone');
-  eq(L.queueFrom(eps, 'unknown'), ['unknown'], 'queue: unknown id -> single');
-  eq(L.nextInQueue(q, 'nf-03'), 'nf-02', 'queue: advance');
+  eq(q, ['nf-05', 'nf-04', 'nf-03', 'nf-02', 'nf-01'], 'queue: whole show, current kept in place');
+  eq(L.queueFrom(eps, 'nf-05'), q, 'queue: current at the first row keeps the full list');
+  eq(L.queueFrom(eps, 'unknown'), ['unknown'], 'queue: unknown id -> single (no bridge to other episodes)');
+  eq(L.nextInQueue(q, 'nf-03'), 'nf-02', 'queue: advance (rollover unchanged)');
   eq(L.nextInQueue(q, 'nf-01'), null, 'queue: end -> null');
   eq(L.nextInQueue(q, 'nope'), null, 'queue: missing current -> null');
-  eq(L.withoutId(q, 'nf-02'), ['nf-03', 'nf-01'], 'queue: remove middle');
-  eq(L.withoutId(q, 'nf-03'), ['nf-02', 'nf-01'], 'queue: remove head (current keeps playing)');
-  eq(q, ['nf-03', 'nf-02', 'nf-01'], 'queue: withoutId is pure');
-  const q2 = L.queueFrom(eps, 'nf-05');
-  eq(q2.length, 5, 'queue: full show from newest');
+  eq(L.prevInQueue(q, 'nf-03'), 'nf-04', 'queue: step back to the newer row');
+  eq(L.prevInQueue(q, 'nf-05'), null, 'queue: first row has no previous (never wraps)');
+  eq(L.prevInQueue(q, 'nope'), null, 'queue: missing current -> no previous');
+  eq(L.upcomingFrom(q, 'nf-03'), ['nf-02', 'nf-01'], 'up next: tail after the current row');
+  eq(L.upcomingFrom(q, 'nf-05'), ['nf-04', 'nf-03', 'nf-02', 'nf-01'], 'up next: same list as the old queue slice');
+  eq(L.upcomingFrom(['unknown'], 'unknown'), [], 'up next: current alone -> empty');
+  eq(L.withoutId(q, 'nf-02'), ['nf-05', 'nf-04', 'nf-03', 'nf-01'], 'queue: remove middle');
+  eq(L.withoutId(q, 'nf-03'), ['nf-05', 'nf-04', 'nf-02', 'nf-01'], 'queue: remove the current row (it keeps playing)');
+  eq(L.nextInQueue(L.withoutId(q, 'nf-03'), 'nf-03'), null, 'queue: current removed -> no advance');
+  eq(L.nextInQueue(L.withoutId(q, 'nf-02'), 'nf-03'), 'nf-01', 'queue: a skipped row is skipped on advance too');
+  eq(L.prevInQueue(L.withoutId(q, 'nf-04'), 'nf-03'), 'nf-05', 'queue: a skipped row is skipped on step back too');
+  eq(q, ['nf-05', 'nf-04', 'nf-03', 'nf-02', 'nf-01'], 'queue: withoutId is pure');
 }
 
 /* Sleep: only 15/30/60 minutes or 'end'; deadline math; remaining clamps at 0. */

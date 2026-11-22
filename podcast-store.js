@@ -22,13 +22,20 @@
   var DESC_CAP = 600;
   /* Stored-payload version. v1 = pre-2B payload (no v field, no rate, no
      resolvedFeedUrl). v2 adds those fields additively. The saved-episodes key
-     is self-contained and unchanged, so it carries no version of its own. */
+     is self-contained and unchanged, so it carries no version of its own.
+     `volume` is additive on top of v2: parseState supplies its default for any
+     payload that predates it, so no migration step (and no version bump) is
+     needed — the same way a nullable setting is introduced. */
   var SCHEMA_VERSION = 2;
   var RATE_MIN = 0.25;
   var RATE_MAX = 4;
+  /* Playback volume of the Podcast Audio Element only — Music keeps its own
+     volume in void-music.js and the two never meet. Kept as a 0…1 number;
+     unlike rate it is continuous, so it is clamped instead of snapped. */
+  var VOLUME_DEFAULT = 1;
 
   function defaultState() {
-    return { subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {}, rate: 1 };
+    return { subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {}, rate: 1, volume: VOLUME_DEFAULT };
   }
 
   function uniqueStrings(list) {
@@ -152,7 +159,7 @@
       subscriptions: subs, progress: progress,
       queue: Array.isArray(p.queue) ? uniqueStrings(p.queue) : [],
       shows: shows, episodes: episodes, opened: opened,
-      rate: parseRate(p.rate)
+      rate: parseRate(p.rate), volume: parseVolume(p.volume)
     };
   }
   function parseSaved(raw) {
@@ -172,7 +179,7 @@
     var next = {
       subscriptions: state.subscriptions.slice(), progress: {},
       queue: (state.queue || []).slice(), shows: {}, episodes: {}, opened: {},
-      rate: parseRate(state.rate)
+      rate: parseRate(state.rate), volume: parseVolume(state.volume)
     };
     Object.keys(state.progress).forEach(function (k) {
       var e = state.progress[k];
@@ -201,6 +208,17 @@
   function withRate(state, r) {
     var next = copyState(state);
     next.rate = parseRate(r);
+    return next;
+  }
+  /* Anything unusable degrades to the default, exactly like parseRate does. */
+  function parseVolume(v) {
+    var n = typeof v === 'number' && isFinite(v) ? v : NaN;
+    if (!isFinite(n)) { return VOLUME_DEFAULT; }
+    return n < 0 ? 0 : n > 1 ? 1 : n;
+  }
+  function withVolume(state, v) {
+    var next = copyState(state);
+    next.volume = parseVolume(v);
     return next;
   }
   function withSubscription(state, showId, on) {
@@ -420,6 +438,8 @@
       setQueue: function (ids) { state = withQueue(state, ids); persistMain(); emit(); return state.queue.slice(); },
       getRate: function () { return parseRate(state.rate); },
       setRate: function (r) { state = withRate(state, r); persistMain(); emit(); return state.rate; },
+      getVolume: function () { return parseVolume(state.volume); },
+      setVolume: function (v) { state = withVolume(state, v); persistMain(); emit(); return state.volume; },
       getShow: function (showId) { return state.shows[showId] || null; },
       getEpisodes: function (showId) { return (state.episodes[showId] || []).slice(); },
       registerShow: function (show, eps) {
@@ -481,16 +501,19 @@
     PROGRESS_MAX_AGE_MS: PROGRESS_MAX_AGE_MS,
     EPISODE_CAP: EPISODE_CAP,
     DESC_CAP: DESC_CAP,
+    VOLUME_DEFAULT: VOLUME_DEFAULT,
     create: create,
     defaultState: defaultState,
     parseState: parseState,
     parseSaved: parseSaved,
     parseRate: parseRate,
+    parseVolume: parseVolume,
     migratePayload: migratePayload,
     withSubscription: withSubscription,
     withProgress: withProgress,
     withQueue: withQueue,
     withRate: withRate,
+    withVolume: withVolume,
     withShow: withShow,
     withoutShow: withoutShow,
     withEpisodes: withEpisodes,
