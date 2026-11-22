@@ -83,6 +83,15 @@
     var ms = Date.parse(String(v == null ? '' : v));
     return isFinite(ms) ? ms : 0;
   }
+  /* Phase 2B.3 (M4): itunes:season / itunes:episode are kept only as plain
+     non-negative integers. Anything else (ranges, "1 of 12", negatives, text)
+     becomes 0, which every consumer reads as "the feed never said". */
+  function parsePositiveInt(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!/^\d{1,9}$/.test(s)) { return 0; }
+    var n = parseInt(s, 10);
+    return isFinite(n) && n >= 0 ? n : 0;
+  }
 
   /* Paste classification: a URL (scheme optional) vs search text. */
   function looksLikeUrl(text) {
@@ -93,12 +102,22 @@
     return '';
   }
   /* Artwork and enclosures load directly from the publisher: https only, no
-     credentials, no IP literals or private names (mixed content + SSRF hygiene). */
-  function safeMediaUrl(u) {
+     credentials, no IP literals or private names (mixed content + SSRF hygiene).
+     `base` (Phase 2B.3/M1) resolves relative references — a value that parses on
+     its own is never re-resolved, so absolute URLs behave exactly as before and
+     every check below still applies to the resolved result. */
+  function resolveUrl(s, base) {
+    if (!s) { return null; }                     /* an empty reference never resolves to the base itself */
+    try { return new URL(s); } catch (e) {
+      if (!base) { return null; }
+      try { return new URL(s, base); } catch (e2) { return null; }
+    }
+  }
+  function safeMediaUrl(u, base) {
     var s = String(u == null ? '' : u).trim();
     if (!s) { return ''; }
-    var p;
-    try { p = new URL(s); } catch (e) { return ''; }
+    var p = resolveUrl(s, base);
+    if (!p) { return ''; }
     if (p.protocol !== 'https:' || p.username || p.password) { return ''; }
     var h = p.hostname.toLowerCase();
     if (!h || h.indexOf('.') < 0 || h === 'localhost') { return ''; }
@@ -170,6 +189,59 @@
     return ns.indexOf(tag.slice(0, ci).toLowerCase()) >= 0 &&
       String(node.localName || '').toLowerCase() === local;
   }
+  /* Phase 2B.3 (M3): Atom documents are legal with any prefix — <a:feed>,
+     <atom:entry>, <a:link> — while getElementsByTagName('feed') only sees the
+     unprefixed spelling. Accepted forms, in order: exact tag name (what the
+     unprefixed path and the Node test shim always produce), a prefix that is
+     not one of the known podcast/media extension namespaces, and the parser's
+     own namespaceURI + localName when it exposes them. */
+  var ATOM_NS = 'http://www.w3.org/2005/Atom';
+  var FOREIGN_ATOM_PREFIXES = ['itunes', 'it', 'media', 'm', 'googleplay', 'gp', 'podcast',
+    'dc', 'content', 'xhtml', 'webfeeds', 'cc', 'creativecommons'];
+  function isAtomTag(node, local) {
+    if (!node || node.nodeType !== 1) { return false; }
+    var t = String(node.tagName || '');
+    if (t === local) { return true; }
+    var ci = t.indexOf(':');
+    if (ci > 0) {
+      if (t.slice(ci + 1) !== local) { return false; }
+      return FOREIGN_ATOM_PREFIXES.indexOf(t.slice(0, ci).toLowerCase()) < 0;
+    }
+    return String(node.namespaceURI || '') === ATOM_NS && String(node.localName || '') === local;
+  }
+  function atomChildEl(parent, local) {
+    var n = (parent && parent.childNodes) || [];
+    for (var i = 0; i < n.length; i++) {
+      if (isAtomTag(n[i], local)) { return n[i]; }
+    }
+    return null;
+  }
+  function atomText(parent, local) { return textOf(atomChildEl(parent, local)); }
+  /* Depth-first search for `local`, not descending into a node it already
+     matched (entries never nest). Prefixed-safe replacement for
+     getElementsByTagName('entry'). */
+  function atomFindAll(root, local, out) {
+    var n = (root && root.childNodes) || [];
+    for (var i = 0; i < n.length; i++) {
+      if (n[i].nodeType !== 1) { continue; }
+      if (isAtomTag(n[i], local)) { out.push(n[i]); }
+      else { atomFindAll(n[i], local, out); }
+    }
+    return out;
+  }
+  function atomRootOf(doc) {
+    var plain = doc.getElementsByTagName('feed');
+    if (plain && plain.length) { return plain[0]; }
+    var de = doc.documentElement;
+    return isAtomTag(de, 'feed') ? de : null;
+  }
+  function atomLinks(el) {
+    var n = (el && el.childNodes) || [], out = [];
+    for (var i = 0; i < n.length; i++) {
+      if (isAtomTag(n[i], 'link')) { out.push(n[i]); }
+    }
+    return out;
+  }
   function childEl(parent, tag) {
     var n = parent.childNodes || [];
     for (var i = 0; i < n.length; i++) {
@@ -180,8 +252,8 @@
   function childText(parent, tag) { return textOf(childEl(parent, tag)); }
   function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ''; } }
 
-  function makeEpisode(feedUrl, show, raw) {
-    var audioUrl = safeMediaUrl(raw.audioUrl);
+  function makeEpisode(feedUrl, show, raw, base) {
+    var audioUrl = safeMediaUrl(raw.audioUrl, base);
     if (!audioUrl) { return null; }
     var ms = parseDateMs(raw.publishedAt);
     var bytes = parseInt(raw.audioBytes, 10);
@@ -193,12 +265,14 @@
       titleFa: '',
       publishedAt: ms ? new Date(ms).toISOString() : '',
       durationSec: parseDuration(raw.duration),
+      seasonNum: parsePositiveInt(raw.season),
+      episodeNum: parsePositiveInt(raw.episode),
       audioUrl: audioUrl,
       audioType: String(raw.audioType || ''),
       audioBytes: isFinite(bytes) && bytes > 0 ? Math.round(bytes) : 0,
       description: truncate(stripHtml(raw.description), DESC_CAP),
-      artUrl: safeMediaUrl(raw.artUrl) || show.artUrl,
-      chaptersUrl: safeMediaUrl(raw.chaptersUrl) || ''
+      artUrl: safeMediaUrl(raw.artUrl, base) || show.artUrl,
+      chaptersUrl: safeMediaUrl(raw.chaptersUrl, base) || ''
     };
   }
   function finishFeed(kind, show, episodes, resolvedFeedUrl) {
@@ -219,17 +293,25 @@
     return { ok: true, kind: kind, show: show, episodes: out, count: out.length, resolvedFeedUrl: resolved };
   }
   /* Feed self-identification (atom rel="self", itunes:new-feed-url) must be a
-     usable https URL; anything else is ignored and the requested URL stands. */
-  function safeFeedUrl(u) {
-    var p;
-    try { p = new URL(String(u == null ? '' : u).trim()); } catch (e) { return ''; }
+     usable https URL; anything else is ignored and the requested URL stands.
+     `base` lets a relative self-reference resolve, never weakening the checks. */
+  function safeFeedUrl(u, base) {
+    var p = resolveUrl(String(u == null ? '' : u).trim(), base);
+    if (!p) { return ''; }
     return p.protocol === 'https:' && !p.username && !p.password ? p.toString() : '';
   }
 
-  function extractFeed(doc, feedUrl) {
+  /* `effectiveUrl` (Phase 2B.3/M2) is the URL the Worker actually fetched after
+     following redirects — reported as X-Void-Final-URL. It only ever acts as
+     the base for relative references and as resolvedFeedUrl when the feed does
+     not self-identify; identity (show/episode ids) stays keyed to the URL the
+     user entered, so existing subscriptions and progress survive a move. */
+  function extractFeed(doc, feedUrl, effectiveUrl) {
     var url = normalizeFeedUrl(feedUrl);
+    var base = safeFeedUrl(effectiveUrl) || safeFeedUrl(url) || '';
+    var reported = base && base !== url ? base : '';
     var channel = doc.getElementsByTagName('channel')[0];
-    var feedEl = doc.getElementsByTagName('feed')[0];
+    var feedEl = atomRootOf(doc);
     var show, episodes = [], i, items, it, enc, raw;
 
     if (channel) {
@@ -243,7 +325,7 @@
         titleFa: '',
         publisher: truncate(stripHtml(childText(channel, 'itunes:author') || (owner ? childText(owner, 'itunes:name') : '') || hostOf(link) || hostOf(url)), 120),
         feedUrl: url,
-        artUrl: safeMediaUrl(img ? img.getAttribute('href') : '') || safeMediaUrl(imgEl ? childText(imgEl, 'url') : ''),
+        artUrl: safeMediaUrl(img ? img.getAttribute('href') : '', base) || safeMediaUrl(imgEl ? childText(imgEl, 'url') : '', base),
         initials: ''
       };
       show.initials = initialsOf(show.title);
@@ -256,7 +338,7 @@
         var audioUrl = enc ? enc.getAttribute('url') : '';
         var audioType = enc ? (enc.getAttribute('type') || '') : '';
         var audioBytes = enc ? parseInt(enc.getAttribute('length'), 10) : NaN;
-        if (!safeMediaUrl(audioUrl)) {
+        if (!safeMediaUrl(audioUrl, base)) {
           /* media:content only fills in when no usable enclosure exists; a
              valid enclosure always wins so distinct sources never merge. */
           var mc = childEl(it, 'media:content');
@@ -272,6 +354,8 @@
           title: childText(it, 'title'),
           publishedAt: childText(it, 'pubDate') || childText(it, 'dc:date'),
           duration: childText(it, 'itunes:duration'),
+          season: childText(it, 'itunes:season'),
+          episode: childText(it, 'itunes:episode'),
           audioUrl: audioUrl,
           audioType: audioType,
           audioBytes: audioBytes,
@@ -279,44 +363,44 @@
           artUrl: epImg ? epImg.getAttribute('href') : '',
           chaptersUrl: chap ? chap.getAttribute('url') : ''
         };
-        episodes.push(makeEpisode(url, show, raw));
+        episodes.push(makeEpisode(url, show, raw, base));
       }
-      return finishFeed('rss', show, episodes, safeFeedUrl(childText(channel, 'itunes:new-feed-url')));
+      return finishFeed('rss', show, episodes,
+        safeFeedUrl(childText(channel, 'itunes:new-feed-url'), base) || reported);
     }
 
     if (feedEl) {
-      var links = feedEl.childNodes || [], altHref = '', selfHref = '';
+      var links = atomLinks(feedEl), altHref = '', selfHref = '';
       for (i = 0; i < links.length; i++) {
-        if (links[i].nodeType !== 1 || links[i].tagName !== 'link') { continue; }
         var rel = links[i].getAttribute('rel') || '';
         var href = links[i].getAttribute('href') || '';
         if (!altHref && (rel === 'alternate' || rel === '')) { altHref = href; }
         if (!selfHref && rel === 'self') { selfHref = href; }
       }
-      var author = childEl(feedEl, 'author');
+      var author = atomChildEl(feedEl, 'author');
       var aImg = childEl(feedEl, 'itunes:image');
       show = {
         id: showIdFor(url),
-        title: truncate(stripHtml(childText(feedEl, 'title')), 200) || hostOf(url) || 'Podcast',
+        title: truncate(stripHtml(atomText(feedEl, 'title')), 200) || hostOf(url) || 'Podcast',
         titleFa: '',
-        publisher: truncate(stripHtml((author ? childText(author, 'name') : '') || hostOf(altHref) || hostOf(url)), 120),
+        publisher: truncate(stripHtml((author ? atomText(author, 'name') : '') || hostOf(altHref) || hostOf(url)), 120),
         feedUrl: url,
-        artUrl: safeMediaUrl(aImg ? aImg.getAttribute('href') : '') || safeMediaUrl(childText(feedEl, 'logo')),
+        artUrl: safeMediaUrl(aImg ? aImg.getAttribute('href') : '', base) || safeMediaUrl(atomText(feedEl, 'logo'), base),
         initials: ''
       };
       show.initials = initialsOf(show.title);
-      items = doc.getElementsByTagName('entry');
+      items = atomFindAll(feedEl, 'entry', []);
       for (i = 0; i < items.length; i++) {
         it = items[i];
-        var eLinks = it.childNodes || [], audio = '', atype = '', aBytes = NaN;
+        var eLinks = atomLinks(it), audio = '', atype = '', aBytes = NaN;
         for (var j = 0; j < eLinks.length; j++) {
-          if (eLinks[j].nodeType === 1 && eLinks[j].tagName === 'link' && (eLinks[j].getAttribute('rel') || '') === 'enclosure') {
+          if ((eLinks[j].getAttribute('rel') || '') === 'enclosure') {
             audio = eLinks[j].getAttribute('href') || '';
             atype = eLinks[j].getAttribute('type') || '';
             break;
           }
         }
-        if (!safeMediaUrl(audio)) {
+        if (!safeMediaUrl(audio, base)) {
           var amc = childEl(it, 'media:content');
           var amu = amc ? amc.getAttribute('url') : '';
           if (amu) {
@@ -328,32 +412,34 @@
         var aChap = childEl(it, 'podcast:chapters');
         var aEpImg = childEl(it, 'itunes:image');
         raw = {
-          guid: childText(it, 'id'),
-          title: childText(it, 'title'),
-          publishedAt: childText(it, 'published') || childText(it, 'updated'),
+          guid: atomText(it, 'id'),
+          title: atomText(it, 'title'),
+          publishedAt: atomText(it, 'published') || atomText(it, 'updated'),
           duration: childText(it, 'itunes:duration'),
+          season: childText(it, 'itunes:season'),
+          episode: childText(it, 'itunes:episode'),
           audioUrl: audio,
           audioType: atype,
           audioBytes: aBytes,
-          description: childText(it, 'summary') || childText(it, 'content'),
+          description: atomText(it, 'summary') || atomText(it, 'content'),
           artUrl: aEpImg ? aEpImg.getAttribute('href') : '',
           chaptersUrl: aChap ? aChap.getAttribute('url') : ''
         };
-        episodes.push(makeEpisode(url, show, raw));
+        episodes.push(makeEpisode(url, show, raw, base));
       }
-      return finishFeed('atom', show, episodes, safeFeedUrl(selfHref));
+      return finishFeed('atom', show, episodes, safeFeedUrl(selfHref, base) || reported);
     }
 
     return { ok: false, reason: 'not-feed' };
   }
 
-  function parseFeed(xmlText, feedUrl) {
+  function parseFeed(xmlText, feedUrl, effectiveUrl) {
     if (typeof DOMParser === 'undefined') { return { ok: false, reason: 'no-parser' }; }
     var doc;
     try { doc = new DOMParser().parseFromString(String(xmlText == null ? '' : xmlText), 'text/xml'); }
     catch (e) { return { ok: false, reason: 'not-feed' }; }
     if (!doc || doc.getElementsByTagName('parsererror').length) { return { ok: false, reason: 'not-feed' }; }
-    return extractFeed(doc, feedUrl);
+    return extractFeed(doc, feedUrl, effectiveUrl);
   }
 
   var ERRORS = {
@@ -375,8 +461,9 @@
     MAX_EPISODES: MAX_EPISODES, DESC_CAP: DESC_CAP, OPML_CAP: OPML_CAP,
     fnv1a: fnv1a, normalizeFeedUrl: normalizeFeedUrl, showIdFor: showIdFor, episodeId: episodeId,
     decodeEntities: decodeEntities, stripHtml: stripHtml,
-    parseDuration: parseDuration, parseDateMs: parseDateMs,
-    looksLikeUrl: looksLikeUrl, safeMediaUrl: safeMediaUrl,
+    parseDuration: parseDuration, parseDateMs: parseDateMs, parsePositiveInt: parsePositiveInt,
+    looksLikeUrl: looksLikeUrl, safeMediaUrl: safeMediaUrl, safeFeedUrl: safeFeedUrl,
+    resolveUrl: resolveUrl, isAtomTag: isAtomTag,
     initialsOf: initialsOf, truncate: truncate, escapeXml: escapeXml,
     buildOpml: buildOpml, extractOpml: extractOpml,
     extractFeed: extractFeed, parseFeed: parseFeed,

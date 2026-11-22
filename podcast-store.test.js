@@ -495,4 +495,37 @@ function memStorage(seed) {
   ok(s.getShow('feed-aaa').title === 'V1 Show', 'saved-migration: migrated main state still intact alongside');
 }
 
+/* M4 (Phase 2B.3) — itunes:season / itunes:episode are additive store fields:
+   persisted as sanitized non-negative integers, never invented, and absent keys
+   in a pre-2B.3 payload still load as 0. */
+{
+  const mem = memStorage();
+  const s = store.create(mem);
+  const show = { id: 'feed-sea', title: 'Numbered', feedUrl: 'https://n.example.com/f.xml' };
+  s.registerShow(show, [
+    { id: 'n1', title: 'Both', seasonNum: 3, episodeNum: 12 },
+    { id: 'n2', title: 'Strings', seasonNum: '7', episodeNum: '-4' },
+    { id: 'n3', title: 'Fraction', seasonNum: 2.9, episodeNum: NaN },
+    { id: 'n4', title: 'Negative', seasonNum: -1, episodeNum: null }
+  ]);
+  const eps = s.getEpisodes('feed-sea');
+  eq(eps[0].seasonNum, 3, 'M4: season persisted');
+  eq(eps[0].episodeNum, 12, 'M4: episode number persisted');
+  eq(eps[1].seasonNum, 0, 'M4: numeric string is not a number -> 0');
+  eq(eps[1].episodeNum, 0, 'M4: negative string -> 0');
+  eq(eps[2].seasonNum, 2, 'M4: fractional season floored');
+  eq(eps[2].episodeNum, 0, 'M4: NaN episode -> 0');
+  eq(eps[3].seasonNum, 0, 'M4: negative season never stored');
+  eq(eps[3].episodeNum, 0, 'M4: null episode -> 0');
+  const reboot = store.create(mem);
+  const back = reboot.getEpisodes('feed-sea');
+  eq(back[0].seasonNum, 3, 'M4: season survives a reload');
+  eq(back[0].episodeNum, 12, 'M4: episode number survives a reload');
+  eq(back[1].seasonNum, 0, 'M4: sanitized values stay sanitized after reload');
+  const legacy = store.parseState('{"episodes":{"old":[{"id":"o1","title":"Old","durationSec":600}]}}');
+  eq(legacy.episodes.old[0].seasonNum, 0, 'M4: legacy payload -> season 0');
+  eq(legacy.episodes.old[0].episodeNum, 0, 'M4: legacy payload -> episode 0');
+  eq(legacy.episodes.old[0].durationSec, 600, 'M4: legacy fields untouched');
+}
+
 console.log('podcast-store: ' + checks + ' assertions passed');

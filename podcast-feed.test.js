@@ -418,3 +418,238 @@ test('empty and malformed feeds report cleanly', () => {
   assert.equal(Feed.parseFeed('   ', FEED_URL).reason, 'not-feed');
   assert.equal(Feed.parseFeed(null, FEED_URL).reason, 'not-feed');
 });
+
+/* ================= Phase 2B.3: M1 relative references, M2 effective URL,
+   M3 prefixed Atom, M4 season/episode numbers ================= */
+
+test('safeMediaUrl resolves relative references only against a base', () => {
+  const B = 'https://feeds.example.com/paths/show.xml';
+  assert.equal(Feed.safeMediaUrl('audio/e1.mp3', B), 'https://feeds.example.com/paths/audio/e1.mp3');
+  assert.equal(Feed.safeMediaUrl('./e1.mp3', B), 'https://feeds.example.com/paths/e1.mp3');
+  assert.equal(Feed.safeMediaUrl('../e1.mp3', B), 'https://feeds.example.com/e1.mp3');
+  assert.equal(Feed.safeMediaUrl('/e1.mp3', B), 'https://feeds.example.com/e1.mp3');
+  assert.equal(Feed.safeMediaUrl('//cdn.example.com/e1.mp3', B), 'https://cdn.example.com/e1.mp3');
+  /* absolute values never touch the base */
+  assert.equal(Feed.safeMediaUrl('https://cdn.example.com/e1.mp3', B), 'https://cdn.example.com/e1.mp3');
+  /* without a base, relative stays unusable — exactly the pre-2B.3 behaviour */
+  assert.equal(Feed.safeMediaUrl('audio/e1.mp3'), '');
+  assert.equal(Feed.safeMediaUrl('', B), '');
+  assert.equal(Feed.safeMediaUrl('audio/e1.mp3', 'not a url'), '');
+});
+
+test('relative resolution never weakens the URL rules', () => {
+  const B = 'https://feeds.example.com/show.xml';
+  /* a non-https base is refused outright — relative never upgrades to https */
+  assert.equal(Feed.safeMediaUrl('audio/e1.mp3', 'http://feeds.example.com/show.xml'), '');
+  assert.equal(Feed.safeMediaUrl('e1.mp3', '//insecure.example.com/show.xml'), '');
+  assert.equal(Feed.safeMediaUrl('javascript:alert(1)', B), '');
+  assert.equal(Feed.safeMediaUrl('ftp://cdn.example.com/e.mp3', B), '');
+  assert.equal(Feed.safeMediaUrl('u:e1.mp3', B), '');
+  assert.equal(Feed.safeMediaUrl('https://127.0.0.1/e.mp3', B), '');
+  assert.equal(Feed.safeMediaUrl('e.mp3', 'https://127.0.0.1:8766/feed.xml'), '');
+  assert.equal(Feed.safeMediaUrl('e.mp3', 'https://x.local/feed.xml'), '');
+  assert.equal(Feed.safeMediaUrl('user:pass@host.example.com/e.mp3', B), '');
+  assert.equal(Feed.safeMediaUrl('../../e.mp3', 'https://feeds.example.com/a/b/show.xml'), 'https://feeds.example.com/e.mp3');
+});
+
+test('safeFeedUrl takes an optional base and keeps rejecting non-https', () => {
+  const B = 'https://feeds.example.com/paths/show.xml';
+  assert.equal(Feed.safeFeedUrl('canonical.xml', B), 'https://feeds.example.com/paths/canonical.xml');
+  assert.equal(Feed.safeFeedUrl('https://new.example.com/x.xml', B), 'https://new.example.com/x.xml');
+  assert.equal(Feed.safeFeedUrl('http://new.example.com/x.xml', B), '');
+  assert.equal(Feed.safeFeedUrl('', B), '');
+  assert.equal(Feed.safeFeedUrl('relative.xml'), '');
+});
+
+test('a redirected base resolves relative enclosures, artwork and chapters', () => {
+  domShim();
+  const xml = `<?xml version="1.0"?><rss version="2.0"
+    xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+    xmlns:podcast="https://podcastindex.org/namespace/1.0">
+    <channel><title>Moved</title>
+    <itunes:image href="art/cover.jpg"/>
+    <item><title>R1</title><guid>r1</guid><pubDate>Mon, 03 Nov 2026 10:00:00 GMT</pubDate>
+    <itunes:duration>600</itunes:duration>
+    <enclosure url="audio/r1.mp3" type="audio/mpeg"/>
+    <itunes:image href="art/r1.jpg"/>
+    <podcast:chapters url="chapters/r1.json" type="application/json+chapters"/>
+    </item></channel></rss>`;
+  const entered = 'https://old.example.com/feed.xml';
+  const effective = 'https://cdn.example.com/feeds/new.xml';
+  const r = Feed.parseFeed(xml, entered, effective);
+  assert.equal(r.ok, true);
+  const e = r.episodes[0];
+  assert.equal(e.audioUrl, 'https://cdn.example.com/feeds/audio/r1.mp3');
+  assert.equal(e.artUrl, 'https://cdn.example.com/feeds/art/r1.jpg');
+  assert.equal(e.chaptersUrl, 'https://cdn.example.com/feeds/chapters/r1.json');
+  assert.equal(r.show.artUrl, 'https://cdn.example.com/feeds/art/cover.jpg');
+  /* identity stays keyed to the URL the user entered, so an existing
+     subscription and its saved progress survive the move */
+  assert.equal(r.show.id, Feed.showIdFor(entered));
+  assert.equal(e.id, Feed.episodeId(entered, 'r1', 'https://cdn.example.com/feeds/audio/r1.mp3'));
+  assert.equal(e.audioBytes, 0);
+});
+
+test('the effective URL becomes resolvedFeedUrl only when the feed does not self-identify', () => {
+  domShim();
+  const entered = 'https://old.example.com/feed.xml';
+  const effective = 'https://cdn.example.com/new.xml';
+  const moved = Feed.parseFeed(RSS, entered, effective);
+  assert.equal(moved.resolvedFeedUrl, effective);
+  assert.equal(moved.show.resolvedFeedUrl, effective);
+  /* self-identification wins over the transport-level final URL */
+  const selfId = RSS.replace('</channel>', '<itunes:new-feed-url>https://final.example.com/feed.xml</itunes:new-feed-url></channel>');
+  assert.equal(Feed.parseFeed(selfId, entered, effective).resolvedFeedUrl, 'https://final.example.com/feed.xml');
+  /* no redirect reported (older Worker) → unchanged behaviour */
+  assert.equal(Feed.parseFeed(RSS, entered).resolvedFeedUrl, '');
+  /* a base that equals the entered URL is not a move */
+  assert.equal(Feed.parseFeed(RSS, FEED_URL, FEED_URL).resolvedFeedUrl, '');
+  /* an unsafe reported URL is ignored and the entered URL keeps its role */
+  const unsafe = Feed.parseFeed(RSS, entered, 'http://cdn.example.com/new.xml');
+  assert.equal(unsafe.resolvedFeedUrl, '');
+  assert.equal(unsafe.count, 2);
+  assert.equal(unsafe.episodes[0].audioUrl, 'https://cdn.example.com/e2.mp3');
+});
+
+test('a new-feed-url may be relative to the effective feed URL', () => {
+  domShim();
+  const xml = RSS.replace('</channel>', '<itunes:new-feed-url>moved.xml</itunes:new-feed-url></channel>');
+  const r = Feed.parseFeed(xml, 'https://old.example.com/feeds/feed.xml', 'https://cdn.example.com/feeds/live.xml');
+  assert.equal(r.resolvedFeedUrl, 'https://cdn.example.com/feeds/moved.xml');
+});
+
+test('Atom parses under a foreign prefix: a:feed, a:entry, a:link', () => {
+  domShim();
+  const xml = `<?xml version="1.0"?>
+<a:feed xmlns:a="http://www.w3.org/2005/Atom"
+        xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+        xmlns:media="http://search.yahoo.com/mrss/">
+  <a:title>Prefixed Atom</a:title>
+  <a:link rel="alternate" href="https://px.example.com"/>
+  <a:link rel="self" href="https://px.example.com/live.atom"/>
+  <a:author><a:name>Prefix Author</a:name></a:author>
+  <a:entry>
+    <a:id>px-1</a:id>
+    <a:title>Prefixed entry</a:title>
+    <a:published>2026-11-02T08:00:00Z</a:published>
+    <a:updated>2026-11-03T08:00:00Z</a:updated>
+    <itunes:duration>12:34</itunes:duration>
+    <a:link rel="enclosure" href="audio/px1.mp3" type="audio/mpeg"/>
+    <media:content url="https://other.example.com/x.mp3" type="audio/mpeg" fileSize="9"/>
+    <a:summary>&lt;p&gt;Prefixed summary&lt;/p&gt;</a:summary>
+  </a:entry>
+  <a:entry><a:id>px-2</a:id><a:title>No enclosure</a:title><a:content>x</a:content></a:entry>
+</a:feed>`;
+  const r = Feed.parseFeed(xml, 'https://px.example.com/feed', 'https://px.example.com/feeds/live.atom');
+  assert.equal(r.ok, true);
+  assert.equal(r.kind, 'atom');
+  assert.equal(r.show.title, 'Prefixed Atom');
+  assert.equal(r.show.publisher, 'Prefix Author');
+  assert.equal(r.resolvedFeedUrl, 'https://px.example.com/live.atom');
+  assert.equal(r.count, 1);
+  const e = r.episodes[0];
+  assert.equal(e.title, 'Prefixed entry');
+  assert.equal(e.guid, 'px-1');
+  assert.equal(e.durationSec, 754);
+  assert.equal(e.description, 'Prefixed summary');
+  assert.equal(e.publishedAt, '2026-11-02T08:00:00.000Z');
+  assert.equal(e.audioUrl, 'https://px.example.com/feeds/audio/px1.mp3');
+});
+
+test('a foreign prefix never satisfies an Atom element lookup', () => {
+  domShim();
+  const xml = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+      xmlns:media="http://search.yahoo.com/mrss/">
+  <title>NS Atom</title>
+  <entry>
+    <id>n1</id>
+    <itunes:title>Not the entry title</itunes:title>
+    <media:content url="https://cdn.example.com/n1.mp3" type="audio/mpeg"/>
+    <media:rating>not-summary</media:rating>
+  </entry>
+</feed>`;
+  const r = Feed.parseFeed(xml, 'https://atom.example.com/feed');
+  assert.equal(r.ok, true);
+  assert.equal(r.count, 1);
+  assert.equal(r.episodes[0].title, 'Untitled');
+  assert.equal(r.episodes[0].description, '');
+  assert.equal(r.episodes[0].audioUrl, 'https://cdn.example.com/n1.mp3');
+  /* media:content under a foreign prefix is still found by the enclosure fallback */
+  assert.equal(r.episodes[0].audioType, 'audio/mpeg');
+});
+
+test('Atom elements in the default namespace match by localName when prefixed lookups are needed', () => {
+  /* Real XML parsers expose namespaceURI/localName; a node whose tagName is
+     prefixed with an Atom-namespace declaration must match by namespace too. */
+  const atomNs = 'http://www.w3.org/2005/Atom';
+  const node = { nodeType: 1, tagName: 'a:entry', namespaceURI: atomNs, localName: 'entry', childNodes: [], getAttribute: () => null };
+  assert.equal(Feed.isAtomTag(node, 'entry'), true);
+  assert.equal(Feed.isAtomTag(node, 'link'), false);
+  assert.equal(Feed.isAtomTag({ nodeType: 1, tagName: 'itunes:image', namespaceURI: 'http://www.itunes.com/dtds/podcast-1.0.dtd', localName: 'image' }, 'image'), false);
+  assert.equal(Feed.isAtomTag({ nodeType: 1, tagName: 'b:entry', localName: 'entry' }, 'entry'), true);
+  assert.equal(Feed.isAtomTag({ nodeType: 1, tagName: 'entry' }, 'entry'), true);
+  assert.equal(Feed.isAtomTag({ nodeType: 3, textContent: 'entry' }, 'entry'), false);
+  assert.equal(Feed.isAtomTag(null, 'entry'), false);
+});
+
+test('itunes:season and itunes:episode are parsed as plain integers', () => {
+  domShim();
+  const xml = `<?xml version="1.0"?><rss version="2.0"
+    xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel><title>Series</title>
+    <item><title>With numbers</title><guid>s1</guid>
+      <itunes:season>3</itunes:season><itunes:episode>12</itunes:episode>
+      <enclosure url="https://cdn.example.com/s1.mp3" type="audio/mpeg"/></item>
+    <item><title>Padded and zero</title><guid>s2</guid>
+      <itunes:season>02</itunes:season><itunes:episode>0</itunes:episode>
+      <enclosure url="https://cdn.example.com/s2.mp3" type="audio/mpeg"/></item>
+    <item><title>Garbage numbers</title><guid>s3</guid>
+      <itunes:season>S03</itunes:season><itunes:episode>1 of 12</itunes:episode>
+      <enclosure url="https://cdn.example.com/s3.mp3" type="audio/mpeg"/></item>
+    <item><title>Negative and float</title><guid>s4</guid>
+      <itunes:season>-1</itunes:season><itunes:episode>2.5</itunes:episode>
+      <enclosure url="https://cdn.example.com/s4.mp3" type="audio/mpeg"/></item>
+    <item><title>No numbers</title><guid>s5</guid>
+      <enclosure url="https://cdn.example.com/s5.mp3" type="audio/mpeg"/></item>
+    </channel></rss>`;
+  const r = Feed.parseFeed(xml, FEED_URL);
+  assert.equal(r.count, 5);
+  const by = {};
+  r.episodes.forEach(e => { by[e.guid] = e; });
+  assert.equal(by.s1.seasonNum, 3);
+  assert.equal(by.s1.episodeNum, 12);
+  assert.equal(by.s2.seasonNum, 2);
+  assert.equal(by.s2.episodeNum, 0);
+  assert.equal(by.s3.seasonNum, 0);
+  assert.equal(by.s3.episodeNum, 0);
+  assert.equal(by.s4.seasonNum, 0);
+  assert.equal(by.s4.episodeNum, 0);
+  assert.equal(by.s5.seasonNum, 0);
+  assert.equal(by.s5.episodeNum, 0);
+  /* the pre-2B.3 fixtures gain nothing invented */
+  const plain = Feed.parseFeed(RSS, FEED_URL);
+  assert.equal(plain.episodes[0].seasonNum, 0);
+  assert.equal(plain.episodes[0].episodeNum, 0);
+});
+
+test('parsePositiveInt accepts digit strings only', () => {
+  assert.equal(Feed.parsePositiveInt('7'), 7);
+  assert.equal(Feed.parsePositiveInt(' 07 '), 7);
+  assert.equal(Feed.parsePositiveInt('0'), 0);
+  assert.equal(Feed.parsePositiveInt(''), 0);
+  assert.equal(Feed.parsePositiveInt(null), 0);
+  assert.equal(Feed.parsePositiveInt('-3'), 0);
+  assert.equal(Feed.parsePositiveInt('3.0'), 0);
+  assert.equal(Feed.parsePositiveInt('1e3'), 0);
+  assert.equal(Feed.parsePositiveInt('12345678901'), 0);
+  assert.equal(Feed.parsePositiveInt('٣'), 0);
+});
+
+test('episode fields gained in 2B.3 are present on every parsed episode', () => {
+  domShim();
+  const r = Feed.parseFeed(RSS, FEED_URL);
+  r.episodes.forEach(e => {
+    assert.ok(Object.prototype.hasOwnProperty.call(e, 'seasonNum'), e.id);
+    assert.ok(Object.prototype.hasOwnProperty.call(e, 'episodeNum'), e.id);
+  });
+});

@@ -74,6 +74,8 @@
       titleFa: str(e.titleFa, 300),
       publishedAt: str(e.publishedAt, 40),
       durationSec: Math.max(0, num(e.durationSec)),
+      seasonNum: Math.max(0, Math.floor(num(e.seasonNum))),
+      episodeNum: Math.max(0, Math.floor(num(e.episodeNum))),
       audioUrl: str(e.audioUrl, 2048),
       audioType: str(e.audioType, 100),
       description: str(e.description, DESC_CAP),

@@ -69,9 +69,12 @@ function boot(opts) {
     sessionOwner() { return vm.owner; }
   };
   const sessionWrites = [];
+  const sessionHandlers = {};   /* Phase 2B.3: name -> fn while claimed, null once released */
   const metaWrites = [];   // metadata titles written to the session (null = cleared)
   let metaVal = null;
-  const mediaSession = { setActionHandler(name, fn) { sessionWrites.push(name); } };
+  const mediaSession = {
+    setActionHandler(name, fn) { sessionWrites.push(name); sessionHandlers[name] = fn; }
+  };
   Object.defineProperty(mediaSession, 'metadata', {
     configurable: true,
     get() { return metaVal; },
@@ -112,7 +115,7 @@ function boot(opts) {
   const ctl = global.window.VoidPodcastPlayer;
   if (realNav !== undefined) { /* restore happens in unboot */ }
   return {
-    ctl, audio, store, vm, listeners, sessionWrites, metaWrites, emitted,
+    ctl, audio, store, vm, listeners, sessionWrites, sessionHandlers, metaWrites, emitted,
     get hosted() { return hosted; },
     get enterCount() { return enterCount; },
     get unhostCount() { return unhostCount; },
@@ -152,6 +155,71 @@ const SHOW = { id: 's1', title: 'Show One' };
   b.ctl.stop();
   ok(b.unhostCount === 1, 'session: stop hands the engine back via unhostGuest');
   ok(b.hosted === null, 'session: no guest after stop');
+  b.restoreNav();
+}
+
+/* ================= Phase 2B.3 (M5): explicit, owner-safe MediaSession release.
+   After Podcast teardown no Podcast action handler may remain active. ======== */
+const ACTIONS = ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 'seekforward', 'seekto', 'stop'];
+
+/* M5-1 — claim attaches all eight handlers */
+{
+  const b = boot();
+  b.ctl.play(EP, SHOW);
+  ACTIONS.forEach(a => ok(a in b.sessionHandlers, 'M5-1: claim registered "' + a + '"'));
+  ACTIONS.forEach(a => ok(typeof b.sessionHandlers[a] === 'function', 'M5-1: "' + a + '" is an active function handler'));
+  b.restoreNav();
+}
+
+/* M5-2 — stop while the Podcast owns releases every handler and clears metadata */
+{
+  const b = boot();
+  b.setOwner('guest');
+  b.ctl.play(EP, SHOW);
+  b.ctl.stop();
+  ACTIONS.forEach(a => ok(b.sessionHandlers[a] === null, 'M5-2: stop detached "' + a + '"'));
+  ok(b.metaWrites[b.metaWrites.length - 1] === null, 'M5-2: episode metadata cleared');
+  ok(b.sessionWrites.length === 8 /* claim */ + 8 /* release */, 'M5-2: exactly one release pass per action');
+  b.restoreNav();
+}
+
+/* M5-3 — stop after a Music takeover must not touch Music's session */
+{
+  const b = boot();
+  b.ctl.play(EP, SHOW);
+  const writesBefore = b.sessionWrites.length;
+  const metaBefore = b.metaWrites.length;
+  b.setOwner('music');            /* playId reclaimed the session mid-episode */
+  b.ctl.stop();
+  eq(b.sessionWrites.length, writesBefore, 'M5-3: no release writes when Music owns');
+  eq(b.metaWrites.length, metaBefore, 'M5-3: Music metadata never cleared by Podcast teardown');
+  ACTIONS.forEach(a => ok(typeof b.sessionHandlers[a] === 'function', 'M5-3: Podcast handlers were Music-owned all along'));
+  b.restoreNav();
+}
+
+/* M5-4 — teardown of a session that never started releases nothing */
+{
+  const b = boot();
+  b.setOwner('guest');
+  b.ctl.stop();
+  eq(Object.keys(b.sessionHandlers).length, 0, 'M5-4: inactive teardown writes no handlers');
+  eq(b.metaWrites.length, 0, 'M5-4: inactive teardown writes no metadata');
+  b.restoreNav();
+}
+
+/* M5-5 — repeated cycles leave nothing behind and never double-release */
+{
+  const b = boot();
+  b.setOwner('guest');
+  for (let i = 0; i < 3; i++) {
+    b.ctl.play(EP, SHOW);
+    ACTIONS.forEach(a => ok(typeof b.sessionHandlers[a] === 'function', 'M5-5: cycle ' + i + ' claimed'));
+    b.ctl.stop();
+    ACTIONS.forEach(a => ok(b.sessionHandlers[a] === null, 'M5-5: cycle ' + i + ' released'));
+  }
+  eq(b.sessionWrites.length, 48, 'M5-5: 3 cycles = 3 claims + 3 releases (6 x 8 actions), no extra writes');
+  b.ctl.stop();
+  eq(b.sessionWrites.length, 48, 'M5-5: stop after teardown is a no-op');
   b.restoreNav();
 }
 

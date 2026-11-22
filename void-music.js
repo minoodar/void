@@ -636,6 +636,7 @@
       // تکرار روی همان عنصرِ صوتی و همان منبع: بدون Audio تازه، بدون بارگذاری مجدد، ویژولایزر هم‌گام می‌ماند.
       if (!S.web && S.repeat > 0) {
         S.repeat--; syncRepeat();
+        pauseGuestElement();   // فاز ۲B.۳: انحصار در مرزِ پخش — ادامهٔ موزیک هر زمان میهمان زنده باشد او را مکث می‌کند، نه فقط با تکیه بر return زودهنگام
         a.currentTime = 0;
         const pr = a.play();
         if (pr && pr.catch) pr.catch(function () { next(); });
@@ -742,7 +743,10 @@
   function applyCover(tok, tr, url) {
     if (tok !== S.token || S.curId !== tr.id || !url) return;
     setMeta(tr.title, tr.artist, url);
-    publishSession(tr, url);
+    /* فاز ۲B.۳: این شاخه از یک callback ناهمگام (extractId3) می‌آید؛ بین درخواست و
+       پاسخ ممکن است میهمان پادکست صاحبِ MediaSession شده باشد. اعتبارِ توکن کافی نیست:
+       انتشارِ متادیتا فقط وقتی مجاز است که موزیک صاحبِ سشن باشد. */
+    if (S.sessionOwner !== 'guest') { publishSession(tr, url); }
     pushRemote(true);
   }
   /* Custom URL > embedded ID3 (CORS permitting) > deterministic cosmic cover.
@@ -838,7 +842,9 @@
         if (!playbackStarted || tok !== S.token || S.curId !== id || a.paused) return;
         try { window.dispatchEvent(new CustomEvent('voidmusic:title-ready', { detail: { id: id, title: tr.title, artist: tr.artist, seed: S.seed, generation: tok } })); } catch (e) {}
       });
-      publishSession(tr, cu);
+      /* فاز ۲B.۳: خواندنِ ID3 ناهمگام است؛ پیش از نوشتنِ متادیتا، صاحبِ فعلیِ
+         MediaSession دوباره بررسی می‌شود (توکن و curId بالا معتبر را چک کرده‌اند). */
+      if (S.sessionOwner !== 'guest') { publishSession(tr, cu); }
       pushRemote(true);
       renderQueue();
     });
@@ -952,6 +958,7 @@
     if (a.paused) {
       claimPlayback().then(function (granted) {
         if (!granted) return;
+        pauseGuestElement();                      // فاز ۲B.۳: انحصار در مرزِ ادامهٔ موزیک (مستقل از return زودهنگامِ بالا)
         S.sessionOwner = 'music';   // Phase 2B.1: ادامهٔ پخشِ موزیک هم claim است
         const tr = trackById(S.curId);
         if (tr) publishSession(tr, S.coverUrl);   // فاز ۲B.۲: ادامه، متادیتای پاک‌شده را هم برمی‌گرداند
@@ -1961,7 +1968,10 @@
     if (S.localAudio) S.audio = S.localAudio; else { S.audio = null; ensureAudio(); }
     S.curId = S.curIdBeforeWeb == null ? null : S.curIdBeforeWeb; S.curIdBeforeWeb = null; S.webKey = '';
     S.repeat = 0; syncRepeat();
-    if (!opts.quiet && S.built) { const tr = curTrack(); setMeta(tr ? tr.title : '', tr ? tr.artist : '', null); renderQueue(); renderStars(); }
+    /* فاز ۲B.۳: جداسازیِ منبعِ وب نباید کروم/عنوان را وقتی پادکست صاحبِ پخش است بازنویسی
+       کند (مسیرهای خاموش از hostGuest می‌آیند؛ این شاخه برایِ فراخوانِ ناهم‌آرام است).
+       بازگرداندنِ کرومِ موزیک وظیفهٔ unhostGuest است، نه detachWeb. */
+    if (!opts.quiet && S.built && !S.guest) { const tr = curTrack(); setMeta(tr ? tr.title : '', tr ? tr.artist : '', null); renderQueue(); renderStars(); }
     onPlayState(); updateProgress();
   }
 

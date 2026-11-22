@@ -557,4 +557,4 @@
       emblemBound: function () { return bound; }
     }
   };
-})(typeof window !== 'undefined' ? window : globalThis);
+})(typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : this));

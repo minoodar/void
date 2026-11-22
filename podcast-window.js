@@ -280,7 +280,11 @@
           return {
             text: text,
             etag: get.call(hd, 'x-void-etag') || '',
-            lastModified: get.call(hd, 'x-void-last-modified') || ''
+            lastModified: get.call(hd, 'x-void-last-modified') || '',
+            /* Phase 2B.3 (M2): the URL the Worker actually reached after its
+               own redirects. Absent from older Workers — then the entered URL
+               keeps working as the only base. */
+            finalUrl: get.call(hd, 'x-void-final-url') || ''
           };
         });
       }).then(function (fetched) {
@@ -294,7 +298,11 @@
   }
   function addFeed(url) {
     return fetchFeedText(url).then(function (fetched) {
-      var parsed = Feed.parseFeed(fetched.text, url);
+      /* The reported final URL is client-side re-validated (https, no
+         credentials) before it may act as a base; an unsafe value is dropped
+         and the entered URL stands. */
+      var effective = Feed.safeFeedUrl(fetched.finalUrl || '') || '';
+      var parsed = Feed.parseFeed(fetched.text, url, effective);
       if (!parsed.ok) { throw { code: parsed.reason || 'not-feed' }; }
       parsed.fetchedMeta = { etag: fetched.etag, lastModified: fetched.lastModified };
       return parsed;

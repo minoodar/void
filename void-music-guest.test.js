@@ -433,6 +433,95 @@ function seedTrack(b) {
     ok(b.VM.getState().playing === false, 'dismiss: music truth is stopped');
   }
 
+  /* ---- F: Phase 2B.3 — exclusivity asserted AT the playback boundary, not by
+     the early return alone (H3). Both guards are reachable through real entry
+     points when the other player wakes up inside an await window. ---- */
+
+  /* F1: repeat-on-ended pauses a live guest before restarting Music */
+  {
+    const b = bootEngine();
+    const music = startMusic(b);            // Music playing
+    seedTrack(b);
+    const pod = new FakeAudio();
+    pod.src = 'https://cdn.example.com/ep.mp3';
+    pod.currentSrc = pod.src;
+    pod.paused = false;                     // a guest that is still running
+    b.VM.hostGuest(pod, { title: 'Episode Nine', artist: 'Void Show' });
+    ok(music.paused === true, 'F1 precondition: hosting paused Music');
+    /* the state the guard defends against: Music running with a live guest */
+    b.VM._test.S.sessionOwner = 'music';
+    music.paused = false;
+    b.VM._test.S.repeat = 1;
+    fire(music, 'ended');                   // the engine's own ended listener
+    ok(pod.paused === true, 'F1 EXCLUSIVE: repeat-on-ended paused the live guest at the boundary');
+    eq(music.currentTime, 0, 'F1: Music restarts from zero');
+    ok(music.paused === false, 'F1: Music keeps playing');
+    eq(b.VM._test.S.repeat, 0, 'F1: repeat counter consumed by this replay');
+  }
+
+  /* F1b: with repeat off, end delegates to next() — and while a Podcast guest
+     owns the transport, next/prev route to the guest instead of starting
+     Music (playId needs the built UI in Node; the browser run covers it). */
+  {
+    const b = bootEngine();
+    const music = startMusic(b);
+    seedTrack(b);
+    const calls = [];
+    const pod = new FakeAudio();
+    pod.src = 'https://cdn.example.com/ep.mp3';
+    pod.currentSrc = pod.src;
+    pod.currentTime = 340;
+    pod.paused = false;
+    pod.cmd = function (name) { calls.push(name); };
+    b.VM.hostGuest(pod, { title: 'Episode Nine', artist: 'Void Show' });
+    music.paused = false;                   // the state the guard defends against
+    b.VM._test.S.repeat = 0;
+    fire(music, 'ended');
+    eq(calls, ['nexttrack'], 'F1b: end-without-repeat hands advance to the podcast guest');
+    eq(music.currentTime, 12.5, 'F1b: Music never seeked or restarted by the advance');
+    b.VM.next();
+    b.VM.prev();
+    eq(calls, ['nexttrack', 'nexttrack', 'previoustrack'], 'F1b: shared next/prev delegate to the guest while hosted');
+    ok(b.VM.sessionOwner() === 'guest', 'F1b: ownership stays with the guest that is actually playing');
+    eq(lastMeta(b), null, 'F1b: no Music metadata published over the episode (last write is the prime-time clear)');
+  }
+
+  /* F2: a Podcast that starts while claimPlayback() is pending is still paused
+     when the Music resume callback lands (toggle's early return could not know) */
+  {
+    const b = bootEngine();
+    const music = startMusic(b);
+    seedTrack(b);
+    music.paused = true;                    // Music selected but paused, no guest yet
+    ok(b.VM.isGuest() === false, 'F2 precondition: no guest hosted at press time');
+    b.VM.toggle();                          // early return not taken; claim is pending
+    const pod = new FakeAudio();
+    pod.src = 'https://cdn.example.com/ep.mp3';
+    pod.currentSrc = pod.src;
+    pod.paused = false;
+    b.VM.hostGuest(pod, { title: 'Late Episode', artist: 'Late Show' });   // race lands mid-await
+    ok(b.VM.sessionOwner() === 'guest', 'F2: the late podcast claimed the session');
+    await tick();
+    ok(pod.paused === true, 'F2 EXCLUSIVE: the pending Music resume paused the guest that started mid-await');
+    ok(music.paused === false, 'F2: Music resumes as the user asked');
+    ok(b.VM.sessionOwner() === 'music', 'F2: ownership ends with the player that actually plays');
+  }
+
+  /* F3: MediaSession Music play with a live guest claims back exclusively */
+  {
+    const b = bootEngine();
+    const music = startMusic(b);
+    seedTrack(b);
+    music.paused = true;
+    const pod = new FakeAudio();
+    pod.paused = false;
+    b.VM.hostGuest(pod, { title: 'Episode', artist: 'Show' });
+    b.handlers.play();                      // real MediaSession play handler
+    await tick();
+    ok(pod.paused === true && music.paused === false, 'F3: system Media key resumes Music and pauses the podcast');
+    ok(b.VM.sessionOwner() === 'music', 'F3: ownership moved with the audible player');
+  }
+
   console.log('void-music-guest: ' + checks + ' assertions passed');
   if (checks === 0) { process.exit(1); }
 })().catch(function (e) { console.error(e); process.exit(1); });

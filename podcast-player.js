@@ -247,6 +247,17 @@
     set('seekto', function (d) { if (d && typeof d.seekTime === 'number') { seekTo(d.seekTime); } });
     set('stop', function () { stop(); });
   }
+  /* Phase 2B.3 (M5): explicit, owner-safe release. The list is exactly the
+     eight actions claimSession registers, so after teardown no Podcast handler
+     can stay attached to navigator.mediaSession. */
+  var SESSION_ACTIONS = ['play', 'pause', 'previoustrack', 'nexttrack',
+    'seekbackward', 'seekforward', 'seekto', 'stop'];
+  function releaseSession() {
+    if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setActionHandler !== 'function') { return; }
+    SESSION_ACTIONS.forEach(function (name) {
+      try { navigator.mediaSession.setActionHandler(name, null); } catch (e) { /* unsupported action */ }
+    });
+  }
 
   /* ---- chapter ticks on the engine's arc (own overlay nodes, removed on stop) ---- */
   function clearTicks() {
@@ -364,8 +375,10 @@
     root.classList.remove('vm-podcast');
     /* Phase 2B.1: only the owner clears. If Music took over while this
        episode kept playing (playId -> unhostGuest), stopping here must not
-       clear or overwrite Music's MediaSession metadata. */
-    if (!(VM.sessionOwner && VM.sessionOwner() === 'music')) { clearMetadata(); }
+       clear or overwrite Music's MediaSession metadata.
+       Phase 2B.3 (M5): when the Podcast is still the owner, releasing also
+       detaches every action handler so no stale Podcast callback survives. */
+    if (!(VM.sessionOwner && VM.sessionOwner() === 'music')) { clearMetadata(); releaseSession(); }
     syncEmblem();
     if (window.VoidPodcastThread && typeof window.VoidPodcastThread.stop === 'function') { window.VoidPodcastThread.stop(); }
     current = null;
