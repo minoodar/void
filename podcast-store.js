@@ -20,9 +20,15 @@
   var PROGRESS_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
   var EPISODE_CAP = 100;
   var DESC_CAP = 600;
+  /* Stored-payload version. v1 = pre-2B payload (no v field, no rate, no
+     resolvedFeedUrl). v2 adds those fields additively. The saved-episodes key
+     is self-contained and unchanged, so it carries no version of its own. */
+  var SCHEMA_VERSION = 2;
+  var RATE_MIN = 0.25;
+  var RATE_MAX = 4;
 
   function defaultState() {
-    return { subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {} };
+    return { subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {}, rate: 1 };
   }
 
   function uniqueStrings(list) {
@@ -49,6 +55,7 @@
       titleFa: str(s.titleFa, 200),
       publisher: str(s.publisher, 120),
       feedUrl: str(s.feedUrl, 2048),
+      resolvedFeedUrl: str(s.resolvedFeedUrl, 2048),
       artUrl: str(s.artUrl, 2048),
       initials: str(s.initials, 4),
       addedAt: num(s.addedAt),
@@ -67,6 +74,8 @@
       titleFa: str(e.titleFa, 300),
       publishedAt: str(e.publishedAt, 40),
       durationSec: Math.max(0, num(e.durationSec)),
+      seasonNum: Math.max(0, Math.floor(num(e.seasonNum))),
+      episodeNum: Math.max(0, Math.floor(num(e.episodeNum))),
       audioUrl: str(e.audioUrl, 2048),
       audioType: str(e.audioType, 100),
       description: str(e.description, DESC_CAP),
@@ -94,11 +103,14 @@
   }
 
   /* Tolerant parser: anything empty, corrupt or partially wrong degrades to
-     defaults / sanitized entries, never throws. */
+     defaults / sanitized entries, never throws. Accepts a raw JSON string or an
+     already-parsed object (the migration runner hands one over). */
   function parseState(raw) {
-    if (typeof raw !== 'string' || !raw) { return defaultState(); }
-    var p;
-    try { p = JSON.parse(raw); } catch (e) { return defaultState(); }
+    var p = raw;
+    if (typeof raw === 'string') {
+      if (!raw) { return defaultState(); }
+      try { p = JSON.parse(raw); } catch (e) { return defaultState(); }
+    }
     if (!isObj(p)) { return defaultState(); }
     var subs = Array.isArray(p.subscriptions) ? uniqueStrings(p.subscriptions) : [];
     var progress = {};
@@ -139,7 +151,8 @@
     return {
       subscriptions: subs, progress: progress,
       queue: Array.isArray(p.queue) ? uniqueStrings(p.queue) : [],
-      shows: shows, episodes: episodes, opened: opened
+      shows: shows, episodes: episodes, opened: opened,
+      rate: parseRate(p.rate)
     };
   }
   function parseSaved(raw) {
@@ -158,7 +171,8 @@
   function copyState(state) {
     var next = {
       subscriptions: state.subscriptions.slice(), progress: {},
-      queue: (state.queue || []).slice(), shows: {}, episodes: {}, opened: {}
+      queue: (state.queue || []).slice(), shows: {}, episodes: {}, opened: {},
+      rate: parseRate(state.rate)
     };
     Object.keys(state.progress).forEach(function (k) {
       var e = state.progress[k];
@@ -179,6 +193,16 @@
   }
 
   /* Pure mutators — return a new state, never touch the input. */
+  function parseRate(v) {
+    var n = typeof v === 'number' && isFinite(v) ? v : NaN;
+    if (!isFinite(n)) { return 1; }
+    return n < RATE_MIN ? RATE_MIN : n > RATE_MAX ? RATE_MAX : n;
+  }
+  function withRate(state, r) {
+    var next = copyState(state);
+    next.rate = parseRate(r);
+    return next;
+  }
   function withSubscription(state, showId, on) {
     var next = copyState(state);
     var i = next.subscriptions.indexOf(showId);
@@ -292,30 +316,76 @@
     return !!e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014 || /quota/i.test(String(e.message || '')));
   }
 
+  /* ---- schema migration ----
+     Pure, deterministic, idempotent: a v2 payload runs zero steps; a v1 payload
+     runs 1→2 once. The write happens only after the migrated object is fully
+     computed, so an interrupted run leaves the old payload untouched and the
+     next boot simply migrates again. A payload written by a FUTURE version is
+     passed through untouched (tolerant read, never downgraded). */
+  var MIGRATIONS = {
+    1: function (p) {
+      /* v1 → v2: additive. resolvedFeedUrl arrives through sanitizeShow when a
+         feed self-identifies; rate gets an explicit default here. */
+      var next = isObj(p) ? p : defaultState();
+      next.rate = parseRate(next.rate);
+      return next;
+    }
+  };
+  function migratePayload(p) {
+    if (!isObj(p)) { return { state: defaultState(), from: 0, to: SCHEMA_VERSION, changed: false }; }
+    var from = typeof p.v === 'number' && isFinite(p.v) && p.v >= 1 ? Math.floor(p.v) : 1;
+    if (from > SCHEMA_VERSION) {
+      return { state: p, from: from, to: from, future: true, changed: false };
+    }
+    var state = p, step = from;
+    while (step < SCHEMA_VERSION) {
+      var run = MIGRATIONS[step];
+      state = run ? run(state) : state;
+      step++;
+    }
+    state.v = SCHEMA_VERSION;            // the returned payload is exactly what
+                                         // would be persisted, so re-running
+                                         // migratePayload on it is a no-op
+    return { state: state, from: from, to: SCHEMA_VERSION, changed: step !== from };
+  }
+
   /* Storage adapter is injectable for tests; defaults to window.localStorage. */
   function create(storage) {
     var st = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
     var listeners = [];
 
     function read(k) { try { return st ? st.getItem(k) : null; } catch (e) { return null; } }
+    function readObj(k) {
+      var raw = read(k);
+      if (typeof raw !== 'string' || !raw) { return null; }
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    }
     function emit() {
       listeners.slice().forEach(function (fn) { try { fn(state); } catch (e) { /* one bad listener never breaks the rest */ } });
     }
+    function loadMain() {
+      var parsed = readObj(KEY);
+      if (parsed === null) { return defaultState(); }
+      return parseState(migratePayload(parsed).state);
+    }
 
     var savedState = parseSaved(read(SAVED_KEY));
-    var state = parseState(read(KEY));
+    var state = loadMain();
     state.progress = pruneProgress(state.progress, savedState.saved.map(function (s) { return s.id; }), Date.now());
 
     /* Quota fallback order: cached episode lists go first; saved snapshots
        (separate key) are never dropped. Still failing → stay in memory. */
     function persistMain() {
       if (!st) { return; }
-      try { st.setItem(KEY, JSON.stringify(state)); return; } catch (e) {
+      var payload = copyState(state);
+      payload.v = SCHEMA_VERSION;          // written on every persist, so a
+                                           // crashed migration self-heals on
+                                           // the next boot
+      try { st.setItem(KEY, JSON.stringify(payload)); return; } catch (e) {
         if (!isQuotaError(e)) { return; }
       }
-      state = copyState(state);
-      state.episodes = {};
-      try { st.setItem(KEY, JSON.stringify(state)); } catch (e2) { /* memory only */ }
+      payload.episodes = {};
+      try { st.setItem(KEY, JSON.stringify(payload)); } catch (e2) { /* memory only */ }
     }
     function persistSaved() {
       if (!st) { return; }
@@ -348,6 +418,8 @@
       },
       getQueue: function () { return state.queue.slice(); },
       setQueue: function (ids) { state = withQueue(state, ids); persistMain(); emit(); return state.queue.slice(); },
+      getRate: function () { return parseRate(state.rate); },
+      setRate: function (r) { state = withRate(state, r); persistMain(); emit(); return state.rate; },
       getShow: function (showId) { return state.shows[showId] || null; },
       getEpisodes: function (showId) { return (state.episodes[showId] || []).slice(); },
       registerShow: function (show, eps) {
@@ -370,7 +442,8 @@
       },
       removeSaved: function (episodeId) { savedState = withoutSaved(savedState, episodeId); persistSaved(); emit(); return savedState.saved.slice(); },
       /* Future Void Key payload (Stage 3C): one versioned JSON object.
-         Metadata only — audio files are never part of it. */
+         Metadata only — audio files are never part of it. schemaVersion is the
+         export contract, independent of the local SCHEMA_VERSION. */
       exportPayload: function () {
         return {
           schemaVersion: 1,
@@ -381,7 +454,8 @@
           opened: JSON.parse(JSON.stringify(state.opened)),
           queue: state.queue.slice(),
           progress: JSON.parse(JSON.stringify(state.progress)),
-          saved: savedState.saved.slice()
+          saved: savedState.saved.slice(),
+          rate: parseRate(state.rate)
         };
       },
       onChange: function (fn) {
@@ -390,7 +464,7 @@
       },
       reload: function () {
         savedState = parseSaved(read(SAVED_KEY));
-        state = parseState(read(KEY));
+        state = loadMain();
         state.progress = pruneProgress(state.progress, savedIds(), Date.now());
         emit();
         return state;
@@ -401,6 +475,7 @@
   return {
     KEY: KEY,
     SAVED_KEY: SAVED_KEY,
+    SCHEMA_VERSION: SCHEMA_VERSION,
     COMPLETE_FRACTION: COMPLETE_FRACTION,
     PROGRESS_CAP: PROGRESS_CAP,
     PROGRESS_MAX_AGE_MS: PROGRESS_MAX_AGE_MS,
@@ -410,9 +485,12 @@
     defaultState: defaultState,
     parseState: parseState,
     parseSaved: parseSaved,
+    parseRate: parseRate,
+    migratePayload: migratePayload,
     withSubscription: withSubscription,
     withProgress: withProgress,
     withQueue: withQueue,
+    withRate: withRate,
     withShow: withShow,
     withoutShow: withoutShow,
     withEpisodes: withEpisodes,

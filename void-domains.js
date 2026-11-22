@@ -649,6 +649,8 @@
     }
     return v;
   }
+  /* Expose the one authoritative orb resolver for the Podcast Voice Thread. */
+  if (window.VoidDomains) { window.VoidDomains.getOrbGeometry = getVoid; }
   var sdGen=0,sd=null;
   if(window.VoidSourceDivides){try{sd=window.VoidSourceDivides.create({
     parent:function(){return document.getElementById('void-music-root')||document.body;},
@@ -667,7 +669,8 @@
       if(!pwPromise){
         pwPromise=new Promise(function(resolve,reject){
           var link=document.createElement('link');link.rel='stylesheet';link.href='podcast-window.css?v=20261117';document.head.appendChild(link);
-          var files=['podcast-sample-data.js?v=20261117','podcast-store.js?v=20261117','podcast-feed.js?v=20261117','podcast-window.js?v=20261117','podcast-player.js?v=20261117'],i=0;
+          var tl=document.createElement('link');tl.rel='stylesheet';tl.href='podcast-thread.css?v=20261122';document.head.appendChild(tl);
+          var files=['podcast-sample-data.js?v=20261117','podcast-store.js?v=20261122','podcast-feed.js?v=20261122','podcast-window.js?v=20261122','podcast-player.js?v=20261122','void-podcast-thread.js?v=20261122'],i=0;
           var next=function(){
             if(i>=files.length){resolve();return;}
             var s=document.createElement('script');s.src=files[i++];

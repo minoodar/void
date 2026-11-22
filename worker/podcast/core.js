@@ -62,7 +62,12 @@ function isLocalRequest(requestUrl) {
 }
 
 /* Exact-origin allowlist, never `*`. Local dev origins are honored only while
-   the Worker itself is being served from localhost (wrangler dev --local). */
+   the Worker itself is being served from localhost (wrangler dev --local).
+   The x-void-* response headers carry the cache state, validator metadata and
+   the post-redirect feed URL the client parses against, so they must be
+   explicitly exposed — a cross-origin read of a non-exposed header silently
+   returns null. */
+const EXPOSED_HEADERS = 'x-void-cache, x-void-cached-at, x-void-etag, x-void-last-modified, x-void-final-url';
 function corsFor(origin, requestUrl) {
   if (!origin) { return null; }
   let allowed = PROD_ORIGINS;
@@ -71,6 +76,7 @@ function corsFor(origin, requestUrl) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Expose-Headers': EXPOSED_HEADERS,
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin'
   };
@@ -263,6 +269,10 @@ async function handleFeed(request, deps) {
     const lm = res.headers.get('last-modified');
     if (etag) { headers['x-void-etag'] = etag; }
     if (lm) { headers['x-void-last-modified'] = lm; }
+    /* Phase 2B.3 (M2): the URL actually reached after every redirect hop was
+       re-validated. It is stored with the response, so cache hits, 304
+       revalidations and stale replies all keep reporting the same base. */
+    if (out.finalUrl) { headers['x-void-final-url'] = out.finalUrl; }
     const fresh = new Response(bytes, { status: 200, headers });
     deps.waitUntil(deps.cache.put(keyReq, fresh.clone()).catch(() => {}));
     return withCors(fresh, cors, { 'x-void-cache': 'miss' });
@@ -282,6 +292,6 @@ async function handleFeed(request, deps) {
 export {
   PROD_ORIGINS, LOCAL_ORIGINS, MAX_URL_LEN, MAX_REDIRECTS, TIMEOUT_MS, MAX_BYTES,
   HTML_MAX_BYTES, CACHE_TTL_MS, STALE_MAX_MS, RATE_LIMIT, RATE_WINDOW_MS, USER_AGENT,
-  FEED_TYPES, validateFeedUrl, isLocalRequest, corsFor, checkRate, sha256Hex,
+  FEED_TYPES, EXPOSED_HEADERS, validateFeedUrl, isLocalRequest, corsFor, checkRate, sha256Hex,
   readCapped, fetchChain, pickAutodiscoveryLink, handleFeed
 };

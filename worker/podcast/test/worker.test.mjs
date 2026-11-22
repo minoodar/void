@@ -116,6 +116,82 @@ test('CORS is exact-origin, never wildcard, local only when served locally', () 
   assert.equal(isLocalRequest(LOCAL + '/feed'), true);
 });
 
+/* ---- Phase 2B.3 (M2): the effective feed URL is reported to the client ---- */
+
+const REDIRECT_FETCH = async (u) => {
+  if (u === 'https://a.example.com/feed') { return new Response(null, { status: 302, headers: { location: 'https://b.example.com/feed' } }); }
+  if (u === 'https://b.example.com/feed') { return new Response(null, { status: 301, headers: { location: '/final.xml' } }); }
+  return new Response(RSS, { status: 200, headers: { 'content-type': 'application/rss+xml' } });
+};
+
+test('a redirected feed reports the final URL in x-void-final-url', async () => {
+  const deps = makeDeps({ fetch: REDIRECT_FETCH });
+  const res = await handleFeed(feedReq('https://a.example.com/feed'), deps);
+  await deps.settle();
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-void-final-url'), 'https://b.example.com/final.xml');
+});
+
+test('without redirects the header carries the normalized URL actually fetched', async () => {
+  const deps = makeDeps();
+  const res = await handleFeed(feedReq('https://Example.COM/Feed.xml#frag'), deps);
+  await deps.settle();
+  assert.equal(res.headers.get('x-void-final-url'), 'https://example.com/Feed.xml');
+});
+
+test('the final URL survives cache hits, revalidation and stale replies', async () => {
+  let t = 1000000;
+  let fail = false;
+  const deps = makeDeps({
+    now: () => t,
+    fetch: async (u, init) => {
+      if (fail) { throw new TypeError('network down'); }
+      if (init.headers['If-None-Match']) { return new Response(null, { status: 304 }); }
+      if (u === 'https://a.example.com/feed') { return new Response(null, { status: 302, headers: { location: 'https://b.example.com/final.xml' } }); }
+      return new Response(RSS, { status: 200, headers: { 'content-type': 'application/rss+xml', etag: '"v1"' } });
+    }
+  });
+  await handleFeed(feedReq('https://a.example.com/feed'), deps);
+  await deps.settle();
+  const hit = await handleFeed(feedReq('https://a.example.com/feed'), deps);
+  assert.equal(hit.headers.get('x-void-cache'), 'hit');
+  assert.equal(hit.headers.get('x-void-final-url'), 'https://b.example.com/final.xml');
+  t += CACHE_TTL_MS + 1;
+  const reval = await handleFeed(feedReq('https://a.example.com/feed'), deps);
+  await deps.settle();
+  assert.equal(reval.headers.get('x-void-cache'), 'revalidated');
+  assert.equal(reval.headers.get('x-void-final-url'), 'https://b.example.com/final.xml');
+  fail = true;
+  t += CACHE_TTL_MS + 1;
+  const stale = await handleFeed(feedReq('https://a.example.com/feed'), deps);
+  assert.equal(stale.headers.get('x-void-cache'), 'stale');
+  assert.equal(stale.headers.get('x-void-final-url'), 'https://b.example.com/final.xml');
+});
+
+test('autodiscovery reports the feed it resolved, not the HTML page', async () => {
+  const deps = makeDeps({
+    fetch: async (u) => {
+      if (u === 'https://show.example.com/') {
+        return new Response('<html><head><link rel="alternate" type="application/rss+xml" href="https://feeds.example.com/rss"></head></html>',
+          { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      return new Response(RSS, { status: 200, headers: { 'content-type': 'application/rss+xml' } });
+    }
+  });
+  const res = await handleFeed(feedReq('https://show.example.com/'), deps);
+  await deps.settle();
+  assert.equal(res.headers.get('x-void-final-url'), 'https://feeds.example.com/rss');
+});
+
+test('every x-void-* header the client reads is CORS-exposed', () => {
+  const exposed = corsFor('https://minoodar.github.io', PROD + '/feed')['Access-Control-Expose-Headers']
+    .split(',').map(s => s.trim());
+  ['x-void-cache', 'x-void-cached-at', 'x-void-etag', 'x-void-last-modified', 'x-void-final-url']
+    .forEach(n => assert.ok(exposed.indexOf(n) >= 0, n));
+  assert.equal(corsFor('https://evil.example', PROD + '/feed'), null);
+});
+
+
 /* ---- rate limiting ---- */
 
 test('sliding window allows RATE_LIMIT then blocks with Retry-After', () => {

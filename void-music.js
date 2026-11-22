@@ -111,7 +111,8 @@
     mini: null, fsByUs: false, widgetShown: false, widgetWasVisible: true, ptrDown: false,
     roots: new Map(), permCache: new Map(), copyMode: false, copyDone: 0, copyTotal: 0, swept: [],
     shuffle: false, repeat: 0, query: '', starsFor: null, flownId: null, starsTimer: 0,
-    web: null, localAudio: null, webKey: '', curIdBeforeWeb: null, webChipState: null
+    web: null, localAudio: null, webKey: '', curIdBeforeWeb: null, webChipState: null,
+    guest: null, sessionOwner: null   /* صاحبِ MediaSession: 'music' | 'guest' | null (فاز ۲B.1) */
   };
   // پخش تصادفی: پیش‌فرض خاموش (ترتیبِ فهرست). برای برگرداندنِ رفتارِ قدیمی (همیشه تصادفی) این را true کن.
   const SHUFFLE_DEFAULT = false, SHUF_KEY = 'voidMusic.shuffle';
@@ -583,8 +584,9 @@
     if (firstTarget && (entries.length === 1 || opts.playFirst)) {
       const samePlaying = firstTarget.id === S.curId && S.audio && !S.audio.paused;
       if (opts.force || !samePlaying) { playbackLog('play-now-after-pick', { added: added, picked: entries.length, force: !!opts.force }); firstTarget.bad = false; playId(firstTarget.id); }
-    } else if (added && (!S.audio || S.audio.paused) && S.curId === null) {
+    } else if (added && !S.guest && (!S.audio || S.audio.paused) && S.curId === null) {
       // افزودنِ گروهی (پوشه/چندفایلِ رها‌شده): فقط وقتی هیچ آهنگی جاری نیست خودکار شروع شود
+      // فاز ۲B.1: در جلسهٔ میهمانِ پادکست، افزودنِ گروهی موزیک را خودکار شروع نمی‌کند (شروعِ صریح تنها راهِ ورودِ موزیک است)
       playbackLog('auto-start-after-add', { added: added, readyState: S.audio ? S.audio.readyState : 0 });
       playId(S.shuffle ? (S.bag.pop() || firstNew.id) : firstNew.id);
     }
@@ -634,6 +636,7 @@
       // تکرار روی همان عنصرِ صوتی و همان منبع: بدون Audio تازه، بدون بارگذاری مجدد، ویژولایزر هم‌گام می‌ماند.
       if (!S.web && S.repeat > 0) {
         S.repeat--; syncRepeat();
+        pauseGuestElement();   // فاز ۲B.۳: انحصار در مرزِ پخش — ادامهٔ موزیک هر زمان میهمان زنده باشد او را مکث می‌کند، نه فقط با تکیه بر return زودهنگام
         a.currentTime = 0;
         const pr = a.play();
         if (pr && pr.catch) pr.catch(function () { next(); });
@@ -707,7 +710,7 @@
     relabel();
     if (announce) toast(L(S.shuffle ? 'voidMusicShuffleOn' : 'voidMusicShuffleOff'));
     // با روشن‌کردنِ شافل وقتی چیزی پخش نمی‌شود، همان لحظه یک آهنگِ تصادفی شروع شود
-    if (announce && S.shuffle && S.tracks.length && !(S.audio && !S.audio.paused)) { const id = drawNext(); if (id) playId(id); }
+    if (announce && S.shuffle && S.tracks.length && !S.guest && !(S.audio && !S.audio.paused)) { const id = drawNext(); if (id) playId(id); }   // فاز ۲B.1: میهمانِ پادکست نمایش را قرض گرفته؛ شافل موزیک را خودکار شروع نمی‌کند
   }
   function drawNext() {
     const n = S.tracks.length;
@@ -740,7 +743,10 @@
   function applyCover(tok, tr, url) {
     if (tok !== S.token || S.curId !== tr.id || !url) return;
     setMeta(tr.title, tr.artist, url);
-    publishSession(tr, url);
+    /* فاز ۲B.۳: این شاخه از یک callback ناهمگام (extractId3) می‌آید؛ بین درخواست و
+       پاسخ ممکن است میهمان پادکست صاحبِ MediaSession شده باشد. اعتبارِ توکن کافی نیست:
+       انتشارِ متادیتا فقط وقتی مجاز است که موزیک صاحبِ سشن باشد. */
+    if (S.sessionOwner !== 'guest') { publishSession(tr, url); }
     pushRemote(true);
   }
   /* Custom URL > embedded ID3 (CORS permitting) > deterministic cosmic cover.
@@ -761,6 +767,7 @@
 
   async function playId(id, opts) {
     opts = opts || {};
+    if (S.guest) { pauseGuestElement(); unhostGuest(); }   // فاز ۲B.۲: پخشِ موزیک، میهمان را واقعاً مکث می‌کند
     if (S.web) detachWeb({ pauseSite: true });          // پخشِ محلی شروع شد: منبعِ وب جدا و مکث می‌شود
     const tr = trackById(id);
     if (!tr) { playbackLog('play-aborted-no-track', { trackId: id }); return; }
@@ -808,6 +815,8 @@
     setMeta(tr.title, tr.artist, null);
     renderQueue();
     publishSession(tr, null);
+    bindSession();           // موزیک شروع شد: MediaSession دوباره از میهمانِ پادکست پس گرفته می‌شود
+    S.sessionOwner = 'music';   // Phase 2B.1: claim صریحِ موزیک
     if (remote) resolveRemoteCover(tr, tok);
     pushRemote(true);
     try { window.dispatchEvent(new CustomEvent('voidmusic:track', { detail: { id: id, title: tr.title, seed: S.seed } })); } catch (e) {}
@@ -833,7 +842,9 @@
         if (!playbackStarted || tok !== S.token || S.curId !== id || a.paused) return;
         try { window.dispatchEvent(new CustomEvent('voidmusic:title-ready', { detail: { id: id, title: tr.title, artist: tr.artist, seed: S.seed, generation: tok } })); } catch (e) {}
       });
-      publishSession(tr, cu);
+      /* فاز ۲B.۳: خواندنِ ID3 ناهمگام است؛ پیش از نوشتنِ متادیتا، صاحبِ فعلیِ
+         MediaSession دوباره بررسی می‌شود (توکن و curId بالا معتبر را چک کرده‌اند). */
+      if (S.sessionOwner !== 'guest') { publishSession(tr, cu); }
       pushRemote(true);
       renderQueue();
     });
@@ -919,11 +930,13 @@
   }
 
   function next() {
+    if (S.guest && S.guest.cmd) { S.guest.cmd('nexttrack'); return; }   // میهمانِ پادکست: +۳۰ ثانیه
     if (S.web) { S.web.cmd('nexttrack'); return; }
     const id = drawNext();
     if (id) playId(id); else releasePlayback();
   }
   function prev() {
+    if (S.guest && S.guest.cmd) { S.guest.cmd('previoustrack'); return; }   // میهمانِ پادکست: −۱۵ ثانیه
     if (S.web) { S.web.cmd('previoustrack'); return; }
     const a = S.audio;
     if (a && a.currentTime > 3) { a.currentTime = 0; return; }
@@ -934,6 +947,7 @@
     if (a) a.currentTime = 0;
   }
   function toggle() {
+    if (S.guest) { if (S.guest.paused) S.guest.play(); else S.guest.pause(); return; }   // میهمانِ پادکست: دکمهٔ مشترک رویِ نمایشِ فعلی
     if (S.web) { if (S.web.paused) S.web.play(); else S.web.pause(); return; }
     playbackLog('toggle-requested', { currentTrack: S.curId !== null, trackCount: S.tracks.length, audioExists: !!S.audio, paused: !S.audio || S.audio.paused, muted: !!(S.audio && S.audio.muted), volume: S.audio ? S.audio.volume : null });
     const a = S.audio;
@@ -944,6 +958,10 @@
     if (a.paused) {
       claimPlayback().then(function (granted) {
         if (!granted) return;
+        pauseGuestElement();                      // فاز ۲B.۳: انحصار در مرزِ ادامهٔ موزیک (مستقل از return زودهنگامِ بالا)
+        S.sessionOwner = 'music';   // Phase 2B.1: ادامهٔ پخشِ موزیک هم claim است
+        const tr = trackById(S.curId);
+        if (tr) publishSession(tr, S.coverUrl);   // فاز ۲B.۲: ادامه، متادیتای پاک‌شده را هم برمی‌گرداند
         playbackLog('audio-play-invoked', { readyState: a.readyState, paused: a.paused, muted: a.muted, volume: a.volume, hasSource: !!a.currentSrc });
         const pr = a.play(); if (pr && pr.then) pr.then(function () { playbackLog('audio-play-resolved', { readyState: a.readyState, paused: a.paused, ended: a.ended, muted: a.muted, volume: a.volume }); }, function (e) { playbackLog('audio-play-rejected', { name: e && e.name || 'Error', message: e && e.message || String(e), readyState: a.readyState, paused: a.paused, muted: a.muted, volume: a.volume, mediaError: a.error ? { code: a.error.code, message: a.error.message || '' } : null }); if (a.paused) { const tr = trackById(S.curId); if (tr && tr.url) emitRemote(e && e.name === 'NotAllowedError' ? 'blocked' : 'error', { code: e && e.name || 'play-rejected', message: e && e.message || String(e) }); releasePlayback(); } });
       });
@@ -998,14 +1016,25 @@
   }
   function posState() {
     if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
-    const a = S.audio;
+    const a = (S.sessionOwner === 'guest' && S.guest) ? S.guest : S.audio;   // فاز ۲B.1: جای‌نمایِ MediaSession از صدایِ صاحبِ سشن می‌خواند
     if (!a || !isFinite(a.duration) || a.duration <= 0) return;
     try { navigator.mediaSession.setPositionState({ duration: a.duration, playbackRate: a.playbackRate || 1, position: clamp(a.currentTime, 0, a.duration) }); } catch (e) {}
   }
   function bindSession() {
     if (!('mediaSession' in navigator)) return;
     const set = function (n, fn) { try { navigator.mediaSession.setActionHandler(n, fn); } catch (e) {} };
-    set('play', function () { const a = ensureAudio(); if (S.curId === null) toggle(); else claimPlayback().then(function (granted) { if (granted) a.play().catch(function () { if (a.paused) releasePlayback(); }); }); });
+    set('play', function () {
+      const a = ensureAudio();
+      if (S.curId === null) { toggle(); return; }
+      claimPlayback().then(function (granted) {
+        if (!granted) return;
+        pauseGuestElement();                      // فاز ۲B.۲: ادامهٔ موزیک، پادکست را واقعاً مکث می‌کند
+        S.sessionOwner = 'music';                 // شروع/ادامهٔ واقعی = claim
+        const tr = trackById(S.curId);
+        if (tr) publishSession(tr, S.coverUrl);
+        a.play().catch(function () { if (a.paused) releasePlayback(); });
+      });
+    });
     set('pause', function () { if (S.audio) S.audio.pause(); });
     set('previoustrack', prev);
     set('nexttrack', next);
@@ -1019,6 +1048,10 @@
     ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 'seekforward', 'seekto', 'stop'].forEach(function (n) {
       try { navigator.mediaSession.setActionHandler(n, null); } catch (e) {}
     });
+    try { navigator.mediaSession.metadata = null; } catch (e) {}
+  }
+  function clearSessionMeta() {
+    if (!('mediaSession' in navigator)) return;
     try { navigator.mediaSession.metadata = null; } catch (e) {}
   }
 
@@ -1572,10 +1605,18 @@
     root.classList.toggle('vm-root-meta-empty', empty);
   }
   function onPlayState() {
-    const playing = !!(S.audio && !S.audio.paused);
+    /* Phase 2B.1: S.audio is Music's own element, always — the guest never
+       swaps it, so this function reports music truth unconditionally. While
+       a podcast guest is hosted the shared chrome (play button, is-playing)
+       belongs to the guest (guestPlayState), so chrome updates are skipped
+       here, and the guest element itself never triggers this function. */
+    const own = S.audio;
+    const playing = !!(own && !own.paused);
     if (!playing) releasePlayback();
-    els.play.setAttribute('aria-pressed', playing ? 'true' : 'false');
-    root.classList.toggle('is-playing', playing);
+    if (!S.guest) {
+      els.play.setAttribute('aria-pressed', playing ? 'true' : 'false');
+      root.classList.toggle('is-playing', playing);
+    }
     if (S.lastPlaying !== playing) {
       S.lastPlaying = playing;
       try { window.dispatchEvent(new CustomEvent('voidmusic:playing', { detail: { playing: playing } })); } catch (e) {}
@@ -1583,12 +1624,12 @@
     relabel();
     poke();
     syncMini(); syncQuick(); syncRemoteTimer();
-    if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch (e) {} }
+    if ('mediaSession' in navigator && !S.guest) { try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch (e) {} }
     posState();
   }
   function updateProgress() {
     if (!S.built) return;
-    const a = S.audio;
+    const a = S.guest ? S.guest : S.audio;   // فاز ۲B.1: قوس/زمان در جلسهٔ میهمان از عنصرِ میهمان می‌خواند؛ S.audio همیشهِ موزیک است
     const dur = a && isFinite(a.duration) ? a.duration : 0;
     const cur = S.dragging ? S.dragFrac * dur : (a ? a.currentTime : 0);
     const frac = dur > 0 ? clamp(cur / dur, 0, 1) : 0;
@@ -1906,6 +1947,7 @@
   function attachWeb(proxy, info) {
     if (!proxy) return;
     if (S.web === proxy) { setWebMeta(info); return; }
+    pauseGuestElement();                                      // فاز ۲B.۲: پخشِ وب هم با پادکست هم‌زمان نمی‌شود
     if (S.web) detachWeb({ pauseSite: false, quiet: true });
     if (S.localAudio && !S.localAudio.paused) { try { S.localAudio.pause(); } catch (e) {} }
     const prevTr = trackById(S.curId);
@@ -1926,8 +1968,96 @@
     if (S.localAudio) S.audio = S.localAudio; else { S.audio = null; ensureAudio(); }
     S.curId = S.curIdBeforeWeb == null ? null : S.curIdBeforeWeb; S.curIdBeforeWeb = null; S.webKey = '';
     S.repeat = 0; syncRepeat();
-    if (!opts.quiet && S.built) { const tr = curTrack(); setMeta(tr ? tr.title : '', tr ? tr.artist : '', null); renderQueue(); renderStars(); }
+    /* فاز ۲B.۳: جداسازیِ منبعِ وب نباید کروم/عنوان را وقتی پادکست صاحبِ پخش است بازنویسی
+       کند (مسیرهای خاموش از hostGuest می‌آیند؛ این شاخه برایِ فراخوانِ ناهم‌آرام است).
+       بازگرداندنِ کرومِ موزیک وظیفهٔ unhostGuest است، نه detachWeb. */
+    if (!opts.quiet && S.built && !S.guest) { const tr = curTrack(); setMeta(tr ? tr.title : '', tr ? tr.artist : '', null); renderQueue(); renderStars(); }
     onPlayState(); updateProgress();
+  }
+
+  /* ---- میهمانِ پادکست (Phase 2B، مالکیت در فاز ۲B.1) ----
+     عنصرِ صوتیِ پادکست فقط «نمایش» را قرض می‌گیرد: نوارِ عنوان، حالتِ پخش،
+     قوس، زمان و دکمه‌های جابه‌جایی — همه با خواندنِ صریحِ S.guest، نه با
+     جابه‌جاییِ S.audio (فاز ۲B.1: S.audio همیشه صدایِ خودِ موزیک است؛ ولوم،
+     شنونده‌های عنصر و getAudio() ویژولایزر هرگز به عنصرِ پادکست نمی‌رسند).
+     برخلافِ attachWeb هیچ‌کدام از این‌ها رخ نمی‌دهد: مکثِ صدای محلی،
+     جابه‌جاییِ curId، قطعِ ریموت‌ها، S.web، voidmusic:track و dispatch از
+     voidmusic:playing برایِ عنصرِ میهمان. MediaSession: S.sessionOwner
+     تک‌نویسنده را ثبت می‌کند — hostGuest برایِ میهمان claim صریح می‌کند؛
+     playId و unhostGuest پس می‌گیرند و متادیتای موزیک فقط با آهنگِ جاری
+     برمی‌گردد (در نبودِ آن، سشن بدونِ متادیتای کهنه رها می‌شود). */
+  function guestHandlers() {
+    return S._gh || (S._gh = { play: guestPlayState, pause: guestPlayState, timeupdate: updateProgress, durationchange: function () { updateProgress(); posState(); }, seeked: posState });
+  }
+  function guestPlayState() {
+    if (!S.guest || !S.built) return;
+    const playing = !S.guest.paused;
+    els.play.setAttribute('aria-pressed', playing ? 'true' : 'false');
+    root.classList.toggle('is-playing', playing);
+    if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch (e) {} }
+    posState();
+  }
+  /* فاز ۲B.۲ — پخشِ انحصاری: موزیک و پادکست هرگز هم‌زمان صدا نمی‌دهند.
+     هر شروع/ادامهٔ یک طرف، عنصرِ واقعیِ طرفِ دیگر را مکث می‌کند. */
+  function pauseMusicElement() {
+    const a = S.audio;
+    if (a && !a.paused) { try { a.pause(); } catch (e) {} }
+  }
+  function pauseGuestElement() {
+    const g = S.guest;
+    if (g && !g.paused) { try { g.pause(); } catch (e) {} }
+  }
+  function hostGuest(el, meta) {
+    if (!el) return;
+    if (S.guest === el) {
+      pauseMusicElement();                       // فاز ۲B.۲: ادامهٔ پادکست، موزیک را واقعاً مکث می‌کند
+      S.sessionOwner = 'guest';
+      if (meta && S.built) setMeta(meta.title, meta.artist, null);
+      return;
+    }
+    if (S.guest) unbindGuest();
+    if (S.web) detachWeb({ pauseSite: true, quiet: true });   // فاز ۲B.۲: منبعِ وب هم با پادکست هم‌زمان صدا نمی‌دهد
+    S.guest = el;
+    S.sessionOwner = 'guest';                  // Phase 2B.1: claim صریحِ میهمان
+    pauseMusicElement();                       // فاز ۲B.۲: پخشِ انحصاری
+    const h = guestHandlers(); Object.keys(h).forEach(function (k) { el.addEventListener(k, h[k]); });
+    /* فاز ۲B.1: S.audio هرگز جابه‌جا نمی‌شود — هیچ guestPrev و restore‌ای در کار نیست. */
+    S.lastPlaying = null;
+    if (meta && S.built) setMeta(meta.title, meta.artist, null);
+    if (S.built) { onPlayState(); }
+    updateProgress();
+  }
+  function unbindGuest() {
+    const el = S.guest; if (!el) return;
+    const h = guestHandlers(); Object.keys(h).forEach(function (k) { el.removeEventListener(k, h[k]); });
+    S.guest = null;
+  }
+  /* Only the chrome and the MediaSession come back; the guest's audio element
+     is NEVER paused or modified here — the caller pauses it before teardown
+     (podcast stop(), or playId via pauseGuestElement). Phase 2B.1: S.audio was
+     never swapped, so nothing is restored here. Phase 2B.2: ownership is
+     reclaimed ONLY while Music actually plays — a paused player with a
+     selected track does not reclaim the session; it is left unclaimed
+     (metadata null) rather than stale. When Music took over during the hosted
+     playback (playId -> unhostGuest), this teardown leaves Music's session
+     untouched. */
+  function unhostGuest() {
+    if (!S.guest) return;
+    unbindGuest();
+    if (S.sessionOwner === 'guest') {
+      const a = S.audio;
+      const live = !!(a && !a.paused);
+      const tr = live ? trackById(S.curId) : null;
+      S.sessionOwner = tr ? 'music' : null;
+      if (tr) { publishSession(tr, S.coverUrl); } else { clearSessionMeta(); }
+    }
+    S.lastPlaying = null;
+    if (S.built) {
+      const tr = trackById(S.curId);
+      setMeta(tr ? tr.title : '', tr ? tr.artist : '', null);
+      onPlayState(); updateProgress();
+    }
+    bindSession();
   }
   function setWebMeta(info) {
     if (!S.web || !info) return;
@@ -2049,7 +2179,9 @@
      تایمرِ تازه‌ای ساخته نمی‌شود: همان idleTimer پس از goQuiet برای باقی‌ماندهٔ پنجره دوباره راه می‌افتد. */
   const CLOCK_SHOW_MS = 30000;
   let idleTimer = 0, popTimer = 0, lastPokeAt = -1;   // -1 = هیچ poke‌ای نشده (۰ یک زمانِ معتبر است، پس sentinel نمی‌تواند ۰ باشد)
-  function isPlaying() { return !!(S.audio && !S.audio.paused); }
+  function isPlaying() {
+    return !!(S.audio && !S.audio.paused);   // فاز ۲B.1: فقط موزیک؛ میهمان هرگز S.audio نیست
+  }
   const MUSIC_MESSAGE_TIMEOUT_MS = 3500;
   function musicCoordLog(event, detail) {
     try { console.info('[VoidMusicCoord]', new Date().toISOString(), event, detail || ''); } catch (e) {}
@@ -2604,7 +2736,7 @@
     b.setAttribute('aria-label', open + (tr && tr.title ? ' \u2014 ' + tr.title : '')); b.title = open + (tr && tr.title ? ' \u2014 ' + tr.title : '');
     S.miniPlay.setAttribute('aria-pressed', playing ? 'true' : 'false'); S.miniPlay.setAttribute('aria-label', pl); S.miniPlay.title = pl;
     const st = L('voidMusicStop'); S.miniStop.setAttribute('aria-label', st); S.miniStop.title = st;
-    const a = S.audio, dur = a && isFinite(a.duration) ? a.duration : 0;
+    const a = S.guest ? null : S.audio, dur = a && isFinite(a.duration) ? a.duration : 0;   // مینی/کوییک فقط موزیک را نشان می‌دهند
     const frac = dur > 0 ? clamp(a.currentTime / dur, 0, 1) : 0;
     const pr = b.querySelector('.vm-mini-prog'); if (pr) pr.setAttribute('stroke-dashoffset', String(1000 * (1 - frac)));
     if (S.miniShown !== show) {
@@ -2616,10 +2748,15 @@
     S.token++;
     const cur = trackById(S.curId);
     if (cur && cur.url) emitRemoteFor(cur, 'inactive');
-    if (S.audio) { S.audio.pause(); S.audio.removeAttribute('src'); try { S.audio.load(); } catch (e) {} }
+    /* Phase 2B: توقفِ کامل فقط به صدای خودِ موزیک می‌خورد — عنصرِ پادکست هرگز
+       از این مسیر مکث یا خالی نمی‌شود. Phase 2B.1: پاکسازیِ MediaSession به
+       صاحبِ سشن آگاه است؛ وقتی میهمانِ پادکست صاحب است، اینجا چیزی را unbind
+       یا پاک نمی‌کند. */
+    const own = S.audio;
+    if (own) { own.pause(); own.removeAttribute('src'); try { own.load(); } catch (e) {} }
     if (S.url) { try { URL.revokeObjectURL(S.url); } catch (e) {} S.url = null; }
     S.curId = null;
-    unbindSession();
+    if (S.sessionOwner !== 'guest') unbindSession();
     if (S.built) onPlayState(); else syncQuick();     // load() رویدادِ pause نمی‌فرستد؛ حالت را خودمان همگام می‌کنیم
     syncRemoteTimer();
     syncMini();
@@ -2707,7 +2844,7 @@
     syncMini();
     requestAnimationFrame(function () { requestAnimationFrame(function () { root.classList.add('is-on'); }); });
     document.addEventListener('keydown', onKey, true);
-    bindSession();
+    if (S.sessionOwner !== 'guest') bindSession();   // فاز ۲B.1: میهمانِ صاحبِ سشن، کنترل‌هایش را با ورودِ دوباره از دست نمی‌دهد
     restoreLibrary().then(function () {
       probePermissions();
       setTimeout(function () { if (S.open && !S.tracks.length) els.open.focus({ preventScroll: true }); else if (S.open) els.play.focus({ preventScroll: true }); }, 700);
@@ -2852,6 +2989,8 @@
     isOpen: function () { return S.open; },
     setVisualMode: setVisualMode,
     attachWeb: attachWeb, detachWeb: detachWeb, setWebMeta: setWebMeta, setWebChip: setWebChip, toast: toast,
+    hostGuest: hostGuest, unhostGuest: unhostGuest, isGuest: function () { return !!S.guest; },
+    sessionOwner: function () { return S.sessionOwner || null; },   // فاز ۲B.1: 'music' | 'guest' | null
     getLocalAudio: function () { return S.localAudio; }, isWeb: function () { return !!S.web; },
     // وضعیتِ سه‌محورِ منابعِ وب (detected / playing / connected) — برای بازرسیِ دستی و آزمون
     webState: function () { try { return window.VoidMusicWeb && window.VoidMusicWeb.getState ? window.VoidMusicWeb.getState() : null; } catch (e) { return null; } },
