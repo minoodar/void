@@ -21,7 +21,7 @@ function memStorage(seed) {
 /* Empty storage -> defaults, nothing persisted yet. */
 {
   const s = store.create(memStorage());
-  eq(s.getState(), { subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {}, rate: 1 }, 'empty: defaults');
+  eq(s.getState(), { subscriptions: [], progress: {}, queue: [], shows: {}, episodes: {}, opened: {}, rate: 1, volume: 1 }, 'empty: defaults');
   ok(!s.hasPersisted(), 'empty: nothing persisted');
   ok(s.getProgress('nf-01') === null, 'empty: no progress');
   ok(!s.isSubscribed('show-slow-orbit'), 'empty: not subscribed');
@@ -443,6 +443,34 @@ function memStorage(seed) {
 
   const sNoStore = store.create(null);
   ok(sNoStore.setRate(2) === 2, '2B: rate works without persistent storage');
+
+  /* Phase 2B.4: volume is the Podcast Audio Element's own level. It is additive
+     on a v2 payload (no migration step, no version bump) and clamped, not
+     snapped, because it is continuous. */
+  {
+    const vSt = memStorage();
+    const vs = store.create(vSt);
+    ok(vs.getVolume() === 1, '2B.4: fresh install starts at volume 1');
+    ok(vs.setVolume(0.4) === 0.4, '2B.4: setVolume returns the stored value');
+    const vp = JSON.parse(vSt.dump()['void.podcast.v1']);
+    ok(vp.v === 2 && vp.volume === 0.4, '2B.4: volume persists inside the v2 payload');
+    ok(store.create(vSt).getVolume() === 0.4, '2B.4: volume round-trips through storage');
+    ok(vs.setVolume(-3) === 0, '2B.4: volume clamps low');
+    ok(vs.setVolume(2.5) === 1, '2B.4: volume clamps high');
+    ok(vs.setVolume('loud') === 1, '2B.4: garbage volume falls back to the default');
+    ok(vs.setVolume(NaN) === 1, '2B.4: NaN volume falls back to the default');
+    ok(vs.setVolume(null) === 1, '2B.4: null volume falls back to the default');
+    ok(store.parseState({ v: 2 }).volume === 1, '2B.4: payload without volume degrades to default');
+    ok(store.parseState({ v: 2, volume: 0.25 }).volume === 0.25, '2B.4: parseState accepts volume');
+    ok(store.parseVolume(0.75) === 0.75 && store.parseVolume(9) === 1, '2B.4: parseVolume clamps');
+    ok(store.withVolume(store.defaultState(), 0.5).volume === 0.5, '2B.4: withVolume transforms');
+    eq(store.withVolume(store.defaultState(), 0.5).subscriptions, [], '2B.4: withVolume touches nothing else');
+    eq(store.withVolume(store.defaultState(), 0.5).rate, 1, '2B.4: withVolume keeps rate independent');
+    ok(store.create(null).setVolume(0.3) === 0.3, '2B.4: volume works without persistent storage');
+    const oldSt = memStorage({ 'void.podcast.v1': JSON.stringify({ v: 1, subscriptions: ['feed-a'], shows: {}, episodes: {}, opened: {}, progress: {}, queue: [] }) });
+    ok(store.create(oldSt).getVolume() === 1, '2B.4: pre-volume payload keeps the default');
+    ok(store.create(oldSt).getState().volume === 1, '2B.4: migrated payload carries volume');
+  }
 
   // resolvedFeedUrl survives registerShow + persistence
   const s2b = store.create(memStorage());
