@@ -177,6 +177,7 @@
   var pendingSeek = null;
   var chip = null, ticks = [], sheet = null, sheetTick = 0;
   var sndBtn = null, sndIntercept = null;
+  var borrowed = false;               // Phase 2B.5: is the Music chrome currently ours?
   var retriedSrc = '', retryTimer = 0;
 
   function saveProgress() {
@@ -341,6 +342,56 @@
     if (repeat) { repeat.style.display = ''; }
   }
 
+  /* ---- borrowed chrome (Phase 2B.5) ----
+     The chip, the chapter ticks, the .vm-podcast class, the sound-button
+     intercept and the Voice Thread are all borrowed from Music Mode, so they
+     follow the SESSION OWNER and not the loaded episode: the moment Music
+     claims playback again, Repeat, the sound sheet and the orb are Music's
+     own, even though this episode stays loaded. Idempotent — safe to call
+     from the ownership event, from a start, and from teardown. */
+  function guestOwns() { return !!(VM.sessionOwner && VM.sessionOwner() === 'guest'); }
+  function armSndIntercept(on) {
+    if (on) {
+      sndBtn = root.querySelector('.vm-snd-open');
+      if (!sndBtn) { return; }
+      sndIntercept = function (e) {
+        if (!guestOwns()) { return; }
+        e.preventDefault(); e.stopImmediatePropagation();
+        openSheet();
+      };
+      sndBtn.addEventListener('click', sndIntercept, true);
+    } else if (sndBtn && sndIntercept) {
+      sndBtn.removeEventListener('click', sndIntercept, true);
+      sndBtn = null; sndIntercept = null;
+    }
+  }
+  function applyChrome() {
+    var want = active && guestOwns() && !!document.getElementById('void-music-root');
+    if (want === borrowed) { return; }
+    borrowed = want;
+    if (want) {
+      root.classList.add('vm-podcast');
+      enterChip();
+      drawTicks();
+      armSndIntercept(true);
+      /* Synthetic Voice Thread owns the central orb only while the Podcast owns
+         the session. It never touches playback, Web Audio, crossOrigin or the
+         Music analyser. */
+      if (window.VoidPodcastThread && typeof window.VoidPodcastThread.start === 'function') {
+        window.VoidPodcastThread.start(audio, { getGeometry: window.VoidDomains && window.VoidDomains.getOrbGeometry });
+      }
+    } else {
+      root.classList.remove('vm-podcast');
+      closeSheet();
+      exitChip();
+      clearTicks();
+      armSndIntercept(false);
+      if (window.VoidPodcastThread && typeof window.VoidPodcastThread.stop === 'function') {
+        window.VoidPodcastThread.stop();
+      }
+    }
+  }
+
   /* ---- sleep timer ---- */
   function clearSleep() {
     if (sleep.timer) { clearTimeout(sleep.timer); sleep.timer = 0; }
@@ -378,37 +429,17 @@
   /* ---- mode enter / teardown ---- */
   function enterMode() {
     active = true;
-    root.classList.add('vm-podcast');
-    enterChip();
-    drawTicks();
-    sndBtn = root.querySelector('.vm-snd-open');
-    if (sndBtn) {
-      sndIntercept = function (e) {
-        if (!active) { return; }
-        e.preventDefault(); e.stopImmediatePropagation();
-        openSheet();
-      };
-      sndBtn.addEventListener('click', sndIntercept, true);
-    }
     /* Metadata is published by claimSession() right after the explicit
        hostGuest claim in play() — never before the claim. */
     syncEmblem();
-    /* Synthetic Voice Thread owns the central orb only during a Podcast session.
-       It never touches playback, Web Audio, crossOrigin or the Music analyser. */
-    if (window.VoidPodcastThread && typeof window.VoidPodcastThread.start === 'function') {
-      window.VoidPodcastThread.start(audio, { getGeometry: window.VoidDomains && window.VoidDomains.getOrbGeometry });
-    }
+    applyChrome();
   }
   function teardownMode() {
     if (!active) { return; }
     active = false;
     clearSleep();
+    applyChrome();
     closeSheet();
-    exitChip();
-    clearTicks();
-    if (sndBtn && sndIntercept) { sndBtn.removeEventListener('click', sndIntercept, true); }
-    sndBtn = null; sndIntercept = null;
-    root.classList.remove('vm-podcast');
     /* Phase 2B.1: only the owner clears. If Music took over while this
        episode kept playing (playId -> unhostGuest), stopping here must not
        clear or overwrite Music's MediaSession metadata.
@@ -416,7 +447,6 @@
        detaches every action handler so no stale Podcast callback survives. */
     if (!(VM.sessionOwner && VM.sessionOwner() === 'music')) { clearMetadata(); releaseSession(); }
     syncEmblem();
-    if (window.VoidPodcastThread && typeof window.VoidPodcastThread.stop === 'function') { window.VoidPodcastThread.stop(); }
     current = null;
     emit('podcast:episode', { episodeId: null, showId: null, active: false, playing: false });
   }
@@ -484,6 +514,10 @@
   window.addEventListener('pagehide', function () {
     if (active) { saveProgress(); }
   });
+  /* Phase 2B.5: the engine is the only writer of the session owner, so the
+     borrowed chrome is re-evaluated from its broadcast — never guessed from
+     "an episode is loaded". */
+  window.addEventListener('voidmusic:ownerchange', function () { applyChrome(); });
 
   /* ---- bounded retry: exactly one re-issue for a transient network failure ----
      MEDIA_ERR_NETWORK (2) is the only eligible class; unsupported or decode
@@ -527,9 +561,6 @@
     /* The podcast-mode UI (title row, arc, chip, sheet) lives in the engine's
        root, which only exists in music mode. Enter through the PUBLIC API —
        enter() never auto-plays local music. */
-    if (!document.body.classList.contains('void-music-on') && typeof VM.enter === 'function') { VM.enter(); }
-    ensureRoot();
-    if (!active) { enterMode(); } else { drawTicks(); publishMetadata(); }
     /* Host the podcast as the engine's GUEST: the chrome (title row, arc,
        transport) follows this audio while hosted, and the engine pauses
        Music's OWN element (Phase 2B.2 exclusive playback). Nothing else of
@@ -538,8 +569,18 @@
        S.guest only, so Music's element identity, volume and the
        visualizer's getAudio() never see it), and no voidmusic:playing
        dispatch from this element, so the visualizer can never enter a
-       podcast-driven cosmic session. */
+       podcast-driven cosmic session.
+       Phase 2B.5: the claim is ordered BEFORE Music Mode opens, so enter()'s
+       visualizer wake signals already describe a session Music does not own
+       and its analyser graph is never built for a Podcast start. */
     engageGuest();
+    /* The podcast-mode UI (title row, arc, chip, sheet) lives in the engine's
+       root, which only exists in music mode. Enter through the PUBLIC API —
+       enter() never auto-plays local music. */
+    if (!document.body.classList.contains('void-music-on') && typeof VM.enter === 'function') { VM.enter(); }
+    ensureRoot();
+    if (!active) { enterMode(); } else { drawTicks(); publishMetadata(); }
+    applyChrome();   /* the claim above may have arrived before this root existed */
     var pr = audio.play();
     if (pr && pr.catch) { pr.catch(function () { /* gesture policy: UI shows paused, play button resumes */ }); }
     emit('podcast:episode', { episodeId: episode.id, showId: show.id, active: true, playing: !audio.paused });
@@ -845,6 +886,7 @@
       };
     },
     logic: L,
-    _test: { audio: audio, sourceFor: sourceFor, saveProgress: saveProgress, stepEpisode: stepEpisode }
+    _test: { audio: audio, sourceFor: sourceFor, saveProgress: saveProgress, stepEpisode: stepEpisode,
+      chrome: function () { return borrowed; }, guestOwns: guestOwns }
   };
 })();

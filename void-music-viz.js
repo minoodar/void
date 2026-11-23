@@ -3952,7 +3952,9 @@ void main(){
       if (V.ok) { try { resizeGL(); } catch (er) { failVisualizer('framebuffer resize failure', er); } } // اگر context هنوز زنده است، همان را به‌کار ببر (ورودِ فوری، بدونِ کامپایلِ دوبارهٔ شیدرها)
       // برگشت به Music Mode وقتی موزیک همچنان پخش می‌شود → نمایش دوباره شروع شود
       const a = VM.getAudio();
-      if (playSignal(a)) {
+      /* فاز ۲B.۵: ورودی که پادکست صاحبِ سشنش است هرگز جلسهٔ کیهانیِ موزیک نمی‌سازد؛
+         گرافِ تحلیل و AudioContext تنها با صدایِ خودِ موزیک شروع می‌شوند. */
+      if (!(e.detail && e.detail.owner === 'guest') && playSignal(a)) {
         // خطِ پایهٔ بلندی را نگه می‌داریم (قبلاً دوباره «همین‌الان» را پایه می‌گرفت و در بخشِ پرصدا هیچ‌وقت اوجی دیده نمی‌شد)
         V.playing = true; V.tPlay = 0; A.warm = 0;
         if (V.lastStage === 'galaxy') { V.stage = 'galaxy'; V.stageT = 0; V.loT = 0; V.hiT = 0; }
