@@ -112,7 +112,7 @@
     roots: new Map(), permCache: new Map(), copyMode: false, copyDone: 0, copyTotal: 0, swept: [],
     shuffle: false, repeat: 0, query: '', starsFor: null, flownId: null, starsTimer: 0,
     web: null, localAudio: null, webKey: '', curIdBeforeWeb: null, webChipState: null,
-    guest: null, sessionOwner: null   /* صاحبِ MediaSession: 'music' | 'guest' | null (فاز ۲B.1) */
+    guest: null, guestMeta: null, sessionOwner: null   /* صاحبِ MediaSession: 'music' | 'guest' | null (فاز ۲B.1) */
   };
   // پخش تصادفی: پیش‌فرض خاموش (ترتیبِ فهرست). برای برگرداندنِ رفتارِ قدیمی (همیشه تصادفی) این را true کن.
   const SHUFFLE_DEFAULT = false, SHUF_KEY = 'voidMusic.shuffle';
@@ -816,7 +816,7 @@
     renderQueue();
     publishSession(tr, null);
     bindSession();           // موزیک شروع شد: MediaSession دوباره از میهمانِ پادکست پس گرفته می‌شود
-    S.sessionOwner = 'music';   // Phase 2B.1: claim صریحِ موزیک
+    setSessionOwner('music');   // Phase 2B.1: claim صریحِ موزیک
     /* فاز ۲B.۴: هر claim جایگاهِ اسلایدرِ مشترک را هم به صاحبِ تازه برگردانده
        می‌کند (syncVolume تا built بودن خودش را نگهبانی می‌کند). */
     syncVolume();
@@ -965,7 +965,7 @@
       claimPlayback().then(function (granted) {
         if (!granted) return;
         pauseGuestElement();                      // فاز ۲B.۳: انحصار در مرزِ ادامهٔ موزیک (مستقل از return زودهنگامِ بالا)
-        S.sessionOwner = 'music';   // Phase 2B.1: ادامهٔ پخشِ موزیک هم claim است
+        setSessionOwner('music');   // Phase 2B.1: ادامهٔ پخشِ موزیک هم claim است
         syncVolume();
         const tr = trackById(S.curId);
         if (tr) publishSession(tr, S.coverUrl);   // فاز ۲B.۲: ادامه، متادیتای پاک‌شده را هم برمی‌گرداند
@@ -1075,7 +1075,7 @@
       claimPlayback().then(function (granted) {
         if (!granted) return;
         pauseGuestElement();                      // فاز ۲B.۲: ادامهٔ موزیک، پادکست را واقعاً مکث می‌کند
-        S.sessionOwner = 'music';                 // شروع/ادامهٔ واقعی = claim
+        setSessionOwner('music');                 // شروع/ادامهٔ واقعی = claim
         syncVolume();
         const tr = trackById(S.curId);
         if (tr) publishSession(tr, S.coverUrl);
@@ -2059,26 +2059,45 @@
     const g = S.guest;
     if (g && !g.paused) { try { g.pause(); } catch (e) {} }
   }
+  /* فاز ۲B.۵: مالکیتِ سشن تنها مرجعِ «الان چه کسی صدا دارد» است و هر جابه‌جایی‌اش
+     رویداد می‌شود. المان‌های امانیِ پادکست (چیپ سرعت به‌جای Repeat، تیک‌های فصل،
+     Threadِ مرکزی) به همین رویداد وصل‌اند، نه به «اپیزودِ بارگذاری‌شده» — وگرنه
+     با پخشِ موزیک، کنترلِ حلقهٔ موزیک زیرِ دستِ کاربر ناپدید می‌ماند. */
+  function setSessionOwner(who) {
+    if (S.sessionOwner === who) return;
+    S.sessionOwner = who;
+    try { window.dispatchEvent(new CustomEvent('voidmusic:ownerchange', { detail: { owner: who } })); } catch (e) {}
+  }
+  /* میهمان می‌تواند پیش از ساخته‌شدنِ UI ادعا کند (پخشِ پادکست از صفحه‌ای که هرگز
+     Music Mode باز نکرده). متادیتا همان لحظه نگه داشته و در enter() نوشته می‌شود؛
+     بی‌این، سشنِ میهمانِ تازه بی‌عنوان می‌ماند. */
+  function applyGuestMeta(meta) {
+    if (!meta) return;
+    S.guestMeta = { title: meta.title || '', artist: meta.artist || '' };
+    if (!S.built) return;
+    const m = S.guestMeta; S.guestMeta = null;
+    setMeta(m.title, m.artist, null);
+  }
   function hostGuest(el, meta) {
     if (!el) return;
     /* فاز ۲B.۴: در لحظهٔ مالکیت، جایگاهِ اسلایدر هم باید به همان پخش‌کننده
        برگردد؛ وگرنه درصدِ ولومِ موزیک روی صدای پادکست نمایش داده می‌شود. */
     if (S.guest === el) {
       pauseMusicElement();                       // فاز ۲B.۲: ادامهٔ پادکست، موزیک را واقعاً مکث می‌کند
-      S.sessionOwner = 'guest';
-      if (meta && S.built) setMeta(meta.title, meta.artist, null);
+      setSessionOwner('guest');
+      if (meta) applyGuestMeta(meta);
       syncVolume();
       return;
     }
     if (S.guest) unbindGuest();
     if (S.web) detachWeb({ pauseSite: true, quiet: true });   // فاز ۲B.۲: منبعِ وب هم با پادکست هم‌زمان صدا نمی‌دهد
     S.guest = el;
-    S.sessionOwner = 'guest';                  // Phase 2B.1: claim صریحِ میهمان
+    setSessionOwner('guest');                  // Phase 2B.1: claim صریحِ میهمان
     pauseMusicElement();                       // فاز ۲B.۲: پخشِ انحصاری
     const h = guestHandlers(); Object.keys(h).forEach(function (k) { el.addEventListener(k, h[k]); });
     /* فاز ۲B.1: S.audio هرگز جابه‌جا نمی‌شود — هیچ guestPrev و restore‌ای در کار نیست. */
     S.lastPlaying = null;
-    if (meta && S.built) setMeta(meta.title, meta.artist, null);
+    if (meta) applyGuestMeta(meta);
     if (S.built) { onPlayState(); }
     updateProgress();
     syncVolume();
@@ -2104,7 +2123,7 @@
       const a = S.audio;
       const live = !!(a && !a.paused);
       const tr = live ? trackById(S.curId) : null;
-      S.sessionOwner = tr ? 'music' : null;
+      setSessionOwner(tr ? 'music' : null);
       if (tr) { publishSession(tr, S.coverUrl); } else { clearSessionMeta(); }
     }
     S.lastPlaying = null;
@@ -2890,6 +2909,7 @@
     } catch (e) {}
     try { S.copyMode = localStorage.getItem('voidMusic.copy') === '1'; } catch (e) {}
     relabel(); layout(); syncVolume(); syncEmpty(); renderQueue(); onPlayState();
+    if (S.sessionOwner === 'guest') applyGuestMeta(S.guestMeta);   // فاز ۲B.۵: ادعای میهمانِ پیش از ساخت، عنوان را نگه داشته بود
     root.hidden = false;
     checkOtherPlayback(true);
     document.body.classList.remove('void-music-leaving');
@@ -2905,9 +2925,11 @@
       probePermissions();
       setTimeout(function () { if (S.open && !S.tracks.length) els.open.focus({ preventScroll: true }); else if (S.open) els.play.focus({ preventScroll: true }); }, 700);
     });
-    try { window.dispatchEvent(new CustomEvent('voidmusic:mode', { detail: { open: true } })); } catch (e) {}
-    // موزیک ممکن است از قبل (با آیکونِ شناور) پخش شود؛ ویژولایزر باید از نو شروع کند
-    S.lastPlaying = null; onPlayState();
+    try { window.dispatchEvent(new CustomEvent('voidmusic:mode', { detail: { open: true, owner: S.sessionOwner } })); } catch (e) {}
+    /* فاز ۲B.۵: همان رویدادِ ورود، اگر میهمانِ پادکست صاحبِ سشن است هیچ بیداریِ
+       موزیک نمی‌فرستد؛ پخشِ موزیک در این جلسه صفر است و ویژه‌لایزر نباید به‌خاطر
+       باز شدنِ ریشه به‌خاطرِ پادکست، جلسهٔ کیهانی بسازد. */
+    if (S.sessionOwner !== 'guest') { S.lastPlaying = null; onPlayState(); }
   }
 
   function exit() {

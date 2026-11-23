@@ -4,7 +4,10 @@
    ERROR-vs-PAUSED preservation and queue integrity across a retry.
    Phase 2B.4 adds: the Podcast element's own volume (persist + tolerant
    restore), stepEpisode across the show queue with safe boundary no-ops, and
-   the dock/MediaSession verbs (Prev/Next = episodes, ± seconds = seeks). */
+   the dock/MediaSession verbs (Prev/Next = episodes, ± seconds = seeks).
+   Phase 2B.5 §L adds the borrowed Music chrome: the speed chip, the chapter
+   ticks, the podcast styling, the sound-button intercept and the Voice Thread
+   follow the SESSION OWNER (voidmusic:ownerchange), not the loaded episode. */
 'use strict';
 const assert = require('assert');
 const path = require('path');
@@ -20,7 +23,14 @@ function memStorage(seed) {
     setItem: (k, v) => { map.set(k, String(v)); }
   };
 }
-function fire(el, name) { (el.listeners[name] || []).slice().forEach(fn => fn()); }
+function fire(el, name, ev) { (el.listeners[name] || []).slice().forEach(fn => fn(ev)); }
+function click() {
+  const e = { type: 'click', defaultPrevented: false, stopImmediate: false };
+  e.preventDefault = () => { e.defaultPrevented = true; };
+  e.stopPropagation = () => {};
+  e.stopImmediatePropagation = () => { e.stopImmediate = true; };
+  return e;
+}
 
 function boot(opts) {
   opts = opts || {};
@@ -38,36 +48,94 @@ function boot(opts) {
     play() { this.paused = false; fire(this, 'play'); return Promise.resolve(); },
     pause() { if (!this.paused) { this.paused = true; fire(this, 'pause'); } }
   };
-  function makeEl() {
-    return {
-      style: {}, hidden: true, listeners: {}, classList: {
+  /* A little more than a stub: the borrowed-chrome legs need real parent/child
+     surgery (the speed chip is inserted next to the engine's Repeat) and a sheet
+     that can be built and searched. Everything else still sees an empty node. */
+  function makeEl(tag) {
+    const n = {
+      tagName: String(tag || 'div').toUpperCase(), className: '', textContent: '',
+      style: {}, hidden: true, listeners: {}, attrs: {}, children: [], parentNode: null,
+      classList: {
         _s: new Set(),
         add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
-        toggle() {}, contains(c) { return this._s.has(c); }
+        toggle(c, on) { if (on === undefined || on) { this.add(c); } else { this.remove(c); } },
+        contains(c) { return this._s.has(c); }
       },
-      setAttribute() {}, getAttribute() { return null; },
-      querySelector() { return null; },
-      appendChild() {}, addEventListener() {}, removeEventListener() {}, focus() {}
+      setAttribute(k, v) { n.attrs[k] = String(v); if (k === 'class') { n.className = String(v); } },
+      getAttribute(k) { return k in n.attrs ? n.attrs[k] : null; },
+      appendChild(c) { c.parentNode = n; n.children.push(c); return c; },
+      insertBefore(c, ref) { const i = n.children.indexOf(ref); c.parentNode = n; n.children.splice(i < 0 ? n.children.length : i, 0, c); return c; },
+      removeChild(c) { const i = n.children.indexOf(c); if (i >= 0) { n.children.splice(i, 1); } c.parentNode = null; return c; },
+      contains(c) { if (c === n) { return true; } return n.children.some(x => x.contains(c)); },
+      querySelectorAll(sel) {
+        const out = [];
+        n.children.forEach(c => {
+          if ((sel[0] === '.' ? String(c.className).split(' ').indexOf(sel.slice(1)) >= 0 : c.tagName === sel.toUpperCase())
+            || (sel.indexOf('.') > 0 && String(c.className).split(' ').indexOf(sel.split('.')[1]) >= 0)) { out.push(c); }
+          if (c.querySelectorAll) { out.push.apply(out, c.querySelectorAll(sel)); }
+        });
+        return out;
+      },
+      querySelector(sel) { const hit = n.querySelectorAll(sel); return hit.length ? hit[0] : null; },
+      addEventListener(t, fn) { (n.listeners[t] = n.listeners[t] || []).push(fn); },
+      removeEventListener(t, fn) { const l = n.listeners[t] || []; const i = l.indexOf(fn); if (i >= 0) { l.splice(i, 1); } },
+      getBoundingClientRect() { return { left: 100, top: 40, right: 140, bottom: 60, width: 40, height: 20 }; },
+      getClientRects() { return [{ width: 24, height: 24 }]; },
+      getTotalLength() { return 200; },
+      getPointAtLength(t) { return { x: t, y: 0 }; },
+      focus() {}, offsetHeight: 200
     };
+    return n;
   }
+  /* The Music Mode chrome the podcast borrows, built the way the engine builds it:
+     Repeat lives in the title row, the sound button and the progress arc in the root. */
+  function mountChrome() {
+    const root = makeEl('div');
+    const row = makeEl('div'); row.className = 'vm-title-row';
+    const repeat = makeEl('button'); repeat.className = 'vm-repeat'; repeat.textContent = '1x';
+    row.appendChild(repeat);
+    const snd = makeEl('button'); snd.className = 'vm-snd-open';
+    const play = makeEl('button'); play.className = 'vm-play';
+    const arc = makeEl('g'); arc.className = 'vm-arc';
+    const arcBase = makeEl('path'); arcBase.className = 'vm-arc-base';
+    root.appendChild(row); root.appendChild(snd); root.appendChild(play);
+    root.appendChild(arc); root.appendChild(arcBase);
+    return { root: root, titleRow: row, repeat: repeat, snd: snd, arc: arc, arcBase: arcBase };
+  }
+  /* chrome: true mounts the Music Mode root at load; 'enter' mounts it inside
+     VM.enter(), the way the engine builds it on the first entry. */
+  let chrome = opts.chrome === true ? mountChrome() : null;
+  const chromeRoot = () => (chrome ? chrome.root : null);
   const document = {
-    createElement: tag => (tag === 'audio' ? audio : makeEl()),
-    createElementNS: () => makeEl(),
-    getElementById: () => null,
+    createElement: tag => (tag === 'audio' ? audio : makeEl(tag)),
+    createElementNS: (ns, tag) => makeEl(tag),
+    createTextNode: t => ({ nodeType: 3, textContent: String(t) }),
+    getElementById: id => (id === 'void-music-root' ? chromeRoot() : null),
     querySelector: () => null,
     addEventListener(n, fn) { (listeners.document[n] = listeners.document[n] || []).push(fn); },
-    removeEventListener() {},
-    body: makeEl(),
-    head: makeEl(),
+    removeEventListener(t, fn) { const l = listeners.document[t] || []; const i = l.indexOf(fn); if (i >= 0) { listeners.document[t].splice(i, 1); } },
+    body: makeEl('body'),
+    head: makeEl('head'),
     hidden: false
   };
   const storeMod = require('./podcast-store.js');
   const store = storeMod.create(memStorage(opts.seed));
-  let hosted = null, enterCount = 0, unhostCount = 0, hostCount = 0;
+  let hosted = null, enterCount = 0, unhostCount = 0, hostCount = 0, ownerAtEnter = null;
+  function broadcastOwner() {
+    if (!opts.chrome) { return; }
+    global.window.dispatchEvent(new global.window.CustomEvent('voidmusic:ownerchange', { detail: { owner: vm.owner } }));
+  }
   const vm = {
-    enter() { enterCount++; },
-    hostGuest(el, meta) { hosted = { el, meta }; hostCount++; },
-    unhostGuest() { hosted = null; unhostCount++; },
+    enter() { if (opts.chrome === 'enter') { chrome = mountChrome(); } enterCount++; ownerAtEnter = vm.owner; },
+    hostGuest(el, meta) {
+      hosted = { el, meta }; hostCount++;
+      /* the real engine claims the session for the guest and broadcasts it */
+      if (opts.chrome) { vm.owner = 'guest'; broadcastOwner(); }
+    },
+    unhostGuest() {
+      hosted = null; unhostCount++;
+      if (opts.chrome && vm.owner === 'guest') { vm.owner = null; broadcastOwner(); }
+    },
     owner: null,   /* tests set 'music' to simulate a Music takeover (playId) */
     sessionOwner() { return vm.owner; }
   };
@@ -86,8 +154,10 @@ function boot(opts) {
   const navObj = { mediaSession: mediaSession };
   const realNav = global.navigator;
   try { Object.defineProperty(global, 'navigator', { value: navObj, configurable: true }); } catch (e) { /* keep real */ }
+  const thread = { starts: 0, stops: 0, start() { thread.starts++; }, stop() { thread.stops++; } };
   global.window = {
     __VOID_PODCAST_FLAG__: true,
+    innerWidth: 1280, innerHeight: 800,
     VoidPodcastPlayerLogic: require('./podcast-player.js'),
     VoidMusic: vm,
     VoidPodcastSampleData: {
@@ -108,8 +178,14 @@ function boot(opts) {
     MediaMetadata: function (m) { Object.assign(this, m); }
   };
   global.document = document;
+  global.getComputedStyle = () => ({ visibility: 'visible', display: 'block', fontSize: '19px', fontFamily: 'sans-serif' });
+  if (opts.chrome) { global.window.VoidPodcastThread = thread; }
   const emitted = [];
-  global.window.dispatchEvent = ev => { emitted.push(ev); };
+  global.window.dispatchEvent = ev => {
+    emitted.push(ev);
+    (listeners.window[ev.type] || []).slice().forEach(fn => fn(ev));
+    return true;
+  };
   const ctlPath = path.join(__dirname, 'podcast-player.js');
   delete require.cache[require.resolve(ctlPath)];
   /* The controller reads `window.VoidPodcastPlayerLogic` but require() returns
@@ -124,6 +200,11 @@ function boot(opts) {
     get unhostCount() { return unhostCount; },
     get hostCount() { return hostCount; },
     setOwner(v) { vm.owner = v; },
+    fireOwner: broadcastOwner,
+    get dom() { return chrome; },
+    get ownerAtEnter() { return ownerAtEnter; },
+    borrowed() { return ctl._test.chrome(); },
+    thread,
     restoreNav() { try { Object.defineProperty(global, 'navigator', { value: realNav, configurable: true }); } catch (e) { /* keep stub */ } }
   };
 }
@@ -542,6 +623,67 @@ function threeEpisodeShow(b) {
   b.ctl.stop();
   b.audio.cmd('nexttrack');
   ok(b.ctl.getState().active === false, 'verb: after teardown the element ignores dock commands');
+}
+
+/* ---- Phase 2B.5 §L: the borrowed chrome is ownership-keyed ----
+   These boots mount the Music Mode root (at load, or inside VM.enter() the way the
+   engine builds it), so Repeat, the arc, the sound button and the Voice Thread are
+   real nodes and a Music takeover can be measured instead of asserted from the code. */
+{
+  const b = boot({ chrome: true });
+  ok(b.ctl.play(EP, SHOW).ok, 'L: play ok');
+  ok(b.borrowed() === true, 'L: a podcast that owns the session borrows the Music chrome');
+  eq(b.ownerAtEnter, 'guest', 'L: the guest claim is ordered BEFORE Music Mode opens');
+  eq(b.dom.titleRow.children.length, 2, 'L: the speed chip takes the seat next to Repeat');
+  eq(b.dom.titleRow.children[0].className, 'vm-repeat pw-rate', 'L: the chip is the speed chip');
+  eq(b.dom.repeat.style.display, 'none', 'L: Repeat is hidden only while the podcast owns playback');
+  ok(b.dom.root.classList.contains('vm-podcast'), 'L: the podcast styling is on');
+  eq(b.thread.starts, 1, 'L: the Voice Thread is started with the borrow');
+
+  b.setOwner('music'); b.fireOwner();
+  ok(b.borrowed() === false, 'L: a Music takeover hands the chrome back while the episode stays loaded');
+  eq(b.dom.titleRow.children.length, 1, 'L: the speed chip is gone');
+  eq(b.dom.repeat.style.display, '', 'L: the Music Repeat control is visible again');
+  ok(!b.dom.root.classList.contains('vm-podcast'), 'L: the podcast styling is off');
+  eq(b.thread.stops, 1, 'L: the Voice Thread is stopped with the borrow');
+  eq(b.ctl.getState().active, true, 'L: the takeover unloads nothing');
+  eq(b.audio.paused, false, 'L: giving the chrome back never pauses the podcast element');
+
+  const mine = click();
+  fire(b.dom.snd, 'click', mine);
+  ok(!mine.defaultPrevented, 'L: with Music owning the session the sound button opens the Music popover, not the podcast sheet');
+
+  b.setOwner('guest'); b.fireOwner();
+  ok(b.borrowed() === true, 'L: the podcast gets the chrome back when it takes the session again');
+  eq(b.thread.starts, 2, 'L: and starts the Voice Thread again');
+  const theirs = click();
+  fire(b.dom.snd, 'click', theirs);
+  ok(theirs.defaultPrevented && theirs.stopImmediate, 'L: while the podcast owns the session the sound button is intercepted');
+  const sheet = b.dom.root.querySelector('.pw-sheet');
+  ok(!!sheet && sheet.hidden === false, 'L: the intercepted click opens the podcast sheet');
+  b.ctl.stop();
+  ok(b.borrowed() === false, 'L: teardown releases the chrome');
+  eq(b.thread.stops, 2, 'L: exactly one stop per borrow');
+  const afterStop = click();
+  fire(b.dom.snd, 'click', afterStop);
+  ok(!afterStop.defaultPrevented, 'L: the intercept is detached after teardown, not merely short-circuited');
+  b.restoreNav();
+}
+{
+  /* chapters: the ticks live on the arc of the Music Mode chrome and leave with the borrow */
+  const b = boot({ chrome: 'enter' });
+  b.audio.duration = 600;
+  const epc = Object.assign({}, EP, { id: 'e9', title: 'Chaptered', chapters: [{ startSec: 60 }, { startSec: 300 }] });
+  b.ctl.play(epc, SHOW);
+  ok(b.borrowed() === true, 'L: the chrome is borrowed once enter() has built the root');
+  eq(b.enterCount, 1, 'L: one entry');
+  eq(b.dom.titleRow.children.length, 2, 'L: the chip sits in the built root, not in <body>');
+  eq(b.dom.arc.children.length, 2, 'L: chapter ticks are drawn on the engine arc');
+  b.setOwner('music'); b.fireOwner();
+  eq(b.dom.arc.children.length, 0, 'L: the takeover clears the ticks with the rest of the chrome');
+  b.ctl.stop();
+  eq(b.dom.titleRow.children.length, 1, 'L: teardown leaves the title row with only the Repeat control it started with');
+  b.restoreNav();
 }
 
 console.log('podcast-player-controller: ' + checks + ' assertions passed');
