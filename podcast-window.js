@@ -155,8 +155,8 @@
   newSection.appendChild(newFa);
   var newRow = el('div', 'pw__new');
   var savedSection = el('h3', 'pw__section');
-  savedSection.appendChild(el('span', 'pw__section-en', 'SAVED'));
-  var savedFa = el('bdi', 'pw__section-fa', 'ذخیره‌شده‌ها'); savedFa.dir = 'rtl'; savedFa.lang = 'fa';
+  savedSection.appendChild(el('span', 'pw__section-en', 'BOOKMARKS'));
+  var savedFa = el('bdi', 'pw__section-fa', 'نشان‌شده‌ها'); savedFa.dir = 'rtl'; savedFa.lang = 'fa';
   savedSection.appendChild(savedFa);
   var savedRow = el('div', 'pw__saved');
   var mySection = el('h3', 'pw__section');
@@ -513,21 +513,27 @@
     newRow.hidden = !fresh.length;
 
     var saved = store.getSaved();
-    savedSection.hidden = !saved.length;
-    savedRow.hidden = !saved.length;
+    /* Bookmarks stay discoverable even when empty: the section heading and
+       a quiet hint are always rendered, the row button only when it has
+       something to open. */
+    savedSection.hidden = false;
+    savedRow.hidden = false;
     savedRow.textContent = '';
     if (saved.length) {
       var sb = el('button', 'pw__savedrow');
       sb.type = 'button';
-      sb.setAttribute('aria-label', 'Saved episodes · ذخیره‌شده‌ها — ' + saved.length);
+      sb.setAttribute('aria-label', 'Bookmarks · نشان‌شده‌ها — ' + saved.length);
       var sicon = el('span', 'pw__savedicon');
       sicon.setAttribute('aria-hidden', 'true');
-      sicon.innerHTML = STAR_FILLED;
+      sicon.innerHTML = BM_FILLED;
       sb.appendChild(sicon);
-      sb.appendChild(el('span', 'pw__savedlabel', 'Saved episodes · ذخیره‌شده‌ها'));
+      sb.appendChild(el('span', 'pw__savedlabel', 'Bookmarks · نشان‌شده‌ها'));
       sb.appendChild(el('span', 'pw__savedcount', String(saved.length)));
       sb.addEventListener('click', function () { openShow(SAVED_ID, sb); });
       savedRow.appendChild(sb);
+    } else {
+      savedRow.appendChild(el('p', 'pw__bmhint',
+        'Bookmark episodes with the bookmark icon · با نشان‌گذاری، قسمت‌ها اینجا می‌آیند'));
     }
 
     grid.textContent = '';
@@ -560,9 +566,124 @@
   /* ---- show rendering ---- */
   var PLAY_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8.5 5.8v12.4c0 .8.9 1.3 1.6.9l9.6-6.2c.6-.4.6-1.4 0-1.8L10.1 4.9c-.7-.4-1.6.1-1.6.9z" fill="currentColor"/></svg>';
   var PAUSE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8.5 5.5v13M15.5 5.5v13" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>';
-  var STAR_PATH = 'M12 3.6l2.5 5.2 5.7.7-4.2 3.9 1.1 5.6-5.1-2.8-5.1 2.8 1.1-5.6-4.2-3.9 5.7-.7z';
-  var STAR_OUTLINE = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="' + STAR_PATH + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
-  var STAR_FILLED = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="' + STAR_PATH + '" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
+  /* Bookmark (distinct from the old star) and per-episode share icons. */
+  var BM_PATH = 'M6 3.6h12a.8.8 0 0 1 .8.8v15.9L12 16.2l-6.8 4.1V4.4a.8.8 0 0 1 .8-.8z';
+  var BM_OUTLINE = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="' + BM_PATH + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  var BM_FILLED = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="' + BM_PATH + '" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
+  var SHARE_PATH_C = 'M17.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6.5 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM17.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z';
+  var SHARE_PATH_L = 'M8.8 10.6L15.2 6.9M8.8 13.4L15.2 17.1';
+  var SHARE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="' + SHARE_PATH_C + SHARE_PATH_L + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  /* ---- per-episode share (local only) ----
+     A small popover owned by the Podcast window, not the global nav. It
+     shares the episode's own audio link; nothing is fetched, posted or
+     stored anywhere by this control.
+  ---- */
+  var sharePop = null, sharePopBtn = null, sharePopEp = null, sharePopShow = null;
+  function sharePopIsOpenFor(id) {
+    return !!(sharePop && !sharePop.hidden && sharePopEp && sharePopEp.id === id);
+  }
+  function sharePopClose(restore) {
+    if (!sharePop) { return; }
+    sharePop.hidden = true;
+    if (sharePop.parentNode) { sharePop.parentNode.removeChild(sharePop); }
+    dialog.scrollLeft = 0;
+    dialog.scrollTop = 0;
+    if (sharePopBtn) { sharePopBtn.setAttribute('aria-expanded', 'false'); }
+    document.removeEventListener('click', sharePopDoc, true);
+    var b = sharePopBtn;
+    sharePopBtn = null; sharePopEp = null; sharePopShow = null;
+    if (restore && b && b.getClientRects().length) { b.focus(); }
+  }
+  function sharePopDoc(e) {
+    if (!sharePop || sharePop.hidden) { return; }
+    if (sharePop.contains(e.target) || (sharePopBtn && sharePopBtn.contains(e.target))) { return; }
+    sharePopClose(false);
+  }
+  function sharePopKey(e) {
+    var k = e.key;
+    if (k === 'Escape' || k === 'BrowserBack' || k === 'GoBack' || e.keyCode === 27) {
+      e.preventDefault(); e.stopPropagation(); sharePopClose(true);
+    }
+  }
+  function openShareUrl(u) {
+    try { window.open(u, '_blank', 'noopener'); } catch (e) { /* popups blocked */ }
+  }
+  function shareCopyFallback(url) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = url;
+      ta.setAttribute('readonly', 'readonly');
+      ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) { /* denied */ }
+      document.body.removeChild(ta);
+    } catch (e) { /* no clipboard at all */ }
+  }
+  function shareCopy(url, btn) {
+    var done = function () {
+      var prev = btn.textContent;
+      btn.textContent = 'Copied · کپی شد';
+      setTimeout(function () { btn.textContent = prev; }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function () { shareCopyFallback(url); done(); });
+      return;
+    }
+    shareCopyFallback(url); done();
+  }
+  function sharePopOpen(ep, sh, btn) {
+    sharePopClose(false);
+    if (!sharePop) {
+      sharePop = el('div', 'pw__sharepop');
+      sharePop.setAttribute('role', 'dialog');
+      sharePop.setAttribute('aria-label', 'Share episode · هم‌رسانی قسمت');
+      sharePop.hidden = true;
+      sharePop.addEventListener('keydown', sharePopKey);
+      dialog.appendChild(sharePop);
+    }
+    sharePopEp = ep; sharePopShow = sh; sharePopBtn = btn;
+    var title = el('p', 'pw__sharepop-title');
+    title.appendChild(document.createTextNode(ep.title));
+    var hint = el('p', 'pw__sharepop-hint', 'Shares this episode’s audio link · پیوند صوت این قسمت');
+    var row = el('div', 'pw__sharepop-row');
+    var copyB = null;
+    function shareBtn(label, fn) {
+      var b = el('button', 'pw__sharepop-btn', label);
+      b.type = 'button';
+      b.addEventListener('click', function () { fn(); });
+      row.appendChild(b);
+      return b;
+    }
+    copyB = shareBtn('Copy link · کپی', function () { shareCopy(ep.audioUrl, copyB); });
+    var text = ep.title + (sh && sh.title ? ' — ' + sh.title : '');
+    shareBtn('WhatsApp', function () { openShareUrl('https://wa.me/?text=' + encodeURIComponent(text + '\n\n' + ep.audioUrl)); });
+    shareBtn('Telegram', function () { openShareUrl('https://t.me/share/url?url=' + encodeURIComponent(ep.audioUrl) + '&text=' + encodeURIComponent(text)); });
+    shareBtn('X', function () { openShareUrl('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text + ' ' + ep.audioUrl)); });
+    sharePop.textContent = '';
+    sharePop.appendChild(title); sharePop.appendChild(hint); sharePop.appendChild(row);
+    dialog.appendChild(sharePop);
+    dialog.scrollLeft = 0;
+    dialog.scrollTop = 0;
+    sharePop.style.visibility = 'hidden';
+    sharePop.hidden = false;
+    var r = btn.getBoundingClientRect();
+    var w = sharePop.offsetWidth || 240, h = sharePop.offsetHeight || 150;
+    var left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+    var top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) { top = Math.max(8, r.top - h - 6); }
+    sharePop.style.left = left + 'px';
+    sharePop.style.top = top + 'px';
+    sharePop.style.visibility = '';
+    btn.setAttribute('aria-expanded', 'true');
+    document.addEventListener('click', sharePopDoc, true);
+    copyB.focus();
+    dialog.scrollLeft = 0;
+    dialog.scrollTop = 0;
+  }
+  dialog.addEventListener('cancel', function (e) {
+    if (sharePop && !sharePop.hidden && sharePopEp) { e.preventDefault(); sharePopClose(true); }
+  });
 
   function snapshotOf(ep, sh) {
     return {
@@ -624,8 +745,9 @@
     artStyle(showArt);
     showArt.textContent = '';
     fillArt(showArt, sh.artUrl, sh.initials);
-    showTitle.textContent = sh.title;
-    showTitleFa.textContent = sh.titleFa || '';
+    showArt.classList.toggle('is-loading', !!(ps && ps.loading && ps.showId === showId));
+    showTitle.textContent = isSavedView ? 'Bookmarks' : sh.title;
+    showTitleFa.textContent = isSavedView ? 'نشان‌شده‌ها' : (sh.titleFa || '');
     showTitleFa.hidden = !sh.titleFa;
     showPub.textContent = isSavedView ? (list.length + ' episodes · قسمت') : sh.publisher;
     if (!isSavedView && sh.lastFetchedAt) {
@@ -689,29 +811,41 @@
       if (d) { parts.push(d); }
       if (ep.durationSec > 0) { parts.push(fmtDur(ep.durationSec)); }
       meta.appendChild(el('span', 'pw__epsub', parts.join(' · ')));
-      var star = el('button', 'pw__star');
-      star.type = 'button';
+      var bm = el('button', 'pw__bm');
+      bm.type = 'button';
       var isSavedEp = store.isSaved(ep.id);
-      star.setAttribute('data-star', ep.id);
-      star.setAttribute('aria-pressed', isSavedEp ? 'true' : 'false');
-      star.setAttribute('aria-label', (isSavedEp ? 'Remove from saved · حذف از ذخیره‌شده‌ها' : 'Save episode · ذخیرهٔ قسمت') + ' — ' + ep.title);
-      star.title = isSavedEp ? 'Saved — click to remove · ذخیره‌شده؛ برای حذف کلیک کنید' : 'Save to Saved episodes · ذخیره در ذخیره‌شده‌ها';
-      star.innerHTML = isSavedEp ? STAR_FILLED : STAR_OUTLINE;
-      star.addEventListener('click', function () {
+      bm.setAttribute('data-bm', ep.id);
+      bm.setAttribute('aria-pressed', isSavedEp ? 'true' : 'false');
+      bm.setAttribute('aria-label', (isSavedEp ? 'Remove from Bookmarks · حذف از نشان‌شده‌ها' : 'Bookmark episode · نشان‌گذاری قسمت') + ' — ' + ep.title);
+      bm.title = isSavedEp ? 'Bookmarked — click to remove · نشان‌شده؛ برای حذف کلیک کنید' : 'Bookmark · نشان‌گذاری';
+      bm.innerHTML = isSavedEp ? BM_FILLED : BM_OUTLINE;
+      bm.addEventListener('click', function () {
         if (store.isSaved(ep.id)) { store.removeSaved(ep.id); return; }
         if (!ep.audioUrl) {
-          playNote.textContent = 'No audio to save yet · هنوز فایل صوتی برای ذخیره نیست';
+          playNote.textContent = 'No audio to bookmark yet · هنوز فایل صوتی برای نشان‌گذاری نیست';
           playNote.hidden = false;
           return;
         }
         store.saveEpisode(snapshotOf(ep, sh));
+      });
+      var share = el('button', 'pw__share');
+      share.type = 'button';
+      share.setAttribute('data-share', ep.id);
+      share.setAttribute('aria-haspopup', 'dialog');
+      share.setAttribute('aria-expanded', 'false');
+      share.setAttribute('aria-label', 'Share episode · هم‌رسانی قسمت — ' + ep.title);
+      share.title = 'Share · هم‌رسانی';
+      share.innerHTML = SHARE_SVG;
+      share.addEventListener('click', function () {
+        if (sharePopIsOpenFor(ep.id)) { sharePopClose(true); return; }
+        sharePopOpen(ep, sh, share);
       });
       var rail = el('span', 'pw__rail');
       rail.setAttribute('aria-hidden', 'true');
       var fill = el('span', 'pw__fill');
       fill.style.width = (frac * 100).toFixed(2) + '%';
       rail.appendChild(fill);
-      li.appendChild(play); li.appendChild(meta); li.appendChild(star); li.appendChild(rail);
+      li.appendChild(play); li.appendChild(meta); li.appendChild(bm); li.appendChild(share); li.appendChild(rail);
       if (preview && preview.decorateEpisodeRow) {
         try { preview.decorateEpisodeRow(li, ep, sh); } catch (e) { /* preview is optional */ }
       }
@@ -963,9 +1097,9 @@
     var sel = null;
     if (hadFocus && active.getAttribute) {
       var epId = active.getAttribute('data-ep');
-      var starId = active.getAttribute('data-star');
+      var starId = active.getAttribute('data-bm');
       if (epId) { sel = '[data-ep="' + epId + '"]'; }
-      else if (starId) { sel = '[data-star="' + starId + '"]'; }
+      else if (starId) { sel = '[data-bm="' + starId + '"]'; }
       else if (active.hasAttribute('data-preview-add')) { sel = '[data-preview-add]'; }
     }
     if (view === 'show' && currentShowId) { renderShow(currentShowId); }
@@ -995,6 +1129,11 @@
       errorNote = '';
       if (isOpen() && !playNote.hidden) { playNote.hidden = true; }
     }
+  });
+  window.addEventListener('podcast:loading', function (e) {
+    var d = (e && e.detail) || {};
+    if (!isOpen()) { return; }
+    showArt.classList.toggle('is-loading', view === 'show' && currentShowId === d.showId && !!d.loading);
   });
 
   /* The NEW row count depends on the measured width: refit on resize while open. */

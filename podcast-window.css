@@ -686,8 +686,9 @@ html[dir="rtl"] .pw-sheet__qtitle { margin-right: 0; margin-left: 8px; }
   font-variant-numeric: tabular-nums;
 }
 
-/* Favorite star on episode rows */
-.pw__star {
+/* Bookmark + share buttons on episode rows */
+.pw__bm,
+.pw__share {
   flex: 0 0 auto;
   width: 44px;
   height: 44px;
@@ -702,9 +703,10 @@ html[dir="rtl"] .pw-sheet__qtitle { margin-right: 0; margin-left: 8px; }
   justify-content: center;
   transition: color .2s ease, background .2s ease, transform .2s ease;
 }
-.pw__star:hover { color: rgba(251, 191, 36, .85); background: rgba(251, 191, 36, .08); transform: scale(1.06); }
-.pw__star[aria-pressed="true"] { color: #FBBF24; }
-.pw__star[aria-pressed="true"]:hover { color: #ffd66e; }
+.pw__bm:hover,
+.pw__share:hover { color: rgba(251, 191, 36, .85); background: rgba(251, 191, 36, .08); transform: scale(1.06); }
+.pw__bm[aria-pressed="true"] { color: #FBBF24; }
+.pw__bm[aria-pressed="true"]:hover { color: #ffd66e; }
 
 /* Subscribe / remove under the show head */
 .pw__showactions { display: flex; margin-top: 12px; }
@@ -763,7 +765,7 @@ html[dir="rtl"] .pw-sheet__qtitle { margin-right: 0; margin-left: 8px; }
 
 /* TV — listen-only: no RSS input, no OPML, no preview; targets grow */
 html.void-tv .pw__opml, html.void-tv .pw__preview { display: none; }
-html.void-tv .pw__star { width: 56px; height: 56px; }
+html.void-tv .pw__bm, html.void-tv .pw__share { width: 56px; height: 56px; }
 html.void-tv .pw__savedrow { min-height: 60px; }
 html.void-tv .pw__savedlabel { font-size: 15px; }
 html.void-tv .pw__savedcount { font-size: 14px; }
@@ -773,5 +775,84 @@ html.void-tv .pw__empty { font-size: 14px; }
 /* RTL */
 html[dir="rtl"] .pw__addbtn { margin-left: 0; margin-right: 8px; }
 html[dir="rtl"] .pw__preview-x { margin-left: 0; margin-right: 4px; }
+
+/* Per-episode share popover (lives inside the dialog; window.open only) */
+.pw__sharepop {
+  position: fixed;
+  z-index: 2147483000;
+  width: 264px;
+  max-width: calc(100vw - 16px);
+  margin: 0;
+  padding: 10px 12px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(235, 240, 245, .24);
+  background: rgba(8, 10, 14, .62);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  color: rgba(250, 252, 255, .9);
+}
+.pw__sharepop-title {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(250, 252, 255, .92);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pw__sharepop-hint { margin: 0 0 8px; font-size: 10.5px; color: rgba(235, 240, 245, .55); }
+.pw__sharepop-row { display: flex; flex-wrap: wrap; }
+.pw__sharepop-btn {
+  min-height: 36px;
+  margin: 0 6px 8px 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(235, 240, 245, .18);
+  background: rgba(235, 240, 245, .055);
+  color: rgba(250, 252, 255, .9);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease;
+}
+.pw__sharepop-btn:hover,
+.pw__sharepop-btn:focus { border-color: rgba(251, 191, 36, .5); background: rgba(251, 191, 36, .08); outline: none; }
+
+/* Bookmarks empty state */
+.pw__bmhint {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(235, 240, 245, .16);
+  color: rgba(235, 240, 245, .5);
+  font-size: 12px;
+}
+
+/* Golden loading ring around the show-view artwork: a faint full ring plus
+   one short trail sweeping it; only present while .is-loading is set. */
+.pw__art--lg.is-loading::before,
+.pw__art--lg.is-loading::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.pw__art--lg.is-loading::before { border: 1px solid rgba(251, 191, 36, .28); }
+.pw__art--lg.is-loading::after {
+  border: 1px solid transparent;
+  border-top-color: #FBBF24;
+  animation: pw-loadspin 1.1s linear infinite;
+}
+@keyframes pw-loadspin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pw__art--lg.is-loading::after {
+    animation: none;
+    border-top-color: rgba(251, 191, 36, .75);
+    border-right-color: rgba(251, 191, 36, .35);
+  }
+}
 html[dir="rtl"] .pw__savedlabel { text-align: right; }
 html[dir="rtl"] .pw__opmlbtn { margin: 0 0 0 8px; }

@@ -485,7 +485,28 @@
     if (Date.now() - lastSave >= 5000) { saveProgress(); }
     if (sheet && !sheet.hidden && sleep.deadline) { updateSleepLine(); }
   });
+  /* ---- loading-ring state ----
+     True from a load attempt until audio actually plays, and again whenever
+     the element stalls for buffering. Emitted as 'podcast:loading' so the
+     window can ring that episode's artwork; cleared by playing, pause,
+     ended, error and stop. */
+  var loadingState = false;
+  function setLoading(v) {
+    if (loadingState === v) { return; }
+    loadingState = v;
+    emit('podcast:loading', {
+      episodeId: current ? current.episode.id : null,
+      showId: current ? current.show.id : null,
+      loading: loadingState
+    });
+  }
+
+  audio.addEventListener('loadstart', function () { setLoading(active); });
+  audio.addEventListener('waiting', function () { if (active) { setLoading(true); } });
+  audio.addEventListener('playing', function () { setLoading(false); });
+  audio.addEventListener('canplay', function () { if (active && !audio.paused) { setLoading(false); } });
   audio.addEventListener('pause', function () {
+    setLoading(false);
     if (active) { saveProgress(); }
     syncEmblem();
     emit('podcast:playing', { episodeId: current ? current.episode.id : null, playing: false });
@@ -496,6 +517,7 @@
   });
   audio.addEventListener('seeked', function () { if (active) { saveProgress(); } });
   audio.addEventListener('ended', function () {
+    setLoading(false);
     if (!current) { return; }
     var ep = current.episode;
     store.setProgress(ep.id, ep.durationSec, ep.durationSec, true);
@@ -525,6 +547,7 @@
      in place: no queue change, no extra events, no state faking — if it fails
      again the audio element keeps its error and the thread shows ERROR. */
   audio.addEventListener('error', function () {
+    setLoading(false);
     if (!active || !current) { return; }
     var err = audio.error;
     if (!err || err.code !== 2) { return; }
@@ -589,6 +612,7 @@
   function stop() {
     if (!active) { return; }
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; }
+    setLoading(false);
     saveProgress();
     try { audio.pause(); } catch (e) { /* paused */ }
     teardownMode();
@@ -878,6 +902,7 @@
         episodeId: current ? current.episode.id : null,
         showId: current ? current.show.id : null,
         playing: active && !audio.paused,
+        loading: active && loadingState,
         rate: rate,
         volume: audio.volume,
         queueLength: store.getQueue().length,
