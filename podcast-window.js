@@ -613,6 +613,10 @@
     var sh = data.showById(showId);
     if (!sh) { if (view === 'show') { backToLibrary(); } return; }
     var isSavedView = showId === SAVED_ID;
+    /* The local publishing preview (?publishPreview=1) is the only consumer of
+       these two hooks, and it is absent from every other build, so production
+       never reaches past the first test. */
+    var preview = window.VoidPodcastPublishPreview || null;
     var list = isSavedView
       ? store.getSaved().slice().sort(function (a, b) { return b.savedAt - a.savedAt; })
       : data.episodesOf(showId);
@@ -633,6 +637,9 @@
     playNote.hidden = !errorNote;
     if (errorNote) { playNote.textContent = errorNote; }
     renderShowActions(showId);
+    if (preview && preview.decorateShowActions && !isSavedView) {
+      try { preview.decorateShowActions(showActions, showId, sh); } catch (e) { /* preview is optional */ }
+    }
     epList.textContent = '';
     if (!list.length) {
       epList.appendChild(el('li', 'pw__empty', 'No episodes yet · هنوز قسمتی نیست'));
@@ -705,6 +712,9 @@
       fill.style.width = (frac * 100).toFixed(2) + '%';
       rail.appendChild(fill);
       li.appendChild(play); li.appendChild(meta); li.appendChild(star); li.appendChild(rail);
+      if (preview && preview.decorateEpisodeRow) {
+        try { preview.decorateEpisodeRow(li, ep, sh); } catch (e) { /* preview is optional */ }
+      }
       epList.appendChild(li);
     });
   }
