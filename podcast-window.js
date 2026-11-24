@@ -590,6 +590,8 @@
     dialog.scrollTop = 0;
     if (sharePopBtn) { sharePopBtn.setAttribute('aria-expanded', 'false'); }
     document.removeEventListener('click', sharePopDoc, true);
+    sharePopUnwatch();
+    sharePopClearSettle();
     var b = sharePopBtn;
     sharePopBtn = null; sharePopEp = null; sharePopShow = null;
     if (restore && b && b.getClientRects().length) { b.focus(); }
@@ -632,6 +634,90 @@
     }
     shareCopyFallback(url); done();
   }
+  /* The dialog's backdrop-filter (and the .pw--fallback transform) make the
+     dialog box the containing block for position:fixed children, so viewport
+     coordinates from getBoundingClientRect() are silently re-based and the
+     popover lands outside the modal and is clipped by its overflow. Give
+     left/top in dialog-local coordinates: measure where the browser actually
+     puts the popover for viewport (0,0), then convert. */
+  function sharePopPlace() {
+    if (!sharePop || sharePop.hidden || !sharePopBtn) { return; }
+    var dr = dialog.getBoundingClientRect();
+    /* Mid-open or mid-resize the dialog box can be transiently collapsed or
+       animated; placing against such a rect would strand the popover outside
+       the dialog, so skip and let the settle pass re-place once it is real. */
+    if (dr.width < 40 || dr.height < 40) { return; }
+    sharePop.style.maxWidth = Math.max(200, dr.width - 20) + 'px';
+    sharePop.style.left = '0px';
+    sharePop.style.top = '0px';
+    var probe = sharePop.getBoundingClientRect();
+    /* The dialog (its backdrop-filter, or the .pw--fallback transform) is the
+       popover's containing block, so the style coordinates hang off the
+       dialog box; the browser's own offsetParent bookkeeping says which box
+       is in charge. The self-measuring probe can read one compositor commit
+       behind right after a viewport change, so when it disagrees with the
+       derived origin the derived one wins (6px covers the pwIn entry scale). */
+    var origin = sharePop.offsetParent === dialog
+      ? { x: dr.left, y: dr.top }
+      : { x: 0, y: 0 };
+    var dx = probe.left, dy = probe.top;
+    if (Math.abs(probe.left - origin.x) > 6 || Math.abs(probe.top - origin.y) > 6) {
+      dx = origin.x;
+      dy = origin.y;
+    }
+    var r = sharePopBtn.getBoundingClientRect();
+    var w = sharePop.offsetWidth || 240, h = sharePop.offsetHeight || 150;
+    if (w < 40 || h < 40) { return; }
+    var minX = Math.max(dr.left, 0) + 10;
+    var maxX = Math.min(dr.right, window.innerWidth) - w - 10;
+    var minY = Math.max(dr.top, 0) + 10;
+    var maxY = Math.min(dr.bottom, window.innerHeight) - h - 10;
+    var left = r.left, top = r.bottom + 6;
+    if (top > maxY) { top = r.top - 6 - h; }
+    if (left > maxX) { left = r.right - w; }
+    left = Math.max(minX, Math.min(left, maxX));
+    top = Math.max(minY, Math.min(top, maxY));
+    sharePop.style.left = (left - dx) + 'px';
+    sharePop.style.top = (top - dy) + 'px';
+  }
+  /* Re-place shortly after open: the dialog's pwIn entry animation, the
+     first mobile layout and post-resize stale readings can make the
+     immediate measurement transient; the last pass runs well past both. */
+  var sharePopTimers = [];
+  function sharePopSettle() {
+    sharePopPlace();
+  }
+  function sharePopScheduleSettle() {
+    sharePopClearSettle();
+    sharePopTimers.push(setTimeout(sharePopSettle, 60));
+    sharePopTimers.push(setTimeout(sharePopSettle, 260));
+    sharePopTimers.push(setTimeout(sharePopSettle, 520));
+  }
+  function sharePopClearSettle() {
+    for (var i = 0; i < sharePopTimers.length; i++) { clearTimeout(sharePopTimers[i]); }
+    sharePopTimers = [];
+  }
+  /* Keep the popover anchored to its Share button while the episode list
+     scrolls or the viewport resizes (scroll does not bubble; capture catches
+     the .pw__body scroller). */
+  var sharePopOnMove = null;
+  function sharePopWatch() {
+    if (sharePopOnMove) { return; }
+    var pending = false;
+    sharePopOnMove = function () {
+      if (pending || !sharePop || sharePop.hidden) { return; }
+      pending = true;
+      requestAnimationFrame(function () { pending = false; sharePopPlace(); });
+    };
+    dialog.addEventListener('scroll', sharePopOnMove, true);
+    window.addEventListener('resize', sharePopOnMove);
+  }
+  function sharePopUnwatch() {
+    if (!sharePopOnMove) { return; }
+    dialog.removeEventListener('scroll', sharePopOnMove, true);
+    window.removeEventListener('resize', sharePopOnMove);
+    sharePopOnMove = null;
+  }
   function sharePopOpen(ep, sh, btn) {
     sharePopClose(false);
     if (!sharePop) {
@@ -667,16 +753,12 @@
     dialog.scrollTop = 0;
     sharePop.style.visibility = 'hidden';
     sharePop.hidden = false;
-    var r = btn.getBoundingClientRect();
-    var w = sharePop.offsetWidth || 240, h = sharePop.offsetHeight || 150;
-    var left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
-    var top = r.bottom + 6;
-    if (top + h > window.innerHeight - 8) { top = Math.max(8, r.top - h - 6); }
-    sharePop.style.left = left + 'px';
-    sharePop.style.top = top + 'px';
+    sharePopPlace();
     sharePop.style.visibility = '';
     btn.setAttribute('aria-expanded', 'true');
     document.addEventListener('click', sharePopDoc, true);
+    sharePopWatch();
+    sharePopScheduleSettle();
     copyB.focus();
     dialog.scrollLeft = 0;
     dialog.scrollTop = 0;
