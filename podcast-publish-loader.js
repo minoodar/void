@@ -1,12 +1,13 @@
 /* Podcast Galaxy Publishing — Phase 1 UI preview: entry point.
  *
- * LOCAL-ONLY GATE. This file is the only preview code that index.html loads,
- * and it does nothing at all unless BOTH conditions hold:
+ * SELF-GATING. This file is the only preview code that index.html loads, and it
+ * does nothing at all unless BOTH conditions hold:
  *
  *   1. the URL carries ?publishPreview=1
- *   2. the page is served from a loopback origin (or opened from disk)
+ *   2. the page runs on a loopback origin, from disk, or on the published
+ *      minoodar.github.io site (there the flag is the explicit opt-in demo)
  *
- * So the documented way to see the preview is
+ * So the documented local way to see the preview is
  *
  *   http://127.0.0.1:8765/index.html?publishPreview=1
  *
@@ -14,9 +15,11 @@
  *
  *   http://127.0.0.1:8765/index.html?publishPreview=1&signal=<publication-id>
  *
- * On the deployed site the flag is ignored and nothing is fetched: no CSS, no
- * JS, no dialog, no chip in the nav. The normal production experience is
- * byte-for-byte what it was before this file existed.
+ * The preview NEVER opens by itself: without the flag in the URL nothing is
+ * fetched, no CSS, no JS, no dialog, no chip in the nav, and visitors see the
+ * normal experience byte-for-byte. With the flag, everything the UI shows is
+ * simulated and device-local — playback is simulated, Save and Follow are
+ * device-local only, nothing is published, fetched or stored on a server.
  *
  * The preview is independent of the podcast feature flag: ?podcast=0 still
  * shows it, because publishing is its own surface. What the Podcast window
@@ -38,9 +41,13 @@
     var flag = /[?&]publishPreview=(1|true|on)(&|$)/.test(search);
     if (!flag) { return false; }
     var host = String(G.location && G.location.hostname || '');
+    /* local development: any loopback origin (unchanged) */
     var local = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1'
       || host === '0.0.0.0' || host === '' || /^\[?::1\]?$/.test(host);
-    return local;
+    if (local) { return true; }
+    /* public demo: explicit opt-in on the published site only; every other
+       origin (including github.io previews of other repos) stays inert. */
+    return host === 'minoodar.github.io';
   }
 
   if (!enabled()) { return; }
