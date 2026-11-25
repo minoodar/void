@@ -591,7 +591,6 @@
     if (sharePopBtn) { sharePopBtn.setAttribute('aria-expanded', 'false'); }
     document.removeEventListener('click', sharePopDoc, true);
     sharePopUnwatch();
-    sharePopClearSettle();
     var b = sharePopBtn;
     sharePopBtn = null; sharePopEp = null; sharePopShow = null;
     if (restore && b && b.getClientRects().length) { b.focus(); }
@@ -634,40 +633,28 @@
     }
     shareCopyFallback(url); done();
   }
-  /* The dialog's backdrop-filter (and the .pw--fallback transform) make the
-     dialog box the containing block for position:fixed children, so viewport
-     coordinates from getBoundingClientRect() are silently re-based and the
-     popover lands outside the modal and is clipped by its overflow. Give
-     left/top in dialog-local coordinates: measure where the browser actually
-     puts the popover for viewport (0,0), then convert. */
+  /* The popover is position:absolute (see .pw__sharepop), so the dialog's box is
+     its containing block and left/top are dialog-local. That makes the math
+     frame-independent: during the pwIn entry transform the button rect and the
+     popover box are transformed together, so a rect measured in this same task
+     is already the position the user will see — no probe pass, no re-based
+     first paint, no settle timers. The dialog declares border:0 and padding:0,
+     so its border box is also the absolute-positioning box. */
   function sharePopPlace() {
     if (!sharePop || sharePop.hidden || !sharePopBtn) { return; }
     var dr = dialog.getBoundingClientRect();
-    /* Mid-open or mid-resize the dialog box can be transiently collapsed or
-       animated; placing against such a rect would strand the popover outside
-       the dialog, so skip and let the settle pass re-place once it is real. */
+    /* Mid-open or mid-resize the dialog box can be transiently collapsed;
+       placing against such a rect would strand the popover, so keep the last
+       good placement and wait for the resize/scroll watcher. */
     if (dr.width < 40 || dr.height < 40) { return; }
+    /* Width is now resolved against the dialog, so keep it inside the real card
+       and re-measure afterwards — wrapping can change the height. */
     sharePop.style.maxWidth = Math.max(200, dr.width - 20) + 'px';
-    sharePop.style.left = '0px';
-    sharePop.style.top = '0px';
-    var probe = sharePop.getBoundingClientRect();
-    /* The dialog (its backdrop-filter, or the .pw--fallback transform) is the
-       popover's containing block, so the style coordinates hang off the
-       dialog box; the browser's own offsetParent bookkeeping says which box
-       is in charge. The self-measuring probe can read one compositor commit
-       behind right after a viewport change, so when it disagrees with the
-       derived origin the derived one wins (6px covers the pwIn entry scale). */
-    var origin = sharePop.offsetParent === dialog
-      ? { x: dr.left, y: dr.top }
-      : { x: 0, y: 0 };
-    var dx = probe.left, dy = probe.top;
-    if (Math.abs(probe.left - origin.x) > 6 || Math.abs(probe.top - origin.y) > 6) {
-      dx = origin.x;
-      dy = origin.y;
-    }
-    var r = sharePopBtn.getBoundingClientRect();
     var w = sharePop.offsetWidth || 240, h = sharePop.offsetHeight || 150;
     if (w < 40 || h < 40) { return; }
+    var r = sharePopBtn.getBoundingClientRect();
+    /* Fit inside the card where it is on screen: the dialog clips its overflow,
+       and on short viewports the card is the tighter of the two boxes. */
     var minX = Math.max(dr.left, 0) + 10;
     var maxX = Math.min(dr.right, window.innerWidth) - w - 10;
     var minY = Math.max(dr.top, 0) + 10;
@@ -677,25 +664,8 @@
     if (left > maxX) { left = r.right - w; }
     left = Math.max(minX, Math.min(left, maxX));
     top = Math.max(minY, Math.min(top, maxY));
-    sharePop.style.left = (left - dx) + 'px';
-    sharePop.style.top = (top - dy) + 'px';
-  }
-  /* Re-place shortly after open: the dialog's pwIn entry animation, the
-     first mobile layout and post-resize stale readings can make the
-     immediate measurement transient; the last pass runs well past both. */
-  var sharePopTimers = [];
-  function sharePopSettle() {
-    sharePopPlace();
-  }
-  function sharePopScheduleSettle() {
-    sharePopClearSettle();
-    sharePopTimers.push(setTimeout(sharePopSettle, 60));
-    sharePopTimers.push(setTimeout(sharePopSettle, 260));
-    sharePopTimers.push(setTimeout(sharePopSettle, 520));
-  }
-  function sharePopClearSettle() {
-    for (var i = 0; i < sharePopTimers.length; i++) { clearTimeout(sharePopTimers[i]); }
-    sharePopTimers = [];
+    sharePop.style.left = (left - dr.left + dialog.scrollLeft) + 'px';
+    sharePop.style.top = (top - dr.top + dialog.scrollTop) + 'px';
   }
   /* Keep the popover anchored to its Share button while the episode list
      scrolls or the viewport resizes (scroll does not bubble; capture catches
@@ -718,6 +688,26 @@
     window.removeEventListener('resize', sharePopOnMove);
     sharePopOnMove = null;
   }
+  /* Follow hands on the PARENT FEED, never the episode audio URL. A saved
+     episode lives under the pseudo-show whose feedUrl is empty, and an unsafe
+     URL is dropped by the same validator the typed path uses — either way the
+     row is simply absent and every other share method stays available. */
+  function feedForFollow(sh) {
+    if (!sh || sh.id === SAVED_ID) { return ''; }
+    return Feed.safeFeedUrl(String(sh.feedUrl || ''));
+  }
+  function voidPageBase() {
+    try {
+      var u = new URL(location.href);
+      if (u.protocol === 'https:' || u.protocol === 'http:') { return u.origin + u.pathname; }
+    } catch (e) { /* file:// */ }
+    return 'https://minoodar.github.io/void/';
+  }
+  function followLink(feedUrl) {
+    /* origin + pathname only: the sender's own query and fragment (a feature
+       flag, an #anchor, a stale follow=) must not ride along to the recipient. */
+    return voidPageBase() + '?follow=' + encodeURIComponent(feedUrl);
+  }
   function sharePopOpen(ep, sh, btn) {
     sharePopClose(false);
     if (!sharePop) {
@@ -731,7 +721,7 @@
     sharePopEp = ep; sharePopShow = sh; sharePopBtn = btn;
     var title = el('p', 'pw__sharepop-title');
     title.appendChild(document.createTextNode(ep.title));
-    var hint = el('p', 'pw__sharepop-hint', 'Shares this episode’s audio link · پیوند صوت این قسمت');
+    var hint = el('p', 'pw__sharepop-hint', 'Share this episode or follow its podcast · اشتراک این قسمت یا دنبال‌کردن پادکست');
     var row = el('div', 'pw__sharepop-row');
     var copyB = null;
     function shareBtn(label, fn) {
@@ -745,23 +735,36 @@
     var text = ep.title + (sh && sh.title ? ' — ' + sh.title : '');
     shareBtn('WhatsApp', function () { openShareUrl('https://wa.me/?text=' + encodeURIComponent(text + '\n\n' + ep.audioUrl)); });
     shareBtn('Telegram', function () { openShareUrl('https://t.me/share/url?url=' + encodeURIComponent(ep.audioUrl) + '&text=' + encodeURIComponent(text)); });
-    shareBtn('X', function () { openShareUrl('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text + ' ' + ep.audioUrl)); });
+    shareBtn('X', function () { openShareUrl('https://x.com/intent/tweet?text=' + encodeURIComponent(text + ' ' + ep.audioUrl)); });
+    var followUrl = feedForFollow(sh);
+    if (followUrl) {
+      var followB = shareBtn('Follow in Void · دنبال‌کردن', function () { shareCopy(followLink(followUrl), followB); });
+    }
     sharePop.textContent = '';
     sharePop.appendChild(title); sharePop.appendChild(hint); sharePop.appendChild(row);
     dialog.appendChild(sharePop);
     dialog.scrollLeft = 0;
     dialog.scrollTop = 0;
-    sharePop.style.visibility = 'hidden';
+    /* Absolute, not fixed — see the .pw__sharepop rule: the dialog box is the
+       containing block, so the coordinates sharePopPlace computes are
+       dialog-local and stay valid for the whole frame (the pwIn entry transform
+       moves the Share button and the popover together). One placement is final,
+       and it lands in this task, before anything can paint. There is no
+       hide-while-measuring step: the low-FX wildcard (html.void-lowfx * in
+       void-tv.css) forces transition-duration onto every element, so an un-hide
+       ran as a CSSTransition that reported its from-value — a computed
+       visibility:hidden popover — until the next animation frame. */
     sharePop.hidden = false;
     sharePopPlace();
-    sharePop.style.visibility = '';
     btn.setAttribute('aria-expanded', 'true');
     document.addEventListener('click', sharePopDoc, true);
     sharePopWatch();
-    sharePopScheduleSettle();
     copyB.focus();
     dialog.scrollLeft = 0;
     dialog.scrollTop = 0;
+    /* Focus can scroll the dialog; the reset above undoes that, so re-place
+       synchronously against the settled geometry rather than scheduling a retry. */
+    sharePopPlace();
   }
   dialog.addEventListener('cancel', function (e) {
     if (sharePop && !sharePop.hidden && sharePopEp) { e.preventDefault(); sharePopClose(true); }
@@ -872,12 +875,22 @@
           return;
         }
         var st = P.getState();
-        if (st.active && st.episodeId === ep.id) { P.toggle(); return; }
+        if (st.active && st.episodeId === ep.id) {
+          /* Pressing the row that is already current resumes it — a successful
+             start like any other, so the same waiter arms. Arming while it is
+             still paused means the player's own 'podcast:playing' event is what
+             closes the dialog, so a blocked start (no event, waiter dropped by
+             its own bound) leaves the window open; a pause arms nothing. */
+          if (!st.playing) { closeWhenPlaying(P, ep); }
+          P.toggle();
+          return;
+        }
         var res = P.play(ep, sh);
         if (!res.ok && res.reason === 'no-source') {
           playNote.textContent = 'No audio source yet — add a git-ignored podcast-dev-config.local.js to test playback · هنوز فایل صوتی برای این قسمت نیست';
           playNote.hidden = false;
         }
+        if (res.ok) { closeWhenPlaying(P, ep); }
       });
       var meta = el('div', 'pw__epmeta');
       var t = el('span', 'pw__eptitle');
@@ -1069,6 +1082,42 @@
   });
 
   /* ---- open / close ---- */
+  /* A press in the episode list hands the screen back to the minimal
+     visualizer once audio is genuinely running: 'podcast:playing' is the
+     player's own success signal, so a blocked or failed start leaves this
+     window open with its note visible. Closing is display-only — the audio
+     element, queue and progress belong to VoidPodcastPlayer, not to this
+     dialog. The timeout drops a waiter that never fired. */
+  var AUTO_CLOSE_MS = 8000;
+  var autoClose = null;
+  function cancelAutoClose() {
+    if (!autoClose) { return; }
+    window.removeEventListener('podcast:playing', autoClose.onState);
+    clearTimeout(autoClose.timer);
+    autoClose = null;
+  }
+  function closeWhenPlaying(P, ep) {
+    cancelAutoClose();
+    var st = P.getState();
+    if (st.playing && st.episodeId === ep.id) { close(); return; }
+    function onState(e) {
+      var d = e.detail || {};
+      if (d.playing && d.episodeId === ep.id) { close(); }
+    }
+    autoClose = { onState: onState, timer: setTimeout(cancelAutoClose, AUTO_CLOSE_MS) };
+    window.addEventListener('podcast:playing', onState);
+  }
+
+  /* ?follow=<rss> arrives from a shared follow link. It passes the same
+     https/no-credentials gate a typed URL uses and only pre-fills the Add
+     field — subscription still needs the user's own press, so preview, dedupe
+     and the existing workflow stand unchanged. */
+  var pendingFollow = (function () {
+    var raw = '';
+    try { raw = new URLSearchParams(location.search).get('follow') || ''; } catch (e) { return ''; }
+    return Feed.safeFeedUrl(String(raw).trim().slice(0, 2048));
+  })();
+
   function open(opts) {
     opts = opts || {};
     if (isOpen()) {
@@ -1100,6 +1149,16 @@
     if (isTV()) { focusFirst(); }
     else { searchInput.focus(); }
     refreshFeeds();
+    /* Direct entry from the player's title lands on the playing episode's show,
+       where Bookmark and Share already live; audio keeps running untouched. A
+       follow link is the other entry, and one opening gets one landing state. */
+    if (opts.showId) { openShow(opts.showId, returnFocus); }
+    else if (pendingFollow) {
+      searchInput.value = pendingFollow;
+      pendingFollow = '';
+      showNote('Feed ready to add · فید آمادهٔ افزودن است');
+      searchInput.focus();
+    }
   }
   function restoreFocus() {
     if (returnFocus && returnFocus.focus && returnFocus.getClientRects && returnFocus.getClientRects().length > 0) {
@@ -1108,6 +1167,7 @@
     returnFocus = null;
   }
   function close() {
+    cancelAutoClose();
     if (!isOpen()) { return; }
     resetConfirm();
     if (fallbackOpen) {

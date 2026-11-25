@@ -391,6 +391,30 @@ html[dir="rtl"] .pw__fill { left: auto; right: 0; }
 #void-music-root.vm-podcast .vm-dock.is-empty .vm-open-label { display: none; }
 #void-music-root.vm-podcast.vm-root-meta-empty .vm-meta { display: flex; }
 
+/* The episode title is the way back into the Podcast window while the Podcast
+   owns the chrome (.vm-podcast is removed with the session, and music mode
+   never carries the class). Resting text is unchanged: pointer plus a faint
+   dotted underline on hover, and a golden ring for the D-pad.
+   Reaching the row is the other half of it: .vm-meta is pointer-events:none
+   and an in-flow row paints under #void-god-galaxy (positioned, z-index 0), so
+   a bare cursor rule left real clicks landing on the galaxy layer. Lift the row
+   the way Music's own .vm-meta.is-art does, and keep Music's quiet-mode rule
+   (.is-quiet .vm-meta .vm-title) in force by excluding that state. */
+#void-music-root.vm-podcast:not(.is-quiet) .vm-meta { position: relative; z-index: 2; }
+#void-music-root.vm-podcast:not(.is-quiet) .vm-meta .vm-title { pointer-events: auto; cursor: pointer; }
+#void-music-root.vm-podcast .vm-title:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: rgba(251, 191, 36, .55);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+#void-music-root.vm-podcast .vm-title:focus {
+  outline: 2px solid rgba(251, 191, 36, .85);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 /* Currently playing / selected episode row */
 .pw__ep.is-current { background: rgba(251, 191, 36, .055); }
 .pw__ep.is-current .pw__epmeta { opacity: 1; }
@@ -778,10 +802,17 @@ html[dir="rtl"] .pw__preview-x { margin-left: 0; margin-right: 4px; }
 
 /* Per-episode share popover (lives inside the dialog; window.open only) */
 .pw__sharepop {
-  position: fixed;
+  /* Absolutely positioned, never fixed: `position: fixed` inside a modal dialog
+     gets its containing block from the dialog's backdrop-filter and from the
+     `pwIn` keyframes' transform, and for the animation's ~220 ms Chrome resolves
+     those left/top against the *viewport* — the box opened at (0,0) then slid
+     into place, so the buttons were unhittable where they were drawn. As a
+     positioned child of #void-podcast-modal the coordinates are dialog-local
+     for the whole frame, transform included, so the first paint is final. */
+  position: absolute;
   z-index: 2147483000;
   width: 264px;
-  max-width: calc(100vw - 16px);
+  max-width: calc(100% - 16px);
   margin: 0;
   padding: 10px 12px 4px;
   border-radius: 12px;
@@ -792,6 +823,16 @@ html[dir="rtl"] .pw__preview-x { margin-left: 0; margin-right: 4px; }
   box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
   color: rgba(250, 252, 255, .9);
 }
+/* Low-FX (html.void-lowfx * in void-tv.css) forces a near-zero
+   transition-duration onto every element, and `transition-property` is still
+   its initial `all` here. Chrome starts such a transition on the next style
+   recalc and reports its from-value until then, so any property this popover is
+   revealed with — visibility, and the left/top/max-width that sharePopPlace
+   writes — arrived one animation frame late: the box looked right and was
+   unhittable. The id selector outranks that wildcard, so the reveal and the
+   placement resolve inside the task that opens the popover. */
+#void-podcast-modal .pw__sharepop { transition: none !important; }
+
 .pw__sharepop-title {
   margin: 0 0 4px;
   font-size: 12.5px;

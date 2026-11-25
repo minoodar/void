@@ -46,7 +46,7 @@
      جا شود. متنِ نامه هرگز در توییت نمی‌رود. */
   var X_PANEL_TEXT = 'A star is burning in the Void. \u2726 Read it before it fades:';
   var X_PANEL_TEXT_FA = '\u0633\u062a\u0627\u0631\u0647\u200c\u0627\u06cc \u062f\u0631 \u06a9\u0647\u06a9\u0634\u0627\u0646 \u0645\u06cc\u200c\u062f\u0631\u062e\u0634\u062f. \u2726 \u067e\u06cc\u0634 \u0627\u0632 \u0622\u0646\u06a9\u0647 \u0645\u062d\u0648 \u0634\u0648\u062f \u0628\u062e\u0648\u0627\u0646\u06cc\u062f\u0634:';
-  var X_INTENT = 'https://twitter.com/intent/tweet?text=';
+  var X_INTENT = 'https://x.com/intent/tweet?text=';
   /* فاصلهٔ تلاش‌های تأییدِ خواندنِ نامه پس از ثبت؛ اولین تلاش بی‌درنگ است. */
   var SHARE_VERIFY_DELAYS = [0, 2000, 6000];
   var X_SHARE_COPY = {

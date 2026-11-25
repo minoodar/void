@@ -365,15 +365,86 @@
       sndBtn = null; sndIntercept = null;
     }
   }
+  /* ---- title row: the direct way back (polish C) ----
+     While the Podcast owns the borrowed chrome, the title on screen IS this
+     episode, so pressing it reopens the Podcast window on the playing show.
+     Handlers and a11y attributes live on Music's own .vm-title node and are
+     removed the moment Music reclaims the session, so Music's title behaviour
+     (artwork hover, Enter/Space) is left exactly as it was.
+     Music re-writes that row too: setMeta() ends in setTitleArt(!!artSrc), and
+     with no artwork it drops role/tabindex/title — the borrowed state's own
+     button would vanish mid-playback (measured in real Chrome ~1s after a
+     start). ensureTitleAttrs() keeps it reachable, and the observer only exists
+     while the chrome is borrowed. On release the row goes back to exactly the
+     attributes Music itself had put there, so a Podcast session cannot leave
+     Music's title unbuttoned. */
+  var titleNode = null, titleClick = null, titleKey = null, titleObs = null, titlePrev = null;
+  var TITLE_ATTRS = ['tabindex', 'role', 'aria-label', 'title'];
+  var TITLE_LABEL = 'Open Podcast · پادکست';
+  function ensureTitleAttrs(node) {
+    if (node.getAttribute('tabindex') === '0' && node.getAttribute('role') === 'button'
+      && node.getAttribute('aria-label') === TITLE_LABEL) { return; }
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('role', 'button');
+    node.setAttribute('aria-label', TITLE_LABEL);
+    node.setAttribute('title', TITLE_LABEL);
+  }
+  function openOwnWindow() {
+    var W = window.VoidPodcastWindow;
+    if (!W || typeof W.open !== 'function') { return; }
+    W.open({ returnFocus: titleNode, showId: current ? current.show.id : null });
+  }
+  function onTitleClick(e) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    openOwnWindow();
+  }
+  function onTitleKey(e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') { return; }
+    /* same-node bubble listeners (Music's Enter/Space → replayArtwork) need
+       stopImmediatePropagation, which stopPropagation alone does not block */
+    e.preventDefault(); e.stopImmediatePropagation();
+    openOwnWindow();
+  }
+  function armTitleOpen(on) {
+    if (!on) {
+      if (titleObs) { titleObs.disconnect(); titleObs = null; }
+      if (titleNode) {
+        titleNode.removeEventListener('click', titleClick, true);
+        titleNode.removeEventListener('keydown', titleKey, true);
+        TITLE_ATTRS.forEach(function (a) {
+          var had = titlePrev ? titlePrev[a] : null;
+          if (had) { titleNode.setAttribute(a, had); } else { titleNode.removeAttribute(a); }
+        });
+      }
+      titleNode = null; titleClick = null; titleKey = null; titlePrev = null;
+      return;
+    }
+    var node = root.querySelector('.vm-title');
+    if (!node) { return; }                       /* the root exists before its UI is built */
+    if (node === titleNode) { ensureTitleAttrs(node); return; }
+    armTitleOpen(false);
+    titleNode = node; titleClick = onTitleClick; titleKey = onTitleKey;
+    titlePrev = {};
+    TITLE_ATTRS.forEach(function (a) { titlePrev[a] = node.getAttribute(a); });
+    node.addEventListener('click', titleClick, true);
+    node.addEventListener('keydown', titleKey, true);
+    ensureTitleAttrs(node);
+    if (window.MutationObserver) {
+      titleObs = new MutationObserver(function () { if (titleNode) { ensureTitleAttrs(titleNode); } });
+      titleObs.observe(node, { attributeFilter: TITLE_ATTRS });
+    }
+  }
+
   function applyChrome() {
     var want = active && guestOwns() && !!document.getElementById('void-music-root');
-    if (want === borrowed) { return; }
+    if (want === borrowed) { armTitleOpen(want); return; }
     borrowed = want;
     if (want) {
       root.classList.add('vm-podcast');
       enterChip();
       drawTicks();
       armSndIntercept(true);
+      armTitleOpen(true);
       /* Synthetic Voice Thread owns the central orb only while the Podcast owns
          the session. It never touches playback, Web Audio, crossOrigin or the
          Music analyser. */
@@ -386,6 +457,7 @@
       exitChip();
       clearTicks();
       armSndIntercept(false);
+      armTitleOpen(false);
       if (window.VoidPodcastThread && typeof window.VoidPodcastThread.stop === 'function') {
         window.VoidPodcastThread.stop();
       }
