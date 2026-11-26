@@ -184,6 +184,7 @@
   showView.hidden = true;
   var showHead = el('div', 'pw__showhead');
   var showArt = el('span', 'pw__art pw__art--lg');
+  var showArtLink = null, showTitleLink = null;
   var showMeta = el('div', 'pw__showmeta');
   var showTitle = el('h3', 'pw__showtitle');
   var showTitleFa = el('p', 'pw__showtitle-fa'); showTitleFa.dir = 'rtl'; showTitleFa.lang = 'fa';
@@ -827,11 +828,39 @@
       ? store.getSaved().slice().sort(function (a, b) { return b.savedAt - a.savedAt; })
       : data.episodesOf(showId);
     var ps = window.VoidPodcastPlayer ? window.VoidPodcastPlayer.getState() : null;
+    function setHomepageLinks(siteUrl, title) {
+      if (showArtLink && showArt.parentNode === showArtLink) {
+        showHead.replaceChild(showArt, showArtLink);
+      }
+      if (showTitleLink && showTitle.parentNode === showTitleLink) {
+        showMeta.replaceChild(showTitle, showTitleLink);
+      }
+      showArtLink = null;
+      showTitleLink = null;
+      if (!siteUrl || isTV()) { return; }
+      showArtLink = el('a', 'pw__showart-link');
+      showArtLink.href = siteUrl;
+      showArtLink.target = '_blank';
+      showArtLink.rel = 'noopener noreferrer';
+      showArtLink.setAttribute('aria-hidden', 'true');
+      showArtLink.tabIndex = -1;
+      showHead.replaceChild(showArtLink, showArt);
+      showArtLink.appendChild(showArt);
+
+      showTitleLink = el('a', 'pw__showtitle-link');
+      showTitleLink.href = siteUrl;
+      showTitleLink.target = '_blank';
+      showTitleLink.rel = 'noopener noreferrer';
+      showTitleLink.setAttribute('aria-label', (Feed.isPlatformSiteUrl(siteUrl) ? 'Podcast page: ' : 'Podcast website: ') + title);
+      showMeta.replaceChild(showTitleLink, showTitle);
+      showTitleLink.appendChild(showTitle);
+    }
     artStyle(showArt);
     showArt.textContent = '';
     fillArt(showArt, sh.artUrl, sh.initials);
     showArt.classList.toggle('is-loading', !!(ps && ps.loading && ps.showId === showId));
     showTitle.textContent = isSavedView ? 'Bookmarks' : sh.title;
+    setHomepageLinks(isSavedView ? null : sh.siteUrl, showTitle.textContent);
     showTitleFa.textContent = isSavedView ? 'نشان‌شده‌ها' : (sh.titleFa || '');
     showTitleFa.hidden = !sh.titleFa;
     showPub.textContent = isSavedView ? (list.length + ' episodes · قسمت') : sh.publisher;

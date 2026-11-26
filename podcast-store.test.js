@@ -18,6 +18,23 @@ function memStorage(seed) {
   };
 }
 
+/* siteUrl is additive and is revalidated whenever stored show data is loaded. */
+{
+  const feedUrl = 'https://feeds.example.com/show.xml';
+  const legacy = store.parseState({ shows: { old: { id: 'old', title: 'Old', feedUrl } } });
+  eq(legacy.shows.old.siteUrl, null, 'siteUrl: old show defaults to null');
+  const valid = store.parseState({ shows: { good: { id: 'good', title: 'Good', feedUrl, siteUrl: ' https://show.example.com/#bio ' } } });
+  eq(valid.shows.good.siteUrl, 'https://show.example.com/', 'siteUrl: trims and strips fragment');
+  [
+    'javascript:alert(1)', '/relative', 'https://u:p@show.example.com/', feedUrl,
+    'https://feeds.example.com/canonical.xml', 'https://show.example.com/' + 'x'.repeat(510)
+  ].forEach((siteUrl, i) => {
+    const resolvedFeedUrl = i === 4 ? siteUrl : '';
+    const state = store.parseState({ shows: { bad: { id: 'bad', title: 'Bad', feedUrl, resolvedFeedUrl, siteUrl } } });
+    eq(state.shows.bad.siteUrl, null, 'siteUrl: rejects invalid stored value ' + i);
+  });
+}
+
 /* Empty storage -> defaults, nothing persisted yet. */
 {
   const s = store.create(memStorage());

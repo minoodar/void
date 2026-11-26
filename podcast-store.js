@@ -54,6 +54,30 @@
   function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
   function isObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
 
+  function sanitizeSiteUrl(raw, feedUrl, resolvedFeedUrl) {
+    if (typeof raw !== 'string') { return null; }
+    var s = raw.trim();
+    if (!s || s.length > 500) { return null; }
+    try {
+      var p = new URL(s);
+      if ((p.protocol !== 'http:' && p.protocol !== 'https:') || p.username || p.password) { return null; }
+      p.hash = '';
+      var value = p.toString();
+      if (value.length > 500) { return null; }
+      function canonical(u) {
+        try {
+          var parsed = new URL(String(u || '').trim());
+          parsed.hash = '';
+          parsed.hostname = parsed.hostname.toLowerCase().replace(/\.$/, '');
+          return parsed.toString();
+        }
+        catch (e) { return ''; }
+      }
+      if (canonical(value) === canonical(feedUrl) || canonical(value) === canonical(resolvedFeedUrl)) { return null; }
+      return value;
+    } catch (e) { return null; }
+  }
+
   function sanitizeShow(id, s) {
     if (!isObj(s)) { return null; }
     return {
@@ -63,6 +87,7 @@
       publisher: str(s.publisher, 120),
       feedUrl: str(s.feedUrl, 2048),
       resolvedFeedUrl: str(s.resolvedFeedUrl, 2048),
+      siteUrl: sanitizeSiteUrl(s.siteUrl, s.feedUrl, s.resolvedFeedUrl),
       artUrl: str(s.artUrl, 2048),
       initials: str(s.initials, 4),
       addedAt: num(s.addedAt),
