@@ -303,9 +303,7 @@ test('keys: every changed asset is keyed away from its HEAD key', () => {
   const from = (src, re) => { const m = src.match(re); assert.ok(m, 'key found for ' + re); return m[1]; };
   const head = (f) => execFileSync('git', ['-C', ROOT, 'show', 'HEAD:' + f], { encoding: 'utf8' }).replace(/\r\n/g, '\n');
   const pairs = [
-    ['podcast-window.css', read('void-domains.js'), head('void-domains.js'), /podcast-window\.css\?v=([^"']+)/],
     ['podcast-store.js', read('void-domains.js'), head('void-domains.js'), /podcast-store\.js\?v=([^"']+)/],
-    ['podcast-feed.js', read('void-domains.js'), head('void-domains.js'), /podcast-feed\.js\?v=([^"']+)/],
     ['podcast-window.js', read('void-domains.js'), head('void-domains.js'), /podcast-window\.js\?v=([^"']+)/]
   ];
   for (const [file, here, before, re] of pairs) {
@@ -313,7 +311,8 @@ test('keys: every changed asset is keyed away from its HEAD key', () => {
   }
   /* Unchanged podcast assets must keep their keys — no needless re-download. */
   const dom = read('void-domains.js'), domHead = head('void-domains.js');
-  for (const re of [/podcast-sample-data\.js\?v=([^"']+)/,
+  for (const re of [/podcast-window\.css\?v=([^"']+)/, /podcast-feed\.js\?v=([^"']+)/,
+    /podcast-sample-data\.js\?v=([^"']+)/,
     /void-podcast-thread\.js\?v=([^"']+)/, /podcast-thread\.css\?v=([^"']+)/]) {
     assert.equal(from(dom, re), from(domHead, re), 'unchanged asset keeps its key');
   }

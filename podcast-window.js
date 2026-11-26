@@ -314,6 +314,10 @@
     var show = parsed.show;
     show.addedAt = prev && prev.addedAt ? prev.addedAt : Date.now();
     show.lastFetchedAt = Date.now();
+    /* A successful parse completes discovery even when the feed has no usable link. */
+    show.siteUrlCheckedAt = show.lastFetchedAt;
+    /* A missing replacement link is not a reason to discard a known safe one. */
+    if (!show.siteUrl && prev && prev.siteUrl) { show.siteUrl = prev.siteUrl; }
     catalogSet(show, parsed.episodes);
     store.registerShow(show, parsed.episodes);
     var meta = parsed.fetchedMeta || {};
@@ -1014,19 +1018,30 @@
     var due = [];
     st.subscriptions.forEach(function (id) {
       var sh = st.shows[id];
-      if (sh && sh.feedUrl && now - (sh.lastFetchedAt || 0) > REFRESH_MS) { due.push(sh.feedUrl); }
+      /* Legacy shows bypass the ordinary interval once; failed fetches remain eligible. */
+      var homepageUnchecked = sh && !sh.siteUrl && !sh.siteUrlCheckedAt;
+      var episodeRefreshDue = sh && now - (sh.lastFetchedAt || 0) > REFRESH_MS;
+      if (sh && sh.feedUrl && (homepageUnchecked || episodeRefreshDue)) {
+        due.push({ feedUrl: sh.feedUrl, showId: id, homepageOnly: homepageUnchecked && !episodeRefreshDue });
+      }
     });
     if (!due.length) { return; }
     refreshing = true;
     var idx = 0, running = 0;
     function next() {
       while (running < 3 && idx < due.length) {
-        var url = due[idx++];
+        var item = due[idx++];
         running++;
-        (function (u) {
-          addFeed(u).then(function (parsed) { adoptFeed(parsed); }, function () { /* silent per-show failure */ })
+        (function (work) {
+          addFeed(work.feedUrl).then(function (parsed) {
+            if (work.homepageOnly) {
+              store.setHomepageDiscovery(work.showId, parsed.show.siteUrl, Date.now());
+            } else {
+              adoptFeed(parsed);
+            }
+          }, function () { /* silent per-show failure; unchecked discovery can retry */ })
             .then(function () { running--; next(); });
-        })(url);
+        })(item);
       }
       if (!running && idx >= due.length) { refreshing = false; }
     }

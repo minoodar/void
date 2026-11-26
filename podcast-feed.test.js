@@ -293,6 +293,7 @@ test('extractFeed parses basic Atom with enclosure links', () => {
   assert.equal(r.kind, 'atom');
   assert.equal(r.show.title, 'Atom Show');
   assert.equal(r.show.publisher, 'Atom Author');
+  assert.equal(r.show.siteUrl, null, 'Atom alternate links are not used as homepage links; RSS plain channel link is the supported source');
   assert.equal(r.count, 1);
   const e = r.episodes[0];
   assert.equal(e.title, 'First entry');

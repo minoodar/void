@@ -23,8 +23,13 @@ function memStorage(seed) {
   const feedUrl = 'https://feeds.example.com/show.xml';
   const legacy = store.parseState({ shows: { old: { id: 'old', title: 'Old', feedUrl } } });
   eq(legacy.shows.old.siteUrl, null, 'siteUrl: old show defaults to null');
+  eq(legacy.shows.old.siteUrlCheckedAt, 0, 'siteUrl: old show remains eligible for one-time discovery');
   const valid = store.parseState({ shows: { good: { id: 'good', title: 'Good', feedUrl, siteUrl: ' https://show.example.com/#bio ' } } });
   eq(valid.shows.good.siteUrl, 'https://show.example.com/', 'siteUrl: trims and strips fragment');
+  const marked = store.parseState({ shows: { done: { id: 'done', title: 'Done', feedUrl, siteUrlCheckedAt: 1234 } } });
+  eq(marked.shows.done.siteUrlCheckedAt, 1234, 'siteUrl: checked marker persists as a numeric timestamp');
+  const hostileMarker = store.parseState({ shows: { bad: { id: 'bad', feedUrl, siteUrlCheckedAt: 'later' } } });
+  eq(hostileMarker.shows.bad.siteUrlCheckedAt, 0, 'siteUrl: invalid checked marker is reset');
   [
     'javascript:alert(1)', '/relative', 'https://u:p@show.example.com/', feedUrl,
     'https://feeds.example.com/canonical.xml', 'https://show.example.com/' + 'x'.repeat(510)
@@ -33,6 +38,43 @@ function memStorage(seed) {
     const state = store.parseState({ shows: { bad: { id: 'bad', title: 'Bad', feedUrl, resolvedFeedUrl, siteUrl } } });
     eq(state.shows.bad.siteUrl, null, 'siteUrl: rejects invalid stored value ' + i);
   });
+}
+
+/* Homepage discovery changes only the two homepage metadata fields. */
+{
+  const mem = memStorage();
+  const s = store.create(mem);
+  s.registerShow({
+    id: 'homepage-only', title: 'Keep title', publisher: 'Keep publisher',
+    feedUrl: 'https://feeds.example.com/homepage-only.xml', addedAt: 17,
+    lastFetchedAt: 23, etag: 'keep-etag', lastModified: 'keep-date'
+  }, [
+    { id: 'ep-a', title: 'A', audioUrl: 'https://cdn.example.com/a.mp3' },
+    { id: 'ep-b', title: 'B', audioUrl: 'https://cdn.example.com/b.mp3' }
+  ]);
+  s.subscribe('homepage-only');
+  s.setProgress('ep-a', 42, 300, false);
+  s.setQueue(['ep-b', 'ep-a']);
+  s.saveEpisode({ id: 'ep-a', showId: 'homepage-only', title: 'A', audioUrl: 'https://cdn.example.com/a.mp3', savedAt: 31 });
+  const before = JSON.parse(JSON.stringify(s.getState()));
+  const savedBefore = JSON.stringify(s.getSaved());
+
+  ok(s.setHomepageDiscovery('homepage-only', 'https://publisher.example.com/show', 99), 'homepage: update succeeds');
+  const after = s.getState();
+  eq(after.episodes, before.episodes, 'homepage: episode records and ordering are untouched');
+  eq(after.subscriptions, before.subscriptions, 'homepage: subscription ordering is untouched');
+  eq(after.progress, before.progress, 'homepage: progress is untouched');
+  eq(after.queue, before.queue, 'homepage: queue is untouched');
+  eq(JSON.stringify(s.getSaved()), savedBefore, 'homepage: bookmark snapshots are untouched');
+  ['title', 'publisher', 'feedUrl', 'addedAt', 'lastFetchedAt', 'etag', 'lastModified'].forEach((field) => {
+    eq(after.shows['homepage-only'][field], before.shows['homepage-only'][field], 'homepage: ' + field + ' is untouched');
+  });
+  eq(after.shows['homepage-only'].siteUrl, 'https://publisher.example.com/show', 'homepage: valid URL is stored');
+  eq(after.shows['homepage-only'].siteUrlCheckedAt, 99, 'homepage: checked timestamp is stored');
+
+  ok(s.setHomepageDiscovery('homepage-only', 'javascript:alert(1)', 100), 'homepage: successful empty discovery is recorded');
+  eq(s.getShow('homepage-only').siteUrl, 'https://publisher.example.com/show', 'homepage: invalid replacement preserves valid URL');
+  eq(s.getShow('homepage-only').siteUrlCheckedAt, 100, 'homepage: empty result is marked complete');
 }
 
 /* Empty storage -> defaults, nothing persisted yet. */
