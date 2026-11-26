@@ -251,6 +251,41 @@
   }
   function childText(parent, tag) { return textOf(childEl(parent, tag)); }
   function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ''; } }
+  /* Channel homepage links are plain RSS <channel><link> text. They must be
+     absolute web URLs; never resolve them against the feed URL. */
+  function safeSiteUrl(raw, feedUrl, resolvedFeedUrl) {
+    if (typeof raw !== 'string') { return null; }
+    var s = raw.trim();
+    if (!s || s.length > 500) { return null; }
+    try {
+      var p = new URL(s);
+      if ((p.protocol !== 'http:' && p.protocol !== 'https:') || p.username || p.password) { return null; }
+      p.hash = '';
+      var value = p.toString();
+      if (value.length > 500) { return null; }
+      var comparable = normalizeFeedUrl(value);
+      if (comparable === normalizeFeedUrl(feedUrl || '') || comparable === normalizeFeedUrl(resolvedFeedUrl || '')) { return null; }
+      return value;
+    } catch (e) { return null; }
+  }
+  function isPlatformSiteUrl(value) {
+    try {
+      var host = new URL(value).hostname.toLowerCase().replace(/\.$/, '');
+      return host === 'castbox.fm' || host.slice(-11) === '.castbox.fm' ||
+        host === 'rss.com' || host.slice(-8) === '.rss.com';
+    } catch (e) { return false; }
+  }
+  function rssChannelLink(channel) {
+    var nodes = (channel && channel.childNodes) || [];
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (node.nodeType === 1 && node.tagName === 'link' &&
+          String(node.namespaceURI || '') !== ATOM_NS && node.getAttribute('href') === null) {
+        return textOf(node);
+      }
+    }
+    return '';
+  }
 
   function makeEpisode(feedUrl, show, raw, base) {
     var audioUrl = safeMediaUrl(raw.audioUrl, base);
@@ -318,13 +353,15 @@
       var owner = childEl(channel, 'itunes:owner');
       var img = childEl(channel, 'itunes:image');
       var imgEl = childEl(channel, 'image');
-      var link = childText(channel, 'link');
+      var link = rssChannelLink(channel);
+      var resolvedUrl = safeFeedUrl(childText(channel, 'itunes:new-feed-url'), base) || reported;
       show = {
         id: showIdFor(url),
         title: truncate(stripHtml(childText(channel, 'title')), 200) || hostOf(url) || 'Podcast',
         titleFa: '',
         publisher: truncate(stripHtml(childText(channel, 'itunes:author') || (owner ? childText(owner, 'itunes:name') : '') || hostOf(link) || hostOf(url)), 120),
         feedUrl: url,
+        siteUrl: safeSiteUrl(link, url, resolvedUrl),
         artUrl: safeMediaUrl(img ? img.getAttribute('href') : '', base) || safeMediaUrl(imgEl ? childText(imgEl, 'url') : '', base),
         initials: ''
       };
@@ -365,8 +402,7 @@
         };
         episodes.push(makeEpisode(url, show, raw, base));
       }
-      return finishFeed('rss', show, episodes,
-        safeFeedUrl(childText(channel, 'itunes:new-feed-url'), base) || reported);
+      return finishFeed('rss', show, episodes, resolvedUrl);
     }
 
     if (feedEl) {
@@ -385,6 +421,7 @@
         titleFa: '',
         publisher: truncate(stripHtml((author ? atomText(author, 'name') : '') || hostOf(altHref) || hostOf(url)), 120),
         feedUrl: url,
+        siteUrl: null,
         artUrl: safeMediaUrl(aImg ? aImg.getAttribute('href') : '', base) || safeMediaUrl(atomText(feedEl, 'logo'), base),
         initials: ''
       };
@@ -463,6 +500,7 @@
     decodeEntities: decodeEntities, stripHtml: stripHtml,
     parseDuration: parseDuration, parseDateMs: parseDateMs, parsePositiveInt: parsePositiveInt,
     looksLikeUrl: looksLikeUrl, safeMediaUrl: safeMediaUrl, safeFeedUrl: safeFeedUrl,
+    safeSiteUrl: safeSiteUrl, isPlatformSiteUrl: isPlatformSiteUrl,
     resolveUrl: resolveUrl, isAtomTag: isAtomTag,
     initialsOf: initialsOf, truncate: truncate, escapeXml: escapeXml,
     buildOpml: buildOpml, extractOpml: extractOpml,

@@ -42,6 +42,18 @@ function block(src, first, last) {
 }
 const occurrences = (hay, needle) => hay.split(needle).length - 1;
 
+test('podcast homepage links are limited to the desktop show header', () => {
+  const render = fn(WIN, 'renderShow');
+  assert.match(render, /if \(!siteUrl \|\| isTV\(\)\) \{ return; \}/, 'missing sites and TV keep plain header elements');
+  assert.match(render, /showArtLink\.setAttribute\('aria-hidden', 'true'\)/);
+  assert.match(render, /showArtLink\.tabIndex = -1/);
+  assert.match(render, /showTitleLink\.setAttribute\('aria-label', \(Feed\.isPlatformSiteUrl\(siteUrl\) \? 'Podcast page: ' : 'Podcast website: '\) \+ title\)/);
+  assert.equal((render.match(/show(?:Art|Title)Link\.addEventListener/g) || []).length, 0, 'header anchors have no playback or navigation handlers');
+  const css = read('podcast-window.css');
+  assert.match(css, /\.pw__showtitle-link::after \{ content: " ↗"/);
+  assert.match(css, /\.pw__showtitle-link:focus-visible \{ outline: 2px solid/);
+});
+
 /* ================= A — auto-close after a successful start ================= */
 
 function windowHarness() {
@@ -155,7 +167,10 @@ test('A: only the episode play press arms the close', () => {
 test('A: the two pre-existing user dismissals are unchanged', () => {
   const head = execFileSync('git', ['-C', ROOT, 'show', 'HEAD:podcast-window.js'], { encoding: 'utf8' })
     .replace(/\r\n/g, '\n');
-  assert.equal((head.match(/(^|[^.\w])close\(\)(?!\s*\{)/g) || []).length, 2, 'HEAD had only the two user closes');
+  assert.equal((head.match(/if \(e\.target === dialog\) \{ close\(\); \} \}\)/g) || []).length, 1,
+    'HEAD had one backdrop dismissal');
+  assert.equal((head.match(/if \(view === 'show'\) \{ backToLibrary\(\); \} else \{ close\(\); \}/g) || []).length, 1,
+    'HEAD had one Escape dismissal');
   assert.match(head, /if \(e\.target === dialog\) \{ close\(\); \} \}\)/, 'a backdrop click closed the dialog before this change');
   assert.match(head, /if \(view === 'show'\) \{ backToLibrary\(\); \} else \{ close\(\); \}/, 'Escape did too');
   assert.match(WIN, /if \(e\.target === dialog\) \{ close\(\); \} \}\)/, 'backdrop close kept, byte-identical');
@@ -288,19 +303,18 @@ test('keys: every changed asset is keyed away from its HEAD key', () => {
   const from = (src, re) => { const m = src.match(re); assert.ok(m, 'key found for ' + re); return m[1]; };
   const head = (f) => execFileSync('git', ['-C', ROOT, 'show', 'HEAD:' + f], { encoding: 'utf8' }).replace(/\r\n/g, '\n');
   const pairs = [
-    ['void-letters.js', read('index.html'), head('index.html'), /void-letters\.js\?v=([^"']+)/],
-    ['void-domains.js', read('index.html'), head('index.html'), /void-domains\.js\?v=([^"']+)/],
     ['podcast-window.css', read('void-domains.js'), head('void-domains.js'), /podcast-window\.css\?v=([^"']+)/],
-    ['podcast-window.js', read('void-domains.js'), head('void-domains.js'), /podcast-window\.js\?v=([^"']+)/],
-    ['podcast-player.js', read('void-domains.js'), head('void-domains.js'), /podcast-player\.js\?v=([^"']+)/]
+    ['podcast-store.js', read('void-domains.js'), head('void-domains.js'), /podcast-store\.js\?v=([^"']+)/],
+    ['podcast-feed.js', read('void-domains.js'), head('void-domains.js'), /podcast-feed\.js\?v=([^"']+)/],
+    ['podcast-window.js', read('void-domains.js'), head('void-domains.js'), /podcast-window\.js\?v=([^"']+)/]
   ];
   for (const [file, here, before, re] of pairs) {
     assert.notEqual(from(here, re), from(before, re), file + ' ships new bytes under the old key');
   }
-  /* Untouched podcast assets must keep their keys — no needless re-download. */
+  /* Unchanged podcast assets must keep their keys — no needless re-download. */
   const dom = read('void-domains.js'), domHead = head('void-domains.js');
-  for (const re of [/podcast-sample-data\.js\?v=([^"']+)/, /podcast-store\.js\?v=([^"']+)/,
-    /podcast-feed\.js\?v=([^"']+)/, /void-podcast-thread\.js\?v=([^"']+)/, /podcast-thread\.css\?v=([^"']+)/]) {
+  for (const re of [/podcast-sample-data\.js\?v=([^"']+)/,
+    /void-podcast-thread\.js\?v=([^"']+)/, /podcast-thread\.css\?v=([^"']+)/]) {
     assert.equal(from(dom, re), from(domHead, re), 'unchanged asset keeps its key');
   }
 });
@@ -793,6 +807,6 @@ test('D3: the popover is a positioned child of the dialog, styled exactly as bef
   }
   assert.ok(WIN.indexOf('shareCopy(followLink(followUrl), followB)') >= 0, 'the Follow prefill row is preserved');
   assert.ok(WIN.indexOf('https://x.com/intent/tweet?text=') >= 0, 'X still shares through the approved intent host');
-  assert.ok(headJs.indexOf('https://twitter.com/intent/tweet?text=') >= 0,
-    'the host change belongs to Phase B, not to this fix');
+  assert.ok(headJs.indexOf('https://x.com/intent/tweet?text=') >= 0,
+    'the existing X host remains unchanged');
 });
