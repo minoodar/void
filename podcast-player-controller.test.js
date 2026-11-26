@@ -24,6 +24,7 @@ function memStorage(seed) {
   };
 }
 function fire(el, name, ev) { (el.listeners[name] || []).slice().forEach(fn => fn(ev)); }
+function ranges(end) { return { length: end > 0 ? 1 : 0, start(i) { if (i) throw new Error('range'); return 0; }, end(i) { if (i || end <= 0) throw new Error('range'); return end; } }; }
 function click() {
   const e = { type: 'click', defaultPrevented: false, stopImmediate: false };
   e.preventDefault = () => { e.defaultPrevented = true; };
@@ -38,7 +39,10 @@ function boot(opts) {
   const audio = {
     nodeType: 1, tagName: 'AUDIO', listeners: {},
     preload: '', style: {}, parentNode: null, hidden: false,
-    paused: true, ended: false, duration: NaN, currentTime: 0, playbackRate: 1,
+    paused: true, ended: false, duration: NaN, _currentTime: 0, snapBackOnSeek: false, playbackRate: 1,
+    get currentTime() { return this._currentTime; },
+    set currentTime(v) { this._currentTime = this.snapBackOnSeek ? 0 : v; },
+    readyState: 0, networkState: 0, seekable: ranges(0), buffered: ranges(0),
     error: null, src: '', currentSrc: '',
     setAttribute() {}, removeAttribute(k) { if (k === 'src') { this.src = ''; this.currentSrc = ''; } },
     appendChild() {},
@@ -375,6 +379,8 @@ const ACTIONS = ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 
 {
   const b = boot();
   b.ctl.play(EP, SHOW);
+  b.audio.duration = 600; b.audio.readyState = 4; b.audio.networkState = 1; b.audio.seekable = ranges(600);
+  fire(b.audio, 'loadedmetadata');
   b.audio.currentTime = 84;
   fire(b.audio, 'seeked');
   const afterSeek = b.store.getProgress('e1');
@@ -383,6 +389,82 @@ const ACTIONS = ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 
   (b.listeners.window.pagehide || []).forEach(fn => fn());
   const p = b.store.getProgress('e1');
   ok(p && p.positionSec >= 120, 'pagehide: progress flushed');
+  b.restoreNav();
+}
+
+/* Seekability and resume retention: unresolved saved seeks must never turn
+   into a zero write; a growing range remains unresolved during loading. */
+{
+  const L = require('./podcast-player.js');
+  eq(L.seekability(600, 0, ranges(0)), 'unknown', 'seekability: metadata not ready remains unknown');
+  eq(L.seekability(600, 4, ranges(600)), 'supported', 'seekability: full range supported');
+  eq(L.seekability(600, 4, ranges(0)), 'incomplete', 'seekability: empty range awaits settling');
+  eq(L.seekability(600, 4, ranges(90)), 'incomplete', 'seekability: partial range awaits settling');
+  eq(L.seekability(Infinity, 4, ranges(0)), 'live', 'seekability: live source is exempt');
+
+  const b = boot({ seed: { 'void.podcast.v1': JSON.stringify({ progress: { e1: { episodeId: 'e1', positionSec: 120, completed: false, updatedAt: 10 } } }) } });
+  b.ctl.play(EP, SHOW);
+  const savedBeforeMediaEvents = b.store.getProgress('e1').positionSec;
+  b.audio.duration = 600; b.audio.readyState = 4; b.audio.networkState = 1; b.audio.seekable = ranges(0); b.audio.buffered = ranges(600);
+  fire(b.audio, 'loadedmetadata');
+  eq(b.audio.currentTime, 0, 'resume: assignment waits for seekability');
+  eq(b.ctl._test.settleSeekability(), 'unsupported', 'resume: settled empty range is unsupported');
+  b.audio.currentTime = 0;
+  fire(b.audio, 'seeked'); fire(b.audio, 'timeupdate'); b.audio.pause();
+  (b.listeners.window.pagehide || []).forEach(fn => fn());
+  eq(b.store.getProgress('e1').positionSec, savedBeforeMediaEvents, 'resume: pause, seeked, timeupdate and pagehide retain saved point');
+  b.restoreNav();
+}
+{
+  const b = boot(); b.ctl.play(EP, SHOW);
+  b.audio.duration = 600; b.audio.readyState = 4; b.audio.networkState = 2;
+  b.audio.seekable = ranges(30); b.audio.buffered = ranges(100);
+  let now = 0, timers = [], growthStayedUnknown = false, loadingStayedUnknown = false;
+  const realST = global.setTimeout, realCT = global.clearTimeout;
+  global.setTimeout = (fn, ms) => { timers.push({ fn, due: now + ms, cancelled: false }); return timers.length; };
+  global.clearTimeout = id => { if (timers[id - 1]) timers[id - 1].cancelled = true; };
+  function tick(ms) {
+    now += ms;
+    let next;
+    while ((next = timers.find(t => !t.cancelled && !t.done && t.due <= now))) { next.done = true; next.fn(); }
+  }
+  try {
+    fire(b.audio, 'loadedmetadata'); tick(2000);
+    b.audio.seekable = ranges(60); fire(b.audio, 'progress'); tick(2000);
+    growthStayedUnknown = b.audio.seekCapability !== 'unsupported';
+    tick(1000); loadingStayedUnknown = b.audio.seekCapability !== 'unsupported';
+    b.audio.buffered = ranges(600); fire(b.audio, 'progress'); tick(3000);
+  } finally { global.setTimeout = realST; global.clearTimeout = realCT; }
+  ok(growthStayedUnknown, 'range growth: a growing incomplete range is not disabled');
+  ok(loadingStayedUnknown, 'range growth: incomplete range remains enabled while bytes are loading');
+  eq(b.audio.seekCapability, 'unsupported', 'settled range: fully buffered source with stable partial range disables seek');
+  b.restoreNav();
+}
+{
+  const b = boot({ seed: { 'void.podcast.v1': JSON.stringify({ progress: { e1: { episodeId: 'e1', positionSec: 120, completed: false, updatedAt: 10 } } }) } });
+  b.ctl.play(EP, SHOW);
+  b.audio.duration = 600; b.audio.readyState = 4; b.audio.networkState = 2; b.audio.seekable = ranges(600);
+  fire(b.audio, 'loadedmetadata'); b.audio.snapBackOnSeek = true;
+  b.ctl._test.seekTo(300);
+  eq(b.audio.currentTime, 0, 'seek mismatch: test media snaps back to zero');
+  fire(b.audio, 'seeked');
+  eq(b.audio.seekCapability, 'unsupported', 'seek mismatch: seeked mismatch disables seek');
+  eq(b.store.getProgress('e1').positionSec, 117, 'seek mismatch: previous resume point is not replaced by zero');
+  b.restoreNav();
+}
+{
+  const b = boot(); b.ctl.play(EP, SHOW);
+  b.audio.duration = 600; b.audio.readyState = 4; b.audio.seekable = ranges(600);
+  fire(b.audio, 'loadedmetadata');
+  b.ctl._test.seekTo(-10);
+  eq(b.audio.currentTime, 0, 'seek target: negative time clamps to zero');
+  b.ctl._test.seekTo(900);
+  eq(b.audio.currentTime, 600, 'seek target: time above duration clamps to end');
+  b.audio.currentTime = 200;
+  b.ctl._test.seekTo(NaN);
+  eq(b.audio.currentTime, 200, 'seek target: NaN is ignored');
+  b.ctl._test.seekBy(Infinity);
+  eq(b.audio.currentTime, 200, 'seek delta: Infinity is ignored');
   b.restoreNav();
 }
 

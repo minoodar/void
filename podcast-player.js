@@ -84,6 +84,19 @@
     return pos;
   }
 
+  /* Do not treat an empty range during metadata loading as a final answer. */
+  function seekability(duration, readyState, ranges) {
+    if (duration === Infinity) { return 'live'; }
+    if (typeof duration !== 'number' || !isFinite(duration) || duration <= 0 || readyState < 1) { return 'unknown'; }
+    var end = 0;
+    if (ranges && typeof ranges.length === 'number') {
+      for (var i = 0; i < ranges.length; i++) {
+        try { end = Math.max(end, ranges.end(i)); } catch (e) { /* TimeRanges changed while reading */ }
+      }
+    }
+    return end >= duration * 0.95 ? 'supported' : 'incomplete';
+  }
+
   function chapterIndexAt(chapters, sec) {
     if (!chapters || !chapters.length) { return -1; }
     var idx = -1;
@@ -107,7 +120,7 @@
     resumePosition: resumePosition, queueFrom: queueFrom, nextInQueue: nextInQueue,
     prevInQueue: prevInQueue, upcomingFrom: upcomingFrom,
     withoutId: withoutId, sleepDeadline: sleepDeadline, sleepRemainingMs: sleepRemainingMs,
-    skipTarget: skipTarget, chapterIndexAt: chapterIndexAt, fmtTime: fmtTime, rateLabel: rateLabel
+    skipTarget: skipTarget, seekability: seekability, chapterIndexAt: chapterIndexAt, fmtTime: fmtTime, rateLabel: rateLabel
   };
 });
 
@@ -175,13 +188,20 @@
   var sleep = { choice: 'off', deadline: 0, timer: 0 };
   var lastSave = 0;
   var pendingSeek = null;
+  var seekCapability = 'unknown';
+  var preserveProgress = false;
+  var seekCheckTimer = 0;
+  var seekCheckEnd = 0;
+  var canClassifySeek = false;
+  var seekVerification = null;
+  var unavailableAnnounced = false;
   var chip = null, ticks = [], sheet = null, sheetTick = 0;
   var sndBtn = null, sndIntercept = null;
   var borrowed = false;               // Phase 2B.5: is the Music chrome currently ours?
   var retriedSrc = '', retryTimer = 0;
 
   function saveProgress() {
-    if (!current) { return; }
+    if (!current || preserveProgress || pendingSeek !== null || seekVerification) { return; }
     var ep = current.episode;
     store.setProgress(ep.id, audio.currentTime || 0, ep.durationSec, audio.ended === true);
     lastSave = Date.now();
@@ -535,23 +555,95 @@
   };
 
   function seekBy(delta) {
-    var dur = isFinite(audio.duration) ? audio.duration : (current ? current.episode.durationSec : 0);
-    try { audio.currentTime = L.skipTarget(audio.currentTime, delta, dur); } catch (e) { /* not seekable yet */ }
+    if (!active || seekCapability === 'unsupported' || typeof delta !== 'number' || !isFinite(delta)) { return; }
+    var dur = seekDuration();
+    requestSeek(L.skipTarget(audio.currentTime, delta, dur));
   }
   function seekTo(t) {
-    var dur = isFinite(audio.duration) ? audio.duration : (current ? current.episode.durationSec : 0);
-    try { audio.currentTime = Math.max(0, Math.min(t, dur > 0 ? dur : t)); } catch (e) { /* not seekable yet */ }
+    if (!active || seekCapability === 'unsupported' || typeof t !== 'number' || !isFinite(t)) { return; }
+    requestSeek(t);
+  }
+  function seekDuration() {
+    if (typeof audio.duration === 'number' && isFinite(audio.duration) && audio.duration > 0) { return audio.duration; }
+    var fallback = current && current.episode && current.episode.durationSec;
+    return typeof fallback === 'number' && isFinite(fallback) && fallback > 0 ? fallback : 0;
+  }
+  function rangeEnd(ranges) {
+    var end = 0;
+    try { for (var i = 0; ranges && i < ranges.length; i++) { end = Math.max(end, ranges.end(i)); } } catch (e) {}
+    return end;
+  }
+  function requestSeek(target) {
+    if (typeof target !== 'number' || !isFinite(target)) { return; }
+    var duration = seekDuration();
+    target = Math.max(0, duration > 0 ? Math.min(target, duration) : target);
+    var before = audio.currentTime;
+    try {
+      audio.currentTime = target;
+      if (Math.abs(target - before) > 2) { seekVerification = { target: target, before: before }; }
+    } catch (e) { /* not seekable yet */ }
+  }
+  function setSeekCapability(value, reason) {
+    if (seekCapability === value) { return; }
+    seekCapability = value;
+    audio.seekCapability = value;
+    if (value === 'supported') {
+      preserveProgress = false;
+      if (pendingSeek !== null) {
+        var resumeAt = pendingSeek;
+        pendingSeek = null;
+        requestSeek(resumeAt);
+      }
+    } else if (value === 'live') {
+      /* No finite resume point exists for a live stream; keep an old stored
+         value intact instead of trying it against the moving timeline. */
+      if (pendingSeek !== null && pendingSeek > 0) { preserveProgress = true; }
+      pendingSeek = null;
+    } else if (value === 'unsupported') {
+      preserveProgress = true;
+      pendingSeek = null;
+      seekVerification = null;
+      if (!unavailableAnnounced) {
+        unavailableAnnounced = true;
+        try { window.dispatchEvent(new CustomEvent('podcast:seekstate', { detail: { episodeId: current && current.episode.id, state: value, reason: reason || '' } })); } catch (e) {}
+      }
+    }
+  }
+  function inspectSeekability() {
+    if (!active || !current) { return 'unknown'; }
+    var state = L.seekability(audio.duration, audio.readyState, audio.seekable);
+    if (state === 'supported' || state === 'live') { setSeekCapability(state); }
+    return state;
+  }
+  function scheduleSeekabilityCheck() {
+    if (!active || seekCapability === 'supported' || seekCapability === 'unsupported' || seekCapability === 'live') { return; }
+    if (seekCheckTimer) { clearTimeout(seekCheckTimer); }
+    var checkedEnd = rangeEnd(audio.seekable);
+    seekCheckEnd = checkedEnd;
+    seekCheckTimer = setTimeout(function () {
+      seekCheckTimer = 0;
+      var state = inspectSeekability();
+      if (state !== 'incomplete' || !canClassifySeek) { return; }
+      var end = rangeEnd(audio.seekable);
+      if (Math.abs(end - checkedEnd) > 0.05) { scheduleSeekabilityCheck(); return; }
+      var duration = audio.duration, bufferedEnd = rangeEnd(audio.buffered);
+      /* Classify only after range growth stops and loading is complete. This
+         leaves a stalled but still-growing stream in the unknown state. */
+      if (audio.networkState === 1 || (duration > 0 && bufferedEnd >= duration * 0.95)) {
+        setSeekCapability('unsupported', 'incomplete-range');
+      }
+    }, 3000);
   }
 
   /* ---- element events ---- */
   audio.addEventListener('loadedmetadata', function () {
-    if (pendingSeek !== null) {
-      var dur = isFinite(audio.duration) ? audio.duration : 0;
-      try { audio.currentTime = dur > 0 ? Math.min(pendingSeek, dur) : pendingSeek; } catch (e) { /* live stream */ }
-      pendingSeek = null;
-    }
+    canClassifySeek = true;
+    inspectSeekability(); scheduleSeekabilityCheck();
     drawTicks();
   });
+  audio.addEventListener('canplay', function () { canClassifySeek = true; inspectSeekability(); scheduleSeekabilityCheck(); });
+  audio.addEventListener('durationchange', function () { inspectSeekability(); scheduleSeekabilityCheck(); });
+  audio.addEventListener('progress', function () { inspectSeekability(); scheduleSeekabilityCheck(); });
   audio.addEventListener('timeupdate', function () {
     if (!active) { return; }
     if (Date.now() - lastSave >= 5000) { saveProgress(); }
@@ -587,7 +679,14 @@
     syncEmblem();
     emit('podcast:playing', { episodeId: current ? current.episode.id : null, playing: true });
   });
-  audio.addEventListener('seeked', function () { if (active) { saveProgress(); } });
+  audio.addEventListener('seeked', function () {
+    if (!active) { return; }
+    if (seekVerification) {
+      var check = seekVerification; seekVerification = null;
+      if (Math.abs(audio.currentTime - check.target) > 2) { setSeekCapability('unsupported', 'seek-mismatch'); }
+    }
+    if (!preserveProgress) { saveProgress(); }
+  });
   audio.addEventListener('ended', function () {
     setLoading(false);
     if (!current) { return; }
@@ -646,6 +745,9 @@
     if (active) { saveProgress(); }
     var start = L.resumePosition(store.getProgress(episode.id), episode.durationSec);
     current = { episode: episode, show: show };
+    seekCapability = 'unknown'; audio.seekCapability = seekCapability;
+    preserveProgress = false; canClassifySeek = false; seekVerification = null; unavailableAnnounced = false;
+    if (seekCheckTimer) { clearTimeout(seekCheckTimer); seekCheckTimer = 0; }
     store.setProgress(episode.id, start, episode.durationSec);   // entry exists -> NEW dot clears
     store.setQueue(L.queueFrom(data.episodesOf(show.id), episode.id));   // Phase 2B.4: the whole show, current left in place -> Prev has somewhere to go
     pendingSeek = start;
@@ -683,6 +785,7 @@
   }
   function stop() {
     if (!active) { return; }
+    if (seekCheckTimer) { clearTimeout(seekCheckTimer); seekCheckTimer = 0; }
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; }
     setLoading(false);
     saveProgress();
@@ -983,7 +1086,13 @@
       };
     },
     logic: L,
-    _test: { audio: audio, sourceFor: sourceFor, saveProgress: saveProgress, stepEpisode: stepEpisode,
+    _test: { audio: audio, sourceFor: sourceFor, saveProgress: saveProgress, stepEpisode: stepEpisode, seekTo: seekTo, seekBy: seekBy,
+      inspectSeekability: inspectSeekability, settleSeekability: function () {
+        canClassifySeek = true;
+        var state = inspectSeekability(), duration = audio.duration, bufferedEnd = rangeEnd(audio.buffered);
+        if (state === 'incomplete' && (audio.networkState === 1 || (duration > 0 && bufferedEnd >= duration * 0.95))) { setSeekCapability('unsupported', 'incomplete-range'); }
+        return seekCapability;
+      },
       chrome: function () { return borrowed; }, guestOwns: guestOwns }
   };
 })();

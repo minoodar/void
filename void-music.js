@@ -37,6 +37,7 @@
     voidMusicAddFolder: 'Add folder', voidMusicPlay: 'Play', voidMusicPause: 'Pause',
     voidMusicPrev: 'Previous track', voidMusicNext: 'Next track', voidMusicVolume: 'Volume',
     voidMusicQueue: 'Queue', voidMusicClose: 'Close Music Mode', voidMusicSeek: 'Seek',
+    voidMusicPodcastUnseekable: 'This episode does not support seeking.',
     voidMusicRemove: 'Remove from queue', voidMusicDrop: 'Release to add music',
     voidMusicUnsupported: "This file can't be played", voidMusicMissing: 'File not found or access denied',
     voidMusicAlreadyPlaying: 'Music is already playing in another tab.',
@@ -980,8 +981,12 @@
   function seekDuration(a) {
     return a && isFinite(a.duration) && a.duration > 0 ? a.duration : 0;
   }
+  function seekUnavailable(a) {
+    return !!(a && a === S.guest && a.seekCapability === 'unsupported');
+  }
   function seekTo(sec, target) {
     const a = target || activeSeekAudio(), dur = seekDuration(a);
+    if (seekUnavailable(a)) return false;
     if (!a || !dur) return false;
     try { a.currentTime = clamp(sec, 0, dur); return true; } catch (e) { return false; }
   }
@@ -989,6 +994,7 @@
      با میهمانِ مالک به فرمانِ seek خودِ پخش‌کنندهٔ پادکست، وگرنه به عنصرِ موزیک.
      نوارِ درگ‌شونده هم عنصرِ فعالِ همان مالک را هدف می‌گیرد. */
   function seekBy(d) {
+    if (seekUnavailable(activeSeekAudio())) return;
     if (S.sessionOwner === 'guest' && S.guest && S.guest.cmd) { S.guest.cmd(d < 0 ? 'seekbackward' : 'seekforward', Math.abs(d)); return; }
     if (S.audio) seekTo(S.audio.currentTime + d);
   }
@@ -1683,6 +1689,11 @@
   function updateProgress() {
     if (!S.built) return;
     const a = activeSeekAudio();               // همان عنصرِ فعال که نوارِ Seek هم هدف می‌گیرد
+    const unavailable = seekUnavailable(a);
+    els.seek.classList.toggle('is-unseekable', unavailable);
+    els.seek.setAttribute('aria-disabled', unavailable ? 'true' : 'false');
+    els.seek.title = unavailable ? L('voidMusicPodcastUnseekable') : L('voidMusicTipSeek');
+    root.classList.toggle('is-seek-unavailable', unavailable);
     const dur = a && isFinite(a.duration) ? a.duration : 0;
     const cur = S.dragging ? S.dragFrac * dur : (a ? a.currentTime : 0);
     const frac = dur > 0 ? clamp(cur / dur, 0, 1) : 0;
@@ -2045,8 +2056,13 @@
      playId و unhostGuest پس می‌گیرند و متادیتای موزیک فقط با آهنگِ جاری
      برمی‌گردد (در نبودِ آن، سشن بدونِ متادیتای کهنه رها می‌شود). */
   function guestHandlers() {
-    return S._gh || (S._gh = { play: guestPlayState, pause: guestPlayState, timeupdate: updateProgress, durationchange: function () { updateProgress(); posState(); }, seeked: posState });
+    return S._gh || (S._gh = { play: guestPlayState, pause: guestPlayState, timeupdate: updateProgress, durationchange: function () { updateProgress(); posState(); }, loadedmetadata: updateProgress, canplay: updateProgress, progress: updateProgress, seeked: posState });
   }
+  window.addEventListener('podcast:seekstate', function (e) {
+    if (!e || !e.detail || e.detail.state !== 'unsupported') return;
+    updateProgress();
+    toast(L('voidMusicPodcastUnseekable'));
+  });
   function guestPlayState() {
     if (!S.guest || !S.built) return;
     const playing = !S.guest.paused;
@@ -2525,7 +2541,7 @@
     // خطِ زمان: کشیدن = پیش‌نمایشِ زنده، رها کردن = اعمالِ seek
     els.seek.addEventListener('pointerdown', function (e) {
       const a = activeSeekAudio();
-      if (!seekDuration(a)) return;
+      if (seekUnavailable(a) || !seekDuration(a)) return;
       S.dragAudio = a;
       S.dragging = true; S.dragFrac = fracFromEvent(e);
       try { els.seek.setPointerCapture(e.pointerId); } catch (err) {}
@@ -2533,7 +2549,7 @@
     });
     els.seek.addEventListener('pointermove', function (e) {
       if (!S.dragging) return;
-      if (S.dragAudio !== activeSeekAudio() || !seekDuration(S.dragAudio)) {
+      if (seekUnavailable(activeSeekAudio()) || S.dragAudio !== activeSeekAudio() || !seekDuration(S.dragAudio)) {
         S.dragging = false; S.dragAudio = null; updateProgress(); return;
       }
       S.dragFrac = fracFromEvent(e); updateProgress();
@@ -2550,6 +2566,7 @@
     els.seek.addEventListener('pointerup', function (e) { endDrag(e, true); });
     els.seek.addEventListener('pointercancel', function (e) { endDrag(e, false); });
     els.seek.addEventListener('keydown', function (e) {
+      if (seekUnavailable(activeSeekAudio())) { e.preventDefault(); e.stopPropagation(); return; }
       const step = e.shiftKey ? 15 : 5;
       if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { seekBy(step); }
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { seekBy(-step); }
