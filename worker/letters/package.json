@@ -12,7 +12,10 @@
     "test": "npm run test:worker && npm run test:schema-paths",
     "test:worker": "node test/phase-a.test.mjs",
     "test:schema-paths": "node --test test/schema-paths.test.mjs",
-    "test:api": "node --test ../../tests/letters-api.test.mjs"
+    "test:api": "node --test ../../tests/letters-api.test.mjs",
+    "dev:signals": "wrangler dev --local --persist-to ../../.wrangler/signals-local --config wrangler.local.toml --port 8787 --ip 127.0.0.1",
+    "db:signals:migrate": "wrangler d1 execute DB --local --persist-to ../../.wrangler/signals-local --config wrangler.local.toml --file migrations/2026-11-26-void-signals.sql",
+    "test:signals:live": "node test/live-signals-smoke.mjs"
   },
   "devDependencies": {
     "wrangler": "4.160.0"

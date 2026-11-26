@@ -2216,6 +2216,522 @@ await test('multiple track deletions report tracks deleted, not trigger side eff
   equal(beforeMemberships-Number(env.__raw.prepare("SELECT COUNT(*) n FROM track_domains WHERE track_id IN ('multi-del-a','multi-del-b')").get().n),3,'three memberships actually deleted');
 });
 
+// ---------------------------------------------------------------------------
+// Void Signals: persistent notifications, lifecycle, Star Profiles, admin API
+// ---------------------------------------------------------------------------
+
+function sigAdmin(env, path, method = 'GET', body) {
+  return call(env, path, {
+    method,
+    body,
+    headers: { Authorization: 'Bearer ' + TEST_ADMIN_SECRET }
+  });
+}
+
+function sigMessage(overrides = {}) {
+  return Object.assign({ title: 'Void update', body: 'Three new signals are listening.' }, overrides);
+}
+
+function ageSignal(env, id, column, value) {
+  env.__raw.prepare('UPDATE signal_messages SET ' + column + ' = ? WHERE id = ?').run(value, id);
+}
+
+const SIG_NOW = Math.floor(Date.now() / 1000);
+
+await test('signals: every management route requires the admin credential', async () => {
+  const env = createEnv();
+  const anon = await call(env, '/admin/signals/messages');
+  equal(anon.status, 401, 'unauthenticated admin read is refused');
+  const wrong = await call(env, '/admin/signals/messages', { headers: { Authorization: 'Bearer not-the-secret' } });
+  equal(wrong.status, 403, 'wrong credential is refused');
+  // A query flag is a UI hint, never proof of authorization.
+  const flagged = await call(env, '/admin/signals/messages?admin=true');
+  equal(flagged.status, 401, '?admin=true does not authorize');
+  const control = await call(env, '/admin/signals/messages', {
+    headers: { Authorization: 'Bearer ' + TEST_ADMIN_SECRET }
+  });
+  equal(control.status, 200, 'the same route opens with the credential');
+  const unconfigured = createEnv({ ADMIN_SECRET: '' });
+  const unavailable = await call(unconfigured, '/admin/signals/messages', {
+    headers: { Authorization: 'Bearer ' + TEST_ADMIN_SECRET }
+  });
+  equal(unavailable.status, 503, 'missing secret reports unavailable instead of opening the route');
+  equal(unavailable.data.error, 'unavailable', 'missing secret error code');
+});
+
+await test('signals: public endpoints expose no write path', async () => {
+  const env = createEnv();
+  for (const [method, path] of [['POST', '/signals/messages'], ['PUT', '/signals/messages'], ['DELETE', '/signals/messages'], ['POST', '/signals/version']]) {
+    const res = await call(env, path, { method, body: { title: 'x', body: 'yyyy' } });
+    equal(res.status, 405, method + ' ' + path + ' refused');
+    equal(res.data.error, 'method_not_allowed', method + ' ' + path + ' error code');
+  }
+  const created = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ status: 'active' }));
+  equal(created.status, 201, 'control: admin create works');
+  const id = created.data.message.id;
+  const poke = await call(env, '/signals/messages/' + id, { method: 'DELETE' });
+  equal(poke.status, 405, 'single-message route is read-only too');
+});
+
+await test('signals: creation returns a stable opaque id and persists the row', async () => {
+  const env = createEnv();
+  const first = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage());
+  equal(first.status, 201, 'draft created');
+  equal(first.data.message.status, 'draft', 'default status is draft');
+  assert(/^[0-9a-f]{32}$/.test(first.data.message.id), 'id is 32-hex');
+  const second = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ title: 'Other' }));
+  assert(second.data.message.id !== first.data.message.id, 'ids are never reused or derived from content');
+  const rows = tableRows(env, 'signal_messages');
+  equal(rows.length, 2, 'both rows persisted in D1');
+  const again = await sigAdmin(env, '/admin/signals/messages/' + first.data.message.id, 'GET');
+  equal(again.data.message.title, 'Void update', 'stored title survives');
+  // Identity must survive editing, and the store must be the only source of identity.
+  const edited = await sigAdmin(env, '/admin/signals/messages/' + first.data.message.id, 'PUT',
+    { title: 'Renamed', body: 'Renamed signal text here.' });
+  equal(edited.status, 200, 'edit accepted');
+  equal(edited.data.message.id, first.data.message.id, 'id is stable across edits');
+  equal(edited.data.message.status, 'draft', 'edit does not change lifecycle');
+});
+
+await test('signals: drafts and unapproved content never reach the public feed', async () => {
+  const env = createEnv();
+  const draft = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ metadata: { occasion: 'quiet' } }));
+  const id = draft.data.message.id;
+  const list = await call(env, '/signals/messages');
+  equal(list.status, 200, 'public list answers');
+  equal(list.data.messages.length, 0, 'draft is not listed');
+  const single = await call(env, '/signals/messages/' + id);
+  equal(single.status, 404, 'draft is not fetchable by id');
+  equal(single.data.error, 'message_not_available', 'unknown and unavailable share one code');
+  const state = await call(env, '/signals/state');
+  equal(state.data.messages.length, 0, 'state carries no drafts');
+  const adminView = await sigAdmin(env, '/admin/signals/messages');
+  equal(adminView.data.items.length, 1, 'admin still sees the draft');
+  const body = JSON.stringify(state.data);
+  assert(body.indexOf('draft') === -1, 'no lifecycle status leaks into the public payload');
+  assert(body.indexOf('created_by') === -1, 'no admin attribution leaks into the public payload');
+});
+
+await test('signals: publishing is an explicit action and content edits cannot publish', async () => {
+  const env = createEnv();
+  const created = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage());
+  const id = created.data.message.id;
+  const sneaky = await sigAdmin(env, '/admin/signals/messages/' + id, 'PUT', { status: 'active' });
+  equal(sneaky.status, 400, 'status cannot be set through the edit route');
+  equal(sneaky.data.error, 'status_requires_transition', 'edit explains the explicit action');
+  const publish = await sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST', { action: 'publish' });
+  equal(publish.status, 200, 'publish accepted');
+  equal(publish.data.message.status, 'active', 'status is active');
+  assert(publish.data.message.published_at >= SIG_NOW, 'publication timestamp recorded');
+  const list = await call(env, '/signals/messages');
+  equal(list.data.messages.length, 1, 'now publicly eligible');
+  equal(list.data.messages[0].type, 'ambient', 'renderer-compatible type field present');
+  const adminList = await sigAdmin(env, '/admin/signals/messages?status=active');
+  equal(adminList.data.items.length, 1, 'admin status filter works');
+  equal(adminList.data.total.active, 1, 'status counts reported');
+});
+
+await test('signals: scheduled messages never appear before their time', async () => {
+  const env = createEnv();
+  const missing = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ status: 'scheduled' }));
+  equal(missing.status, 400, 'scheduling without a time is refused');
+  equal(missing.data.error, 'scheduled_at_required', 'scheduled_at_required reported');
+  const past = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ status: 'scheduled', scheduled_at: SIG_NOW - 60 }));
+  equal(past.status, 400, 'a past schedule is refused');
+  equal(past.data.error, 'scheduled_at_in_past', 'scheduled_at_in_past reported');
+  const future = SIG_NOW + 3600;
+  const created = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ status: 'scheduled', scheduled_at: future }));
+  equal(created.status, 201, 'future schedule accepted');
+  equal(created.data.message.scheduled_at, future, 'schedule stored');
+  const before = await call(env, '/signals/messages');
+  equal(before.data.messages.length, 0, 'not visible before scheduled_at');
+  const early = await call(env, '/signals/messages/' + created.data.message.id);
+  equal(early.status, 404, 'not fetchable before scheduled_at');
+  ageSignal(env, created.data.message.id, 'scheduled_at', SIG_NOW - 5);
+  const after = await call(env, '/signals/messages');
+  equal(after.data.messages.length, 1, 'eligible once server time passes scheduled_at');
+  equal(after.data.messages[0].id, created.data.message.id, 'same stable id at activation');
+});
+
+await test('signals: hide, restore and revoke keep the public feed honest', async () => {
+  const env = createEnv();
+  const created = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ status: 'active', importance: 'important' }));
+  const id = created.data.message.id;
+  equal((await call(env, '/signals/messages')).data.messages.length, 1, 'visible while active');
+  const hidden = await sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST', { action: 'hide' });
+  equal(hidden.status, 200, 'active -> hidden accepted');
+  equal(hidden.data.message.status, 'hidden', 'hidden recorded');
+  equal((await call(env, '/signals/messages')).data.messages.length, 0, 'hidden never listed');
+  equal((await call(env, '/signals/messages/' + id)).status, 404, 'hidden never fetchable');
+  const restored = await sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST',
+    { action: 'publish', expected_version: hidden.data.message.state_version });
+  equal(restored.status, 200, 'hidden -> active accepted while eligible');
+  equal((await call(env, '/signals/messages')).data.messages.length, 1, 'restored message visible');
+  equal(restored.data.message.published_at, hidden.data.message.published_at,
+    'original publication time survives a hide/restore cycle');
+  const revoked = await sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST', { action: 'revoke' });
+  equal(revoked.status, 200, 'active -> revoked accepted');
+  equal((await call(env, '/signals/messages')).data.messages.length, 0, 'revoked never listed');
+  const revive = await sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST', { action: 'publish' });
+  equal(revive.status, 409, 'revoked is terminal');
+  equal(revive.data.error, 'invalid_transition', 'terminal state explained');
+});
+
+await test('signals: lifecycle validation rejects transitions that are not defined', async () => {
+  const env = createEnv();
+  const draft = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage());
+  const bad = await sigAdmin(env, '/admin/signals/messages/' + draft.data.message.id + '/transition', 'POST', { action: 'hide' });
+  equal(bad.status, 409, 'draft -> hidden is not a defined transition');
+  equal(bad.data.error, 'invalid_transition', 'invalid_transition reported');
+  assert(Array.isArray(bad.data.allowed), 'rejection lists what is allowed from here');
+  const unknown = await sigAdmin(env, '/admin/signals/messages/' + draft.data.message.id + '/transition', 'POST', { action: 'explode' });
+  equal(unknown.status, 400, 'unknown action refused');
+  equal(unknown.data.error, 'action_invalid', 'action_invalid reported');
+  const missing = await sigAdmin(env, '/admin/signals/messages/deadbeefdeadbeefdeadbeefdeadbeef/transition', 'POST',
+    { action: 'publish' });
+  equal(missing.status, 404, 'unknown id refused');
+  equal(missing.data.error, 'signal_not_found', 'signal_not_found reported');
+});
+
+await test('signals: expiration is enforced by server time and outlives read state', async () => {
+  const env = createEnv();
+  const created = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ status: 'active', expires_at: SIG_NOW + 120 }));
+  const id = created.data.message.id;
+  equal((await call(env, '/signals/messages')).data.messages.length, 1, 'visible inside the window');
+  const badExpiry = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ expires_at: SIG_NOW - 10 }));
+  equal(badExpiry.status, 400, 'a past expiry is refused');
+  equal(badExpiry.data.error, 'expires_in_past', 'expires_in_past reported');
+  ageSignal(env, id, 'expires_at', SIG_NOW - 2);
+  equal((await call(env, '/signals/messages')).data.messages.length, 0, 'expired message not listed');
+  equal((await call(env, '/signals/messages/' + id)).status, 404, 'expired message not fetchable');
+  const admin = await sigAdmin(env, '/admin/signals/messages/' + id, 'GET');
+  equal(admin.data.message.expired, true, 'admin sees the expiry flag');
+  const publishAgain = await sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST', { action: 'publish' });
+  equal(publishAgain.status, 409, 'an expired message cannot be published as-is');
+  equal(publishAgain.data.error, 'already_expired', 'expiry explained before the transition table');
+  // The sweep inside the mutation materialised the terminal state; the row survives.
+  const rows = tableRows(env, 'signal_messages');
+  equal(rows.length, 1, 'expiry never deletes the row');
+  equal(rows[0].status, 'expired', 'expiry materialised on the row');
+});
+
+await test('signals: reading a message cannot change lifecycle state', async () => {
+  const env = createEnv();
+  const created = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ status: 'active' }));
+  const id = created.data.message.id;
+  const before = tableRows(env, 'signal_messages')[0];
+  const writesBefore = env.DB.writes;
+  for (let i = 0; i < 4; i += 1) {
+    await call(env, '/signals/messages');
+    await call(env, '/signals/messages/' + id);
+    await call(env, '/signals/state');
+    await call(env, '/signals/version');
+    await sigAdmin(env, '/admin/signals/messages');
+    await sigAdmin(env, '/admin/signals/messages/' + id, 'GET');
+  }
+  equal(env.DB.writes, writesBefore, 'no GET performs a write, so reads cannot consume or expire a message');
+  const after = tableRows(env, 'signal_messages')[0];
+  equal(after.status, before.status, 'status unchanged by reads');
+  equal(after.state_version, before.state_version, 'row version unchanged by reads');
+  equal(after.updated_at, before.updated_at, 'timestamps unchanged by reads');
+});
+
+await test('signals: concurrent transitions are settled by the guarded statement', async () => {
+  const env = createEnv();
+  const created = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage());
+  const id = created.data.message.id;
+  const version = created.data.message.state_version;
+  const [a, b] = await Promise.all([
+    sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST', { action: 'publish', expected_version: version }),
+    sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST', { action: 'schedule', expected_version: version, scheduled_at: SIG_NOW + 7200 })
+  ]);
+  const codes = [a.status, b.status].sort();
+  equal(codes[0], 200, 'exactly one writer wins');
+  equal(codes[1], 409, 'the losing writer is rejected, not silently applied');
+  const row = tableRows(env, 'signal_messages')[0];
+  assert(row.state_version === version + 1, 'row advanced exactly once');
+  const stale = await sigAdmin(env, '/admin/signals/messages/' + id + '/transition', 'POST',
+    { action: 'hide', expected_version: version });
+  equal(stale.data.error, 'stale_snapshot', 'stale write reports stale_snapshot');
+  equal(stale.data.current_version, version + 1, 'stale write reports the current version');
+});
+
+await test('signals: content stays plain text and bounded', async () => {
+  const env = createEnv();
+  const markup = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ body: 'inject <script>alert(1)</script> please' }));
+  equal(markup.status, 400, 'markup rejected');
+  equal(markup.data.error, 'markup_prohibited', 'markup error code');
+  const control = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ body: 'hidden  direction ‮text' }));
+  equal(control.status, 400, 'control and bidi characters rejected');
+  equal(control.data.error, 'control_characters_prohibited', 'control error code');
+  const long = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ body: 'x'.repeat(501) }));
+  equal(long.status, 400, 'over-long body rejected');
+  equal(long.data.error, 'body_too_long', 'body length error code');
+  const short = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ body: 'hi' }));
+  equal(short.data.error, 'body_too_short', 'body floor enforced');
+  const blank = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ title: '   ' }));
+  equal(blank.data.error, 'title_too_short', 'whitespace-only title rejected');
+  const persian = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ title: 'می‌رود', body: 'متن نمونه برای نشانه‌ی فارسی.' }));
+  equal(persian.status, 201, 'non-latin text accepted');
+  equal(persian.data.message.title, 'می‌رود', 'ZWNJ survives, exactly as in letters');
+  const joiner = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ title: 'a\u200Cb', body: 'three letters long' }));
+  equal(joiner.data.message.title, 'a\u200Cb', 'ZWNJ is stored rather than stripped');
+  const stripped = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ title: 'a\u200Bb', body: 'plain \u2060text here' }));
+  equal(stripped.status, 201, 'invisible spacing characters accepted then removed');
+  equal(stripped.data.message.title, 'ab', 'zero-width space stripped from stored title');
+  equal(stripped.data.message.body, 'plain text here', 'word joiner stripped from stored body');
+});
+
+await test('signals: request bodies are size limited', async () => {
+  const env = createEnv();
+  const huge = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ body: 'y'.repeat(9000) }));
+  equal(huge.status, 413, 'oversized body refused');
+  equal(huge.data.error, 'payload_too_large', 'payload_too_large reported');
+  equal(tableRows(env, 'signal_messages').length, 0, 'refused body wrote nothing');
+});
+
+await test('signals: metadata stays a renderer hint and cannot carry presentation', async () => {
+  const env = createEnv();
+  const presentation = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ metadata: { brightness: 2 } }));
+  equal(presentation.status, 400, 'presentation settings do not belong in a message');
+  equal(presentation.data.error, 'presentation_belongs_in_a_profile', 'boundary named explicitly');
+  const unknownKey = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ metadata: { html: '<b>' } }));
+  equal(unknownKey.data.error, 'metadata_key_not_allowed', 'unknown metadata keys refused');
+  const ok = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ metadata: { lang: 'FA', icon: 'moon', occasion: 'release' } }));
+  equal(ok.status, 201, 'allowed metadata accepted');
+  equal(ok.data.message.metadata.lang, 'fa', 'metadata lang normalised');
+  equal(ok.data.message.metadata.icon, 'moon', 'metadata icon stored');
+  const shape = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ metadata: 'nope' }));
+  equal(shape.data.error, 'metadata_must_be_object', 'metadata must be an object');
+});
+
+await test('signals: public feed filters hostile origins and reports one version', async () => {
+  const env = createEnv();
+  await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ status: 'active' }));
+  const hostile = await call(env, '/signals/messages', { origin: 'https://evil.example' });
+  equal(hostile.status, 403, 'unlisted origin refused');
+  const list = await call(env, '/signals/messages');
+  const probe = await call(env, '/signals/version');
+  equal(probe.status, 200, 'version probe answers');
+  equal(probe.data.version, list.data.version, 'probe and feed agree on one version');
+  const before = probe.data.version;
+  await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ status: 'active', title: 'Another' }));
+  const after = await call(env, '/signals/version');
+  assert(after.data.version > before, 'a publication moves the version counter');
+  assert(list.headers.get('cache-control') === 'no-store', 'eligibility is never cached');
+});
+
+await test('signals: star profiles only publish on explicit activation', async () => {
+  const env = createEnv();
+  const created = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Aurora', settings: { preset: 'spiral', color: 'ice', brightness: 1.4 } });
+  equal(created.status, 201, 'profile created');
+  equal(created.data.profile.published, false, 'a new profile is not public');
+  equal(created.data.profile.current_version, 1, 'version 1 exists');
+  equal(created.data.profile.active_version, 0, 'nothing activated');
+  const unactivated = await call(env, '/signals/profile');
+  equal(Object.keys(unactivated.data.profiles).length, 0, 'unapproved profile is never exposed publicly');
+  const activate = await sigAdmin(env, '/admin/signals/profiles/' + created.data.profile.id + '/activate', 'POST', {});
+  equal(activate.status, 200, 'activation accepted');
+  equal(activate.data.active_version, 1, 'version 1 activated');
+  equal(activate.data.previous_active_version, 0, 'previous state reported');
+  const publicView = await call(env, '/signals/profile');
+  const stored = publicView.data.profiles[created.data.profile.id];
+  assert(stored, 'activated profile now visible');
+  equal(stored.settings.brightness, 1.4, 'activated settings served publicly');
+  equal(stored.version, 1, 'public payload names the active version');
+  // A later save must not move the public configuration on its own.
+  const saved = await sigAdmin(env, '/admin/signals/profiles/' + created.data.profile.id, 'PUT',
+    { settings: { preset: 'spiral', color: 'ice', brightness: 0.5 } });
+  equal(saved.data.saved_version, 2, 'save creates version 2');
+  equal(saved.data.active_version, 1, 'save leaves version 1 active');
+  equal((await call(env, '/signals/profile')).data.profiles[created.data.profile.id].settings.brightness, 1.4,
+    'public still sees the activated version');
+  const activateTwo = await sigAdmin(env, '/admin/signals/profiles/' + created.data.profile.id + '/activate', 'POST', {});
+  equal(activateTwo.data.active_version, 2, 'explicit activation publishes version 2');
+  equal(activateTwo.data.previous_active_version, 1, 'recovery pointer returned');
+  equal((await call(env, '/signals/profile')).data.profiles[created.data.profile.id].settings.brightness, 0.5,
+    'public follows the newly activated version');
+  // Restore copies version 1 forward instead of rewinding history.
+  const restore = await sigAdmin(env, '/admin/signals/profiles/' + created.data.profile.id + '/restore', 'POST',
+    { version: 1, activate: true });
+  equal(restore.status, 200, 'restore accepted');
+  equal(restore.data.profile.current_version, 3, 'restore appends a version');
+  equal(restore.data.settings.brightness, 1.4, 'restored settings match the chosen version');
+  equal(restore.data.active_version, 3, 'restore with activate publishes the copy');
+  const history = await sigAdmin(env, '/admin/signals/profiles/' + created.data.profile.id + '/versions', 'GET');
+  equal(history.data.versions.length, 3, 'all three versions retained');
+  equal(history.data.versions.filter(v => v.active).length, 1, 'exactly one version is active');
+  const bogus = await sigAdmin(env, '/admin/signals/profiles/' + created.data.profile.id + '/activate', 'POST',
+    { version: 9 });
+  equal(bogus.status, 409, 'activating a version that does not exist is refused');
+  equal(bogus.data.error, 'version_not_found', 'version_not_found reported');
+});
+
+await test('signals: profile values are validated on the Worker', async () => {
+  const env = createEnv();
+  const badPreset = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Broken', settings: { preset: 'chaos' } });
+  equal(badPreset.status, 400, 'unknown preset refused');
+  equal(badPreset.data.error, 'preset_invalid', 'preset error named');
+  const reservedPreset = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Broken', settings: { preset: 'custom' } });
+  equal(reservedPreset.data.error, 'preset_invalid', 'the reserved preset stays unassignable');
+  const badColor = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Broken', settings: { color: '#ff0000' } });
+  equal(badColor.data.error, 'color_invalid', 'raw colours refused, palette ids required');
+  const badType = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Broken', settings: { size: 'huge' } });
+  equal(badType.data.error, 'size_must_be_number', 'non-numeric size refused');
+  const unknown = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Broken', settings: { background: 'url(x)' } });
+  equal(unknown.data.error, 'setting_not_allowed', 'unknown settings keys refused');
+  const oversized = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Clamped', settings: { size: 99, brightness: -5, glowTransitionMs: 300.7, drift: 4 } });
+  equal(oversized.status, 201, 'out-of-range numbers are clamped, not rejected');
+  equal(oversized.data.settings.size, 2.2, 'size clamped to the control ceiling');
+  equal(oversized.data.settings.brightness, 0.3, 'brightness clamped to the control floor');
+  equal(oversized.data.settings.glowTransitionMs, 301, 'transition rounded to whole milliseconds');
+  equal(oversized.data.settings.drift, 1.2, 'drift clamped to the control ceiling');
+  equal(oversized.data.settings.schema, 1, 'settings carry a schema version');
+  assert(JSON.stringify(oversized.data.settings).indexOf('"preset"') === -1,
+    'unspecified keys are absent rather than guessed');
+});
+
+await test('signals: profile identity is stable and duplication stays unpublished', async () => {
+  const env = createEnv();
+  const a = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Original', settings: { preset: 'heart', color: 'ember' } });
+  const id = a.data.profile.id;
+  const renamed = await sigAdmin(env, '/admin/signals/profiles/' + id, 'PUT',
+    { name: 'Renamed', settings: { preset: 'heart', color: 'ember' } });
+  equal(renamed.data.profile.id, id, 'renaming never changes profile identity');
+  equal(renamed.data.profile.name, 'Renamed', 'rename persisted');
+  const copy = await sigAdmin(env, '/admin/signals/profiles/' + id + '/duplicate', 'POST', {});
+  equal(copy.status, 201, 'duplicate created');
+  assert(copy.data.profile.id !== id, 'duplicate gets its own id');
+  equal(copy.data.profile.published, false, 'a duplicate is never live on creation');
+  const copied = await sigAdmin(env, '/admin/signals/profiles/' + copy.data.profile.id, 'GET');
+  equal(copied.data.draft_settings.color, 'ember', 'duplicate copies the current settings');
+  equal(copied.data.profile.published, false, 'the copy still has no active version');
+  const list = await sigAdmin(env, '/admin/signals/profiles');
+  equal(list.data.items.length, 2, 'both profiles listed');
+  const missing = await sigAdmin(env, '/admin/signals/profiles/deadbeefdeadbeefdeadbeefdeadbeef', 'GET');
+  equal(missing.status, 404, 'unknown profile id');
+});
+
+await test('signals: assignments are validated and gate activation', async () => {
+  const env = createEnv();
+  const profile = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Global look', settings: { preset: 'geometric' } });
+  const id = profile.data.profile.id;
+  const early = await sigAdmin(env, '/admin/signals/assignments', 'POST', { scope: 'global', profile_id: id });
+  equal(early.status, 409, 'an unactivated profile cannot be assigned');
+  equal(early.data.error, 'profile_not_active', 'profile_not_active explained');
+  const badScope = await sigAdmin(env, '/admin/signals/assignments', 'POST', { scope: 'everywhere', profile_id: id });
+  equal(badScope.data.error, 'scope_invalid', 'unknown scope refused');
+  const badCategory = await sigAdmin(env, '/admin/signals/assignments', 'POST',
+    { scope: 'category:nonsense', profile_id: id });
+  equal(badCategory.data.error, 'category_unknown', 'unknown category refused');
+  await sigAdmin(env, '/admin/signals/profiles/' + id + '/activate', 'POST', {});
+  const assigned = await sigAdmin(env, '/admin/signals/assignments', 'POST',
+    { scope: 'category:release', profile_id: id });
+  equal(assigned.status, 200, 'category assignment accepted once activated');
+  const publicView = await call(env, '/signals/profile');
+  equal(publicView.data.assignments.byCategory.release, id, 'public config carries the assignment');
+  const listed = await sigAdmin(env, '/admin/signals/assignments');
+  equal(listed.data.items.length, 1, 'assignment listed');
+  const inUse = await sigAdmin(env, '/admin/signals/profiles/' + id, 'DELETE',
+    { confirm: 'DELETE PROFILE' });
+  equal(inUse.status, 409, 'an assigned profile is protected');
+  equal(inUse.data.error, 'profile_in_use', 'profile_in_use reported with counts');
+  const cleared = await sigAdmin(env, '/admin/signals/assignments', 'POST', { scope: 'category:release', profile_id: null });
+  equal(cleared.status, 200, 'assignment cleared');
+  const removed = await sigAdmin(env, '/admin/signals/profiles/' + id, 'DELETE', { confirm: 'DELETE PROFILE' });
+  equal(removed.status, 200, 'detached profile deletable');
+  equal(tableRows(env, 'star_profile_versions').length, 0, 'versions cascaded with the profile');
+});
+
+await test('signals: a message can point at a profile and survives its removal', async () => {
+  const env = createEnv();
+  const profile = await sigAdmin(env, '/admin/signals/profiles', 'POST',
+    { name: 'Per-message', settings: { preset: 'constellation', glow: 1.75 } });
+  await sigAdmin(env, '/admin/signals/profiles/' + profile.data.profile.id + '/activate', 'POST', {});
+  const badRef = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ status: 'active', profile_id: 'nope' }));
+  equal(badRef.data.error, 'profile_id_invalid', 'malformed profile reference refused');
+  const ghost = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ status: 'active', profile_id: 'deadbeefdeadbeefdeadbeefdeadbeef' }));
+  equal(ghost.status, 404, 'unknown profile reference refused at write time');
+  const message = await sigAdmin(env, '/admin/signals/messages', 'POST',
+    sigMessage({ status: 'active', profile_id: profile.data.profile.id }));
+  equal(message.data.message.profile_id, profile.data.profile.id, 'reference stored');
+  const state = await call(env, '/signals/state');
+  equal(state.data.messages[0].profile_id, profile.data.profile.id, 'reference delivered publicly');
+  equal(state.data.profiles[profile.data.profile.id].settings.glow, 1.75, 'referenced settings delivered');
+  const detach = await sigAdmin(env, '/admin/signals/messages/' + message.data.message.id, 'PUT',
+    { profile_id: null });
+  equal(detach.data.message.profile_id, null, 'reference cleared');
+});
+
+await test('signals: hard deletion is explicit and recoverable states are preferred', async () => {
+  const env = createEnv();
+  const created = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ status: 'active' }));
+  const id = created.data.message.id;
+  const sloppy = await sigAdmin(env, '/admin/signals/messages/' + id, 'DELETE', {});
+  equal(sloppy.status, 400, 'deletion without confirmation refused');
+  equal(sloppy.data.error, 'confirmation_required', 'confirmation_required reported');
+  equal(tableRows(env, 'signal_messages').length, 1, 'row untouched by the refused call');
+  const gone = await sigAdmin(env, '/admin/signals/messages/' + id, 'DELETE',
+    { confirm: 'DELETE SIGNAL', expected_version: created.data.message.state_version });
+  equal(gone.status, 200, 'confirmed deletion applied');
+  equal(tableRows(env, 'signal_messages').length, 0, 'row removed');
+  const again = await sigAdmin(env, '/admin/signals/messages/' + id, 'GET');
+  equal(again.status, 404, 'deleted message gone from admin view too');
+  const stale = await sigAdmin(env, '/admin/signals/messages/' + id, 'DELETE',
+    { confirm: 'DELETE SIGNAL', expected_version: created.data.message.state_version });
+  equal(stale.status, 404, 'second delete reports absence');
+});
+
+await test('signals: the active ceiling and the public page bound hold', async () => {
+  const env = createEnv();
+  for (let i = 0; i < 60; i += 1) {
+    const made = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ status: 'active', title: 'Sig ' + i }));
+    equal(made.status, 201, 'active message ' + i + ' created');
+  }
+  equal(tableRows(env, 'signal_messages').length, 60, 'ceiling reached exactly');
+  const over = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ status: 'active', title: 'One too many' }));
+  equal(over.status, 409, 'the ceiling is enforced inside the statement');
+  equal(over.data.error, 'active_limit_reached', 'active_limit_reached reported');
+  equal(tableRows(env, 'signal_messages').length, 60, 'refused publication wrote no row');
+  const drafts = await sigAdmin(env, '/admin/signals/messages', 'POST', sigMessage({ title: 'Draft still fine' }));
+  equal(drafts.status, 201, 'the ceiling only binds active rows');
+  const page = await call(env, '/signals/messages?limit=3');
+  equal(page.data.messages.length, 3, 'limit honoured for the Notification Center');
+  const big = await call(env, '/signals/messages?limit=9999');
+  equal(big.data.messages.length, 60, 'an oversized page is capped, never an error');
+  const junk = await call(env, '/signals/messages?limit=abc');
+  equal(junk.status, 200, 'a malformed limit still serves the capped feed');
+  equal(junk.data.messages.length, 60, 'malformed limit falls back to the cap');
+});
+
 const failed = results.filter(r => !r.ok);
 process.stdout.write('\n' + (results.length - failed.length) + '/' + results.length + ' checks passed\n');
 if (failed.length) {
