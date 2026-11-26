@@ -106,7 +106,7 @@
     audio: null, url: null, coverUrl: null,
     seed: 0, token: 0, failures: 0, failStreak: 0, grantAdvised: false, grantTrack: null, permRoots: 0, toastLog: [], scan: null,
     libLoaded: false, savedTitle: null,
-    dragging: false, dragFrac: 0,
+    dragging: false, dragFrac: 0, dragAudio: null,
     vol: 0.8, muted: false, guestVol: null, outGain: null,
     mini: null, fsByUs: false, widgetShown: false, widgetWasVisible: true, ptrDown: false,
     roots: new Map(), permCache: new Map(), copyMode: false, copyDone: 0, copyTotal: 0, swept: [],
@@ -974,14 +974,20 @@
       });
     } else a.pause();
   }
-  function seekTo(sec) {
-    const a = S.audio;
-    if (!a || !isFinite(a.duration)) return;
-    a.currentTime = clamp(sec, 0, a.duration);
+  function activeSeekAudio() {
+    return S.sessionOwner === 'guest' && S.guest ? S.guest : S.audio;
+  }
+  function seekDuration(a) {
+    return a && isFinite(a.duration) && a.duration > 0 ? a.duration : 0;
+  }
+  function seekTo(sec, target) {
+    const a = target || activeSeekAudio(), dur = seekDuration(a);
+    if (!a || !dur) return false;
+    try { a.currentTime = clamp(sec, 0, dur); return true; } catch (e) { return false; }
   }
   /* فاز ۲B.۴: میانبرهای ± ثانیه (Arrow و Shift+Arrow) همان‌جا که صدا هست می‌روند:
      با میهمانِ مالک به فرمانِ seek خودِ پخش‌کنندهٔ پادکست، وگرنه به عنصرِ موزیک.
-     خطِ زمانِ درگ‌شونده (scrub) عمداً دست‌نخورده مانده — بیرونِ این تسک است. */
+     نوارِ درگ‌شونده هم عنصرِ فعالِ همان مالک را هدف می‌گیرد. */
   function seekBy(d) {
     if (S.sessionOwner === 'guest' && S.guest && S.guest.cmd) { S.guest.cmd(d < 0 ? 'seekbackward' : 'seekforward', Math.abs(d)); return; }
     if (S.audio) seekTo(S.audio.currentTime + d);
@@ -1676,7 +1682,7 @@
   }
   function updateProgress() {
     if (!S.built) return;
-    const a = S.guest ? S.guest : S.audio;   // فاز ۲B.1: قوس/زمان در جلسهٔ میهمان از عنصرِ میهمان می‌خواند؛ S.audio همیشهِ موزیک است
+    const a = activeSeekAudio();               // همان عنصرِ فعال که نوارِ Seek هم هدف می‌گیرد
     const dur = a && isFinite(a.duration) ? a.duration : 0;
     const cur = S.dragging ? S.dragFrac * dur : (a ? a.currentTime : 0);
     const frac = dur > 0 ? clamp(cur / dur, 0, 1) : 0;
@@ -2518,17 +2524,27 @@
 
     // خطِ زمان: کشیدن = پیش‌نمایشِ زنده، رها کردن = اعمالِ seek
     els.seek.addEventListener('pointerdown', function (e) {
-      if (!S.audio || !isFinite(S.audio.duration)) return;
+      const a = activeSeekAudio();
+      if (!seekDuration(a)) return;
+      S.dragAudio = a;
       S.dragging = true; S.dragFrac = fracFromEvent(e);
       try { els.seek.setPointerCapture(e.pointerId); } catch (err) {}
       updateProgress();
     });
-    els.seek.addEventListener('pointermove', function (e) { if (!S.dragging) return; S.dragFrac = fracFromEvent(e); updateProgress(); });
+    els.seek.addEventListener('pointermove', function (e) {
+      if (!S.dragging) return;
+      if (S.dragAudio !== activeSeekAudio() || !seekDuration(S.dragAudio)) {
+        S.dragging = false; S.dragAudio = null; updateProgress(); return;
+      }
+      S.dragFrac = fracFromEvent(e); updateProgress();
+    });
     const endDrag = function (e, commit) {
       if (!S.dragging) return;
+      const a = S.dragAudio;
       S.dragging = false;
+      S.dragAudio = null;
       try { els.seek.releasePointerCapture(e.pointerId); } catch (err) {}
-      if (commit && S.audio && isFinite(S.audio.duration)) seekTo(S.dragFrac * S.audio.duration);
+      if (commit && a && a === activeSeekAudio()) seekTo(S.dragFrac * seekDuration(a), a);
       updateProgress();
     };
     els.seek.addEventListener('pointerup', function (e) { endDrag(e, true); });
@@ -2538,7 +2554,7 @@
       if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { seekBy(step); }
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { seekBy(-step); }
       else if (e.key === 'Home') seekTo(0);
-      else if (e.key === 'End' && S.audio) seekTo(S.audio.duration - 0.1);
+      else if (e.key === 'End' && seekDuration(activeSeekAudio())) seekTo(seekDuration(activeSeekAudio()) - 0.1);
       else return;
       e.preventDefault(); e.stopPropagation();
     });

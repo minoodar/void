@@ -25,6 +25,12 @@ let checks = 0;
 function ok(cond, msg) { assert.ok(cond, msg); checks++; }
 function eq(a, b, msg) { assert.deepStrictEqual(a, b, msg); checks++; }
 function why(e) { return String((e && e.message) || e); }
+function pointer(el, type, x) {
+  (el.listeners[type] || []).slice().forEach(fn => fn({
+    clientX: x, pointerId: 1, target: el,
+    preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {}
+  }));
+}
 
 function memStorage() {
   const map = new Map();
@@ -252,6 +258,60 @@ function entry(h) {
     h.VM.unhostGuest();
     eq(h.owners(), ['guest', 'music'], 'W: teardown while Music plays claims Music');
     eq(h.errors, [], 'W: no listener threw during the ownership transitions');
+  }
+
+  /* ---- S: shared seek targets the active owner and rejects invalid duration ---- */
+  {
+    const h = boot();
+    const music = h.audio({ paused: true, currentTime: 12, duration: 200 });
+    const guest = h.audio({ paused: false, currentTime: 5, duration: 100 });
+    h.S.audio = music;
+    h.VM.hostGuest(guest, { title: 'Episode', artist: 'Show' });
+    h.VM.enter();
+    const seek = h.el('.vm-seek');
+    ok(!!seek, 'S setup: the shared timeline is wired');
+
+    /* A click is a pointerdown/pointerup at one point. */
+    pointer(seek, 'pointerdown', 25);
+    pointer(seek, 'pointerup', 25);
+    eq(guest.currentTime, 25, 'S click: Podcast seeks to the clicked fraction');
+    eq(music.currentTime, 12, 'S click: Podcast seek leaves Music untouched');
+
+    /* Scrubbing works while paused and does not resume the Podcast. */
+    guest.paused = true;
+    pointer(seek, 'pointerdown', 30);
+    pointer(seek, 'pointermove', 70);
+    pointer(seek, 'pointerup', 70);
+    eq(guest.currentTime, 70, 'S drag: Podcast seeks to the released fraction');
+    ok(guest.paused, 'S drag: a paused Podcast stays paused');
+    eq(music.currentTime, 12, 'S drag: Podcast drag leaves Music untouched');
+
+    /* No metadata / live / zero-length duration cannot redirect to Music. */
+    [NaN, Infinity, 0].forEach((duration, i) => {
+      guest.duration = duration;
+      guest.currentTime = 17 + i;
+      pointer(seek, 'pointerdown', 90);
+      pointer(seek, 'pointerup', 90);
+      eq(guest.currentTime, 17 + i, 'S invalid duration ' + i + ': Podcast position is unchanged');
+      eq(music.currentTime, 12, 'S invalid duration ' + i + ': Music position is unchanged');
+    });
+
+    /* A takeover during the drag cancels it rather than seeking either player. */
+    guest.duration = 100;
+    pointer(seek, 'pointerdown', 20);
+    h.VM.unhostGuest();
+    pointer(seek, 'pointermove', 80);
+    pointer(seek, 'pointerup', 80);
+    eq(guest.currentTime, 19, 'S takeover: old Podcast drag is not committed');
+    eq(music.currentTime, 12, 'S takeover: ownership change cannot seek Music accidentally');
+
+    /* Once the guest is gone, the same UI retains the original Music behavior. */
+    music.duration = 100;
+    pointer(seek, 'pointerdown', 40);
+    pointer(seek, 'pointerup', 40);
+    eq(music.currentTime, 40, 'S Music: shared seek still seeks Music');
+    eq(guest.currentTime, 19, 'S Music: Music seek leaves the former Podcast untouched');
+    eq(h.errors, [], 'S: shared seek scenarios throw no listener errors');
   }
 
   /* ---- N: enter() is guest-safe ---- */

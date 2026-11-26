@@ -375,6 +375,10 @@ const ACTIONS = ['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 
 {
   const b = boot();
   b.ctl.play(EP, SHOW);
+  b.audio.currentTime = 84;
+  fire(b.audio, 'seeked');
+  const afterSeek = b.store.getProgress('e1');
+  ok(afterSeek && afterSeek.positionSec === 84, 'seeked: podcast position is persisted after a seek');
   b.audio.currentTime = 120;
   (b.listeners.window.pagehide || []).forEach(fn => fn());
   const p = b.store.getProgress('e1');
