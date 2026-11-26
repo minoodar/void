@@ -24,6 +24,18 @@
   --sig-enter: 900ms;
   --sig-life: 14000ms;
   --sig-glow: 1;
+  /* Star Studio tokens (VoidStarConfig owns the values; these are the
+     defaults so the layer still renders if the studio module is absent). */
+  --ss-a: #f6c86a;
+  --ss-b: #b8862f;
+  --ss-core: #fff8e8;
+  --ss-size: 1;
+  --ss-bright: 1;
+  --ss-glow: 1;
+  --ss-soft: 0px;
+  --ss-motion: 1;
+  --ss-glow-ms: 900ms;
+  --ss-drift: 0.35;
   position: fixed;
   inset: 0;
   z-index: 1500;
@@ -51,14 +63,33 @@
               transform var(--sig-enter) cubic-bezier(.16, .84, .28, 1);
   -webkit-tap-highlight-color: transparent;
 }
-.sig.is-in { opacity: 1; transform: scale(1); }
+.sig.is-in { opacity: calc(1 * var(--ss-bright)); transform: scale(1); }
 .sig.is-out { opacity: 0; transform: scale(.7); transition-duration: 620ms; }
-.sig.is-held { opacity: .34; }
+/* ---- reading states (§2/§3): dim, never gone -------------------------
+   A star whose message was read this session keeps a visible, clickable
+   presence (no pure black). Opening its window wakes it; closing returns
+   it to the dim state. The message itself is never altered by any of this. */
+.sig.is-read {
+  opacity: calc(.52 * var(--ss-bright));
+  transform: scale(.94);
+  transition-duration: var(--ss-glow-ms);
+}
+.sig.is-read .sig__halo { opacity: calc(.40 * var(--ss-glow) * var(--sig-glow)); }
+.sig.is-read .sig__comp { opacity: .3; }
+.sig.is-read:hover, .sig.is-read:focus-visible { opacity: calc(.95 * var(--ss-bright)); transform: scale(1); }
+.sig.is-read:hover .sig__halo { opacity: calc(.86 * var(--ss-glow) * var(--sig-glow)); }
+/* the star whose window is open — a star awakening again */
+.sig.is-held {
+  opacity: calc(1 * var(--ss-bright));
+  transform: scale(1.06);
+  transition-duration: var(--ss-glow-ms);
+}
+.sig.is-held .sig__halo { opacity: calc(1.15 * var(--ss-glow) * var(--sig-glow)); }
 .sig:focus-visible { outline: 1px solid var(--sig-line-hi); outline-offset: 6px; border-radius: 50%; }
 
 .sig__body {
   position: absolute; inset: 0;
-  animation: sig-breath 7.5s ease-in-out infinite;
+  animation: sig-breath var(--ss-breath, 7.5s) ease-in-out infinite;
   animation-delay: var(--sig-phase, 0s);
 }
 @keyframes sig-breath {
@@ -73,25 +104,68 @@
   margin: -170% 0 0 -170%;
   border-radius: 50%;
   background: radial-gradient(circle,
-    rgba(246, 200, 106, calc(.30 * var(--sig-glow))) 0%,
-    rgba(246, 200, 106, calc(.13 * var(--sig-glow))) 26%,
-    rgba(184, 134, 47, calc(.05 * var(--sig-glow))) 52%,
+    var(--ss-core) 0%,
+    var(--ss-a) 22%,
+    var(--ss-b) 48%,
     rgba(2, 3, 10, 0) 72%);
+  opacity: calc(.30 * var(--ss-glow) * var(--sig-glow));
+  animation: sig-drift 13s ease-in-out infinite;
+  animation-delay: var(--sig-phase, 0s);
+  transition: opacity var(--ss-glow-ms) cubic-bezier(.16, .84, .28, 1),
+              filter var(--ss-glow-ms) ease;
   pointer-events: none;
+}
+/* softness costs a filter layer, so it is only attached when actually used */
+#signals-root[data-soft="1"] .sig__halo { filter: blur(var(--ss-soft)); }
+/* subtle luminous wander — the only per-star motion besides the breath */
+@keyframes sig-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(calc(var(--ss-drift) * 2.2px), calc(var(--ss-drift) * -1.8px), 0); }
 }
 .sig__glyph { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .sig__glyph .sig-spark { fill: url(#sigGoldGrad); }
 .sig__glyph .sig-hair { stroke: rgba(255, 236, 196, .72); stroke-width: .6; fill: none; }
-.sig__glyph .sig-pip { fill: #fff8e6; }
+.sig__glyph .sig-pip { fill: var(--ss-core); transform-box: fill-box; -webkit-transform-box: fill-box; transform-origin: center; }
+
+/* ---- Star Studio palettes: the gold gradient stays for 'gold', other
+       palettes paint the glyph flat so a preset change is always visible ---- */
+#signals-root[data-color]:not([data-color="gold"]) .sig__glyph .sig-spark { fill: var(--ss-a); }
+#signals-root[data-color]:not([data-color="gold"]) .sig__glyph .sig-hair { stroke: var(--ss-core); }
+#signals-root[data-color]:not([data-color="gold"]) .sig--important .sig__glyph .sig-spark { fill: var(--ss-core); }
+#signals-root[data-color="silver"] .sig__glyph .sig-spark,
+#signals-root[data-color="white"] .sig__glyph .sig-spark,
+#signals-root[data-color="ice"] .sig__glyph .sig-spark { fill: var(--ss-core); }
+
+/* ---- Star Studio styles: same glyph markup, different light ---- */
+#signals-root[data-style="point"] .sig__glyph .sig-spark,
+#signals-root[data-style="point"] .sig__glyph .sig-hair { display: none; }
+#signals-root[data-style="point"] .sig__glyph .sig-pip { transform: scale(2.6); }
+#signals-root[data-style="bloom"] .sig__glyph .sig-spark,
+#signals-root[data-style="bloom"] .sig__glyph .sig-hair { display: none; }
+#signals-root[data-style="bloom"] .sig__glyph .sig-pip { transform: scale(1.7); }
+#signals-root[data-style="bloom"] .sig__halo {
+  opacity: calc(.52 * var(--ss-glow) * var(--sig-glow));
+  filter: blur(calc(var(--ss-soft) + 2.4px));
+}
+#signals-root[data-style="hairline"] .sig__glyph .sig-spark { display: none; }
+#signals-root[data-style="hairline"] .sig__glyph .sig-hair { stroke-width: .42; opacity: .9; }
+/* arrangement presets are geometry; the organic A1 cluster is the default */
+#signals-root[data-preset="constellation"] .sig__comp { opacity: .78; }
+#signals-root[data-preset="geometric"] .sig__comp { border-radius: 1px; }
+#signals-root[data-motion="static"] .sig__body,
+#signals-root[data-motion="static"] .sig__halo { animation: none !important; }
 
 /* important: silver-white core, gold hairline ring, slower presence */
 .sig--important .sig__halo {
   width: 420%; height: 420%; margin: -210% 0 0 -210%;
   background: radial-gradient(circle,
-    rgba(255, 255, 255, calc(.26 * var(--sig-glow))) 0%,
-    rgba(220, 230, 240, calc(.14 * var(--sig-glow))) 24%,
-    rgba(246, 200, 106, calc(.10 * var(--sig-glow))) 48%,
-    rgba(2, 3, 10, 0) 74%);
+    #ffffff 0%,
+    var(--ss-core) 13%,
+    var(--ss-a) 33%,
+    var(--ss-b) 55%,
+    rgba(2, 3, 10, 0) 76%);
+  opacity: calc(.34 * var(--ss-glow) * var(--sig-glow));
+  animation-duration: 16s;
 }
 .sig--important .sig__glyph .sig-spark { fill: url(#sigSilverGrad); }
 .sig--important .sig__glyph .sig-hair { stroke: rgba(246, 200, 106, .8); }
@@ -103,7 +177,7 @@
 }
 .sig__ring circle { fill: none; stroke: rgba(246, 200, 106, .5); stroke-width: .7; stroke-dasharray: 26 12; }
 @keyframes sig-ring { to { transform: rotate(360deg); } }
-.sig--important .sig__body { animation-duration: 5.6s; }
+.sig--important .sig__body { animation-duration: calc(var(--ss-breath, 7.5s) * .75); }
 .sig.is-arriving .sig__body { animation: sig-arrive 1500ms cubic-bezier(.2, .7, .2, 1) 1; }
 @keyframes sig-arrive {
   0% { opacity: 0; transform: scale(.5); }
@@ -174,6 +248,18 @@
 .signals-reveal--important .signals-reveal__type { color: var(--sig-silver); }
 .signals-reveal__title { margin: 7px 0 0; font-size: 13.5px; font-weight: 500; letter-spacing: .01em; color: #f4f7fb; line-height: 1.35; }
 .signals-reveal__body { margin: 6px 0 0; font-size: 11.5px; line-height: 1.55; color: rgba(220, 230, 240, .74); }
+.signals-reveal__flag {
+  margin-left: auto; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid rgba(220, 230, 240, .18);
+  font-size: 8.5px; letter-spacing: .1em; text-transform: none;
+  color: var(--sig-dim); white-space: nowrap;
+}
+.signals-reveal--important .signals-reveal__flag { border-color: rgba(246, 200, 106, .34); color: var(--sig-gold); }
+.signals-reveal__note {
+  margin: 8px 0 0; font-size: 9.5px; line-height: 1.5; letter-spacing: .02em;
+  color: rgba(220, 230, 240, .42);
+}
+.signals-reveal__type { gap: 6px; }
 .signals-reveal__meta {
   margin: 10px 0 0; padding-top: 9px;
   border-top: 1px solid rgba(220, 230, 240, .1);
@@ -392,6 +478,43 @@
 .sig-read__v--bad { color: var(--sig-bad); }
 .sig-read__v--info { color: var(--sig-info); }
 .sig-read__note { margin-top: 8px; font-size: 9.5px; line-height: 1.5; color: rgba(220, 230, 240, .5); }
+.sig-row__note { align-self: center; font-size: 9px; letter-spacing: .04em; color: rgba(220, 230, 240, .42); }
+
+/* ---------------- notification center (same messages, same identity) ----- */
+.sig-nc {
+  margin-top: 8px; max-height: 208px; overflow-y: auto;
+  border-radius: 10px; border: 1px solid rgba(220, 230, 240, .1);
+  background: rgba(2, 3, 10, .42);
+  scrollbar-width: thin; scrollbar-color: rgba(246, 200, 106, .45) rgba(255, 255, 255, .04);
+}
+.sig-nc::-webkit-scrollbar { width: 6px; }
+.sig-nc::-webkit-scrollbar-track { background: rgba(255, 255, 255, .04); }
+.sig-nc::-webkit-scrollbar-thumb { background: rgba(246, 200, 106, .45); border-radius: 6px; }
+.sig-nc__empty { padding: 10px; font-size: 9.5px; line-height: 1.5; color: rgba(220, 230, 240, .46); }
+.sig-nc__row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 8px; border-bottom: 1px solid rgba(220, 230, 240, .06);
+  transition: background 160ms ease, opacity 200ms ease;
+}
+.sig-nc__row:last-child { border-bottom: 0; }
+.sig-nc__row:hover { background: rgba(246, 200, 106, .06); }
+.sig-nc__row.is-read { opacity: .68; }
+.sig-nc__pip {
+  flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--sig-gold); box-shadow: 0 0 8px rgba(246, 200, 106, .8);
+}
+.sig-nc__pip--important { background: var(--sig-silver); box-shadow: 0 0 8px rgba(220, 230, 240, .7); }
+.sig-nc__row.is-read .sig-nc__pip { opacity: .55; box-shadow: none; }
+.sig-nc__txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sig-nc__title { font-size: 10.5px; color: #eef3f8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sig-nc__meta { font-size: 8.5px; letter-spacing: .04em; color: rgba(220, 230, 240, .42); }
+.sig-nc__badge {
+  flex: 0 0 auto; padding: 2px 6px; border-radius: 999px;
+  border: 1px solid rgba(246, 200, 106, .38); color: var(--sig-gold);
+  font-size: 8px; letter-spacing: .1em; text-transform: uppercase;
+}
+.sig-nc__badge--dim { border-color: rgba(220, 230, 240, .2); color: var(--sig-dim); }
+.sig-btn--mini { padding: 4px 7px; font-size: 9px; letter-spacing: .06em; }
 
 .sig-log { margin-top: 8px; max-height: 132px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(246, 200, 106, .45) rgba(255, 255, 255, .04); }
 .sig-log::-webkit-scrollbar { width: 6px; }
@@ -458,12 +581,14 @@
 #signals-root.is-reduced .sig-toggle__track,
 #signals-root.is-reduced .sig-toggle__track::after { transition-duration: 1ms !important; }
 #signals-root.is-reduced .sig__body,
+#signals-root.is-reduced .sig__halo,
 #signals-root.is-reduced .sig__ring,
 #signals-root.is-reduced .sig.is-arriving .sig__body { animation: none !important; }
-#signals-root.is-reduced .sig.is-in { opacity: 1; transform: scale(1); }
+#signals-root.is-reduced .sig.is-in { opacity: calc(1 * var(--ss-bright)); transform: scale(1); }
+#signals-root.is-reduced .sig.is-read { opacity: calc(.52 * var(--ss-bright)); transform: scale(.94); }
 @media (prefers-reduced-motion: reduce) {
-  #signals-root .sig__body, #signals-root .sig__ring { animation: none !important; }
-  #signals-root .sig, #signals-root .signals-reveal { transition-duration: 1ms !important; }
+  #signals-root .sig__body, #signals-root .sig__ring, #signals-root .sig__halo { animation: none !important; }
+  #signals-root .sig, #signals-root .signals-reveal, #signals-root .sig__halo { transition-duration: 1ms !important; }
 }
 
 /* the instrument is a preview tool, never a production surface */

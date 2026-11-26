@@ -12,6 +12,14 @@
   if (window.__VOID_SIGNALS_PREVIEW__) return;
 
   var DATA_URL = 'signals-preview/placement-data.json';
+  var STORE = window.VoidSignalsStore || null;
+  var STAR = window.VoidStarConfig || null;
+  var STAR_FALLBACK = {
+    preset: 'organic', style: 'spark', color: 'gold', size: 1, brightness: 1, glow: 1,
+    softness: 0, motion: 'animated', motionIntensity: 1, glowTransitionMs: 900, drift: 0.35, experimental: true
+  };
+  function starCfg() { return STAR ? STAR.effective() : STAR_FALLBACK; }
+  var storeSub = null;
   var STAR_PAD = 4;
   var SMAX = 3.5;
   var GOLDEN = Math.PI * (3 - Math.sqrt(5));
@@ -48,7 +56,72 @@
     return out;
   }
 
-  /* ---------------- state ---------------- */
+  /* ---------------- arrangement presets (Star Studio) ----------------
+     A preset only decides where a cluster's points sit. The event engine,
+     the placement rules and the message lifetime are untouched, and
+     'organic' keeps the REV-3 cluster exactly as A1 measured it. New
+     presets are added by extending this table, never by editing spawn(). */
+  function rotatePts(list, ang) {
+    var c = Math.cos(ang), s = Math.sin(ang), i, p;
+    for (i = 1; i < list.length; i++) {
+      p = list[i];
+      var dx = p.dx * c - p.dy * s, dy = p.dx * s + p.dy * c;
+      p.dx = dx; p.dy = dy;
+    }
+    return list;
+  }
+  function presetPoints(preset, starPx, adminPx, k) {
+    if (!preset || preset === 'organic' || preset === 'custom') return clusterStars(starPx, adminPx, k);
+    var rot = ((hash32('site' + k) % 1000) / 1000) * Math.PI * 2;
+    var jit = ((hash32('jit' + k) % 1000) / 1000 - 0.5);
+    var S = starPx, out = [{ dx: 0, dy: 0, size: adminPx, role: 'primary' }];
+    var i, a, r, t, p;
+    if (preset === 'constellation') {
+      var line = [[0.95, -0.20, 0.80], [1.70, 0.10, 0.62], [2.45, -0.05, 0.48], [1.30, 0.70, 0.42], [2.05, 0.92, 0.32], [2.80, 0.62, 0.24]];
+      for (i = 0; i < line.length; i++) out.push({ dx: line[i][0] * S + jit * 3, dy: line[i][1] * S + jit * 3, size: S * line[i][2], role: 'p' + i });
+      return rotatePts(out, rot * 0.10 - 0.35);
+    }
+    if (preset === 'circular') {
+      for (i = 0; i < 6; i++) { a = rot + i * Math.PI / 3; r = S * (i % 2 ? 1.55 : 1.12); out.push({ dx: Math.cos(a) * r, dy: Math.sin(a) * r, size: S * (i % 2 ? 0.36 : 0.60), role: 'r' + i }); }
+      return out;
+    }
+    if (preset === 'spiral') {
+      for (i = 0; i < 6; i++) { a = rot + i * GOLDEN * 2.1; r = S * 0.66 * Math.sqrt(i + 1); out.push({ dx: Math.cos(a) * r, dy: Math.sin(a) * r, size: S * (0.70 - i * 0.07), role: 's' + i }); }
+      return out;
+    }
+    if (preset === 'geometric') {
+      var sq = [[-1, -1], [1, -1], [1, 1], [-1, 1]], q = S * 0.95;
+      for (i = 0; i < 4; i++) out.push({ dx: sq[i][0] * q, dy: sq[i][1] * q, size: S * 0.50, role: 'g' + i });
+      out.push({ dx: 0, dy: -S * 1.72, size: S * 0.32, role: 'g4' });
+      out.push({ dx: 0, dy: S * 1.72, size: S * 0.32, role: 'g5' });
+      return rotatePts(out, rot * 0.04);
+    }
+    if (preset === 'heart') {
+      for (i = 0; i < 6; i++) {
+        t = i * Math.PI * 2 / 6 + Math.PI / 2;
+        out.push({
+          dx: S * 0.62 * (16 * Math.pow(Math.sin(t), 3)) / 16,
+          dy: -S * 0.62 * (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) / 16,
+          size: S * (i % 2 ? 0.40 : 0.58), role: 'h' + i
+        });
+      }
+      return out;
+    }
+    if (preset === 'star') {
+      for (i = 0; i < 5; i++) { a = rot - Math.PI / 2 + i * Math.PI * 2 / 5; r = S * 1.62; out.push({ dx: Math.cos(a) * r, dy: Math.sin(a) * r, size: S * 0.44, role: 'v' + i }); }
+      p = rot - Math.PI / 2 + Math.PI / 5;
+      out.push({ dx: Math.cos(p) * S * 0.70, dy: Math.sin(p) * S * 0.70, size: S * 0.28, role: 'v5' });
+      return out;
+    }
+    return clusterStars(starPx, adminPx, k);
+  }
+
+  /* ---------------- arrangement / state ---------------- */
+  /* The admin view has no galaxy to decorate, but Void Star Studio still needs
+     this exact arrangement math for its preview stage: one source of truth for
+     placement geometry (configuration architecture §7, item 5). */
+  window.VoidStarShapes = { clusterStars: clusterStars, rotatePts: rotatePts, presetPoints: presetPoints };
+  if (/[?&]admin=(?:1|true)/.test(location.search)) return;
   var DATA = null;
   var cfg = {
     enabled: true,
@@ -60,8 +133,10 @@
     companions: true,
     glow: 1,
     enterMs: 900,
-    lifeMs: 14000,
-    importantLifeMs: 24000,
+    /* lifetime is a message property, not a reading rule: 0 = persistent
+       (available until server-defined expiration or administrative removal) */
+    lifeMs: 0,
+    importantLifeMs: 0,
     railReserve: true,
     fallback: 'hold',
     reducedMotion: false,
@@ -296,8 +371,10 @@
   /* ---------------- legality test ---------------- */
   function starsFor(k) {
     var cls = CLASSES[state.vp];
-    var scaleRatio = cfg.size / cls.admin;
-    var all = clusterStars(cls.star * scaleRatio, cfg.size, k);
+    var sc = starCfg();
+    var sizePx = cfg.size * (sc.experimental ? sc.size : 1);
+    var scaleRatio = sizePx / cls.admin;
+    var all = presetPoints(sc.experimental ? sc.preset : 'organic', cls.star * scaleRatio, sizePx, k);
     if (!cfg.companions) return [all[0]];
     return all;
   }
@@ -360,18 +437,22 @@
     '<path class="sig-spark" d="M12 1.7 L13.45 9.15 L21.3 12 L13.45 14.85 L12 22.3 L10.55 14.85 L2.7 12 L10.55 9.15 Z"/>' +
     '<circle class="sig-pip" cx="12" cy="12" r="1.05"/></svg>';
 
-  function signalEl(sig) {
+  function signalEl(sig, quiet) {
     var el = document.createElement('div');
-    el.className = 'sig sig--' + sig.type + (sig.type === 'important' ? ' is-arriving' : '');
+    el.className = 'sig sig--' + sig.type + (sig.type === 'important' && !quiet ? ' is-arriving' : '');
     el.style.left = round(sig.x, 1) + 'px';
     el.style.top = round(sig.y, 1) + 'px';
     el.style.setProperty('--sig-size', round(sig.size, 1) + 'px');
     el.style.setProperty('--sig-phase', (-((hash32('ph' + sig.k) % 700) / 100)).toFixed(2) + 's');
     el.style.setProperty('--sig-box', round(sig.box, 1) + 'px');
+    applyStarType(el, sig.type);
     el.setAttribute('role', 'button');
     el.setAttribute('tabindex', '0');
-    el.setAttribute('aria-label', (sig.type === 'important' ? 'Important' : 'Ambient') + ' demo signal: ' + sig.title);
+    var read = STORE ? STORE.isRead(sig.msgId) : false;
+    if (read) el.classList.add('is-read');
+    el.setAttribute('aria-label', sigAria(sig, read));
     el.dataset.id = String(sig.id);
+    el.dataset.msg = String(sig.msgId);
     var body = document.createElement('div');
     body.className = 'sig__body';
     body.innerHTML = '<div class="sig__halo"></div>' + GLYPH +
@@ -388,10 +469,64 @@
       body.appendChild(comp);
     }
     el.appendChild(body);
-    listen(el, 'click', function (ev) { ev.stopPropagation(); reveal(sig.id); });
-    listen(el, 'keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); reveal(sig.id); } });
-    if (sig.type === 'important') later(function () { el.classList.remove('is-arriving'); }, 1600);
+    listen(el, 'click', function (ev) { ev.stopPropagation(); openMessage(sig.msgId); });
+    listen(el, 'keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openMessage(sig.msgId); } });
+    if (quiet) el.classList.add('is-in');
+    if (sig.type === 'important' && !quiet) later(function () { el.classList.remove('is-arriving'); }, 1600);
     return el;
+  }
+
+  /* ---- Star Studio wiring (§5/§6/§7 item 4): presentation, never content ---- */
+  function fallbackTokens(sc) {
+    var on = !!sc.experimental, still = sc.motion === 'static' || !on;
+    var colour = { a: '#f6c86a', b: '#b8862f', core: '#fff8e8' };
+    return {
+      '--ss-a': colour.a, '--ss-b': colour.b, '--ss-core': colour.core,
+      '--ss-size': String(sc.size), '--ss-bright': String(sc.brightness),
+      '--ss-glow': String(on ? sc.glow : 1),
+      '--ss-soft': (on ? sc.softness * 2.4 : 0).toFixed(2) + 'px',
+      '--ss-motion': String(still ? 0 : sc.motionIntensity),
+      '--ss-breath': (7.5 / Math.max(0.25, sc.motionIntensity)).toFixed(2) + 's',
+      '--ss-glow-ms': Math.round(on ? sc.glowTransitionMs : 400) + 'ms',
+      '--ss-drift': (still ? 0 : sc.drift).toFixed(2)
+    };
+  }
+  function applyStar() {
+    var sc = starCfg();
+    var tk = STAR ? STAR.tokens() : null;
+    var t = tk ? tk.tokens : fallbackTokens(sc);
+    var still = sc.motion === 'static' || !sc.experimental;
+    var k;
+    for (k in t) if (Object.prototype.hasOwnProperty.call(t, k)) host.style.setProperty(k, t[k]);
+    host.dataset.style = tk ? tk.data.style : (sc.experimental ? sc.style : 'spark');
+    host.dataset.preset = tk ? tk.data.preset : (sc.experimental ? sc.preset : 'organic');
+    host.dataset.color = tk ? tk.data.color : (sc.experimental ? sc.color : 'gold');
+    host.dataset.soft = tk ? tk.data.soft : (sc.experimental && sc.softness > 0 ? '1' : '0');
+    host.dataset.motion = tk ? tk.data.motion : (still ? 'static' : 'animated');
+    host.dataset.experimental = sc.experimental ? 'on' : 'off';
+  }
+  /* per-event-type profile: only the tokens that differ from the global layer */
+  function applyStarType(el, type) {
+    if (!STAR) return;
+    var t = STAR.tokens(type).tokens, g = STAR.tokens().tokens, k;
+    for (k in t) if (Object.prototype.hasOwnProperty.call(t, k) && t[k] !== g[k]) el.style.setProperty(k, t[k]);
+  }
+  /* re-shape every star with the current preset without moving or re-reading it */
+  function restarSignals() {
+    var i;
+    for (i = 0; i < state.signals.length; i++) {
+      var s = state.signals[i];
+      if (!s.el || !s.el.parentNode) continue;
+      s.stars = starsFor(s.k);
+      s.box = boxOf(s.stars);
+      var next = signalEl(s, true);
+      if (revealFor === s.msgId) next.classList.add('is-held');
+      s.el.parentNode.replaceChild(next, s.el);
+      s.el = next;
+    }
+    for (i = 0; i < state.held.length; i++) { state.held[i].stars = starsFor(state.held[i].k); state.held[i].box = boxOf(state.held[i].stars); }
+    renderShelf();
+    log('info', 'stars re-shaped from the studio preset — positions and messages untouched');
   }
 
   function boxOf(stars) {
@@ -424,8 +559,13 @@
     var spot = findSpot(k, occupied);
     var pool = type === 'important' ? IMPORTANT : AMBIENT;
     var pick = pool[(hash32('demo' + cfg.seed + ':' + k) >>> 0) % pool.length];
+    /* identity and lifetime belong to the message store, never to the glyph */
+    var msg = STORE ? (STORE.demoFor ? STORE.add(STORE.demoFor(type, cfg.seed, k)) : STORE.add({ type: type, title: pick.t, body: pick.b })) : null;
     var sig = {
-      id: 'sig-' + k, k: k, type: type, title: opts.title || pick.t, body: opts.body || pick.b,
+      id: 'sig-' + k, k: k, type: type,
+      msgId: msg ? msg.id : 'local-' + k,
+      title: (msg && msg.title) || opts.title || pick.t,
+      body: (msg && msg.body) || opts.body || pick.b,
       size: cfg.size, rule: cfg.rule, thr: cfg.thr, seed: cfg.seed,
       born: Date.now(), life: type === 'important' ? cfg.importantLifeMs : cfg.lifeMs,
       x: 0, y: 0, stars: [], box: 0, ci: -1, held: false
@@ -449,7 +589,7 @@
     requestAnimationFrame(function () { requestAnimationFrame(function () { sig.el.classList.add('is-in'); }); });
     state.signals.push(sig);
     state.counters.placed++;
-    sig.timer = later(function () { expire(sig.id); }, sig.life);
+    if (sig.life > 0) sig.timer = later(function () { expire(sig.id); }, sig.life);
     log('placed', type + ' #' + k + ' at ' + Math.round(sig.x) + ',' + Math.round(sig.y) + ' (candidate ' + spot.ci + ', ' + cfg.rule + ' @ ' + cfg.thr + ')');
     announce((type === 'important' ? 'Important' : 'Ambient') + ' demo signal placed.');
     sampleMetrics();
@@ -467,13 +607,15 @@
     if (!sig) return;
     state.signals.splice(i, 1);
     state.counters.expired++;
-    if (revealFor === id) closeReveal();
+    /* the glyph faded; the message did not. If its window is open it stays
+       open and simply loses its star (detached mode). */
+    if (revealFor === sig.msgId) renderReveal(sig.msgId);
     if (sig.el) {
       sig.el.classList.add('is-out');
       var el = sig.el;
       later(function () { if (el.parentNode) el.parentNode.removeChild(el); }, cfg.reducedMotion ? 20 : 660);
     }
-    log('info', sig.type + ' #' + sig.k + ' faded out');
+    log('info', sig.type + ' #' + sig.k + ' glyph faded out — message ' + sig.msgId + ' stays available');
     if (window.VoidSignalsPreview && window.VoidSignalsPreview.onchange) window.VoidSignalsPreview.onchange();
   }
   function renderShelf() {
@@ -492,62 +634,111 @@
       (function (sig) {
         var b = document.createElement('button');
         b.type = 'button';
-        b.className = 'signals-shelf__item signals-shelf__item--' + sig.type;
+        var read = STORE ? STORE.isRead(sig.msgId) : false;
+        b.className = 'signals-shelf__item signals-shelf__item--' + sig.type + (read ? ' is-read' : '');
         b.innerHTML = '<span class="signals-shelf__pip"></span>' + escapeHtml(sig.title);
-        listen(b, 'click', function () { reveal(sig.id); });
+        b.setAttribute('aria-label', 'Open held message: ' + sig.title + (read ? ' (read this session — opens again)' : ''));
+        listen(b, 'click', function () { openMessage(sig.msgId); });
         shelfItems.appendChild(b);
       })(state.held[i]);
     }
   }
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
-  /* ---------------- reveal ---------------- */
+  /* ---------------- reveal window: message-keyed, explicit-close-only ------
+     Owner contract (§2): a click opens the window; it stays open until the
+     user closes it with the close control or Escape. Nothing else may close
+     it — no reading timer, no display timer, no animation end, no background
+     state change, no unrelated Galaxy interaction, no expiry, no resize, and
+     no click outside the window. Closing only dims the star: the message
+     stays available and clickable, and a later click reopens the same text. */
   var revealFor = null, revealHidPanel = false;
-  function findSignal(id) {
+
+  function findSignal(msgId) {
     var i;
-    for (i = 0; i < state.signals.length; i++) if (state.signals[i].id === id) return state.signals[i];
-    for (i = 0; i < state.held.length; i++) if (state.held[i].id === id) return state.held[i];
+    for (i = 0; i < state.signals.length; i++) if (state.signals[i].msgId === msgId) return state.signals[i];
+    for (i = 0; i < state.held.length; i++) if (state.held[i].msgId === msgId) return state.held[i];
     return null;
   }
-  function reveal(id) {
-    var sig = findSignal(id);
-    if (!sig) return false;
-    revealFor = id;
+  function sigAria(sig, read) {
+    return (sig.type === 'important' ? 'Important' : 'Ambient') + ' demo signal: ' + sig.title +
+      (read ? ' (read this session — opens again)' : '');
+  }
+  /* the dim/awake visual is derived from the store, never from a local flag */
+  function refreshReadStates() {
+    if (!STORE) return;
+    var i, list = state.signals.concat(state.held);
+    for (i = 0; i < list.length; i++) {
+      var sig = list[i];
+      if (!sig.el) continue;
+      var read = STORE.isRead(sig.msgId);
+      sig.el.classList.toggle('is-read', read && revealFor !== sig.msgId);
+      sig.el.setAttribute('aria-label', sigAria(sig, read));
+    }
+    renderShelf();
+  }
+
+  function openMessage(msgId) {
+    var msg = STORE ? STORE.get(msgId) : null;
+    if (!msg) { log('warn', 'message ' + msgId + ' is not available in this session'); return false; }
+    if (revealFor === msgId) return true;
+    revealFor = msgId;
     state.counters.revealed++;
-    var g = state.geom;
-    var r = Math.hypot(sig.x - g.cx, sig.y - g.cy);
-    revealEl.className = 'signals-reveal signals-reveal--' + sig.type;
-    revealEl.innerHTML =
-      '<button class="signals-reveal__close" type="button" aria-label="Close signal detail">&times;</button>' +
-      '<div class="signals-reveal__type"><span class="signals-reveal__dot"></span>' + (sig.type === 'important' ? 'Important signal' : 'Ambient signal') + '</div>' +
-      '<h3 class="signals-reveal__title">' + escapeHtml(sig.title) + '</h3>' +
-      '<p class="signals-reveal__body">' + escapeHtml(sig.body) + '</p>' +
-      '<div class="signals-reveal__meta"><span>' + (sig.held ? 'held · no legal position' : 'k' + sig.k + ' · ' + Math.round(sig.x) + ',' + Math.round(sig.y) + ' · r ' + Math.round(r) + 'px') + '</span>' +
-      '<span class="signals-reveal__demo">demo data</span></div>';
-    revealEl.hidden = false;
-    /* phone: the console yields its band to the detail panel, and returns on close */
+    /* phone: the console yields its band to the window, and returns on close */
     revealHidPanel = false;
-    if (g.w < 620) {
+    if (state.geom.w < 620) {
       var pnl = document.querySelector('.signals-instrument');
       var tb = document.querySelector('.signals-tab');
       if (pnl && !pnl.hidden) { pnl.hidden = true; if (tb) tb.hidden = false; revealHidPanel = true; }
     }
+    renderReveal(msgId);
+    if (window.VoidSignalsPreview && window.VoidSignalsPreview.onchange) window.VoidSignalsPreview.onchange();
+    return true;
+  }
+
+  /* Paints the open window. Re-run (without touching timers) whenever the
+     message, its star, or the read state changes while the window is open. */
+  function renderReveal(msgId) {
+    var msg = STORE ? STORE.get(msgId) : null;
+    if (!msg) return false;
+    var sig = findSignal(msgId);
+    var g = state.geom;
+    var read = STORE ? STORE.isRead(msgId) : false;
+    var life = msg.expiresAt ? 'expires ' + new Date(msg.expiresAt).toLocaleString() : 'available until removed';
+    var wasOpen = revealEl.classList.contains('is-open');
+    revealEl.className = 'signals-reveal signals-reveal--' + msg.type;
+    revealEl.hidden = false;
+    revealEl.innerHTML =
+      '<button class="signals-reveal__close" type="button" aria-label="Close this message">&times;</button>' +
+      '<div class="signals-reveal__type"><span class="signals-reveal__dot"></span>' +
+      (msg.type === 'important' ? 'Important signal' : 'Ambient signal') +
+      '<span class="signals-reveal__flag">' + (read ? 're-read · read this session' : 'new this session') + '</span></div>' +
+      '<h3 class="signals-reveal__title">' + escapeHtml(msg.title) + '</h3>' +
+      '<p class="signals-reveal__body">' + escapeHtml(msg.body) + '</p>' +
+      '<div class="signals-reveal__meta"><span>' + escapeHtml(msg.id) + ' · ' + escapeHtml(life) + '</span>' +
+      '<span>' + (sig ? (sig.held ? 'held · no legal position'
+        : 'k' + sig.k + ' · ' + Math.round(sig.x) + ',' + Math.round(sig.y) + ' · r ' + Math.round(Math.hypot(sig.x - g.cx, sig.y - g.cy)) + 'px')
+        : 'no star in the field · message still available') + '</span>' +
+      '<span class="signals-reveal__demo">demo data</span></div>' +
+      '<p class="signals-reveal__note">Closing keeps this star dim but clickable. Reading never removes the message.</p>';
     var closeBtn = revealEl.querySelector('.signals-reveal__close');
     listen(closeBtn, 'click', closeReveal);
     /* place beside the signal: flank candidates scored by real rect overlap
        against chrome and every signal footprint (including its own) */
     var w = revealEl.offsetWidth, h = revealEl.offsetHeight;
-    var ax = sig.held ? g.w - 40 : sig.x, ay = sig.held ? 84 : sig.y;
-    var off = sig.size / 2 + 16;
+    var size = sig ? sig.size : 44;
+    var ax = sig ? (sig.held ? g.w - 40 : sig.x) : g.cx;
+    var ay = sig ? (sig.held ? 84 : sig.y) : g.cy;
+    var off = size / 2 + 16;
     var cands = [
       { x: ax + off, y: ay - h / 2 },
       { x: ax - off - w, y: ay - h / 2 },
       { x: ax - w / 2, y: ay - off - h },
       { x: ax - w / 2, y: ay + off },
-      { x: ax + off, y: ay - h + sig.size / 2 },
-      { x: ax - off - w, y: ay - h + sig.size / 2 },
-      { x: ax + off, y: ay - sig.size / 2 },
-      { x: ax - off - w, y: ay - sig.size / 2 }
+      { x: ax + off, y: ay - h + size / 2 },
+      { x: ax - off - w, y: ay - h + size / 2 },
+      { x: ax + off, y: ay - size / 2 },
+      { x: ax - off - w, y: ay - size / 2 }
     ];
     var rects = collectChrome(), boxes = [], bi;
     for (bi = 0; bi < state.signals.length; bi++) {
@@ -576,14 +767,27 @@
     }
     revealEl.style.left = round(best.x, 1) + 'px';
     revealEl.style.top = round(best.y, 1) + 'px';
-    requestAnimationFrame(function () { revealEl.classList.add('is-open'); });
-    if (sig.el) sig.el.classList.add('is-held');
-    log('info', 'reveal ' + sig.type + ' #' + sig.k + (sig.held ? ' (held)' : ''));
-    announce('Signal detail opened: ' + sig.title + '. Demo data.');
-    if (window.VoidSignalsPreview && window.VoidSignalsPreview.onchange) window.VoidSignalsPreview.onchange();
+    if (wasOpen) revealEl.classList.add('is-open');
+    else requestAnimationFrame(function () { revealEl.classList.add('is-open'); });
+    if (sig && sig.el) { sig.el.classList.add('is-held'); sig.el.classList.remove('is-read'); }
+    log('info', 'window opened for ' + msg.type + ' message ' + msg.id + (read ? ' (re-read)' : '') + (sig ? '' : ' · no star in the field'));
+    announce('Message opened: ' + msg.title + '. Demo data. It stays available after you close it.');
     return true;
   }
+
+  /* The only path that hides the window is an explicit user action: the close
+     control, Escape, or an administrative removal of the message itself. */
   function closeReveal() {
+    var msgId = revealFor;
+    if (!msgId) return;
+    /* reading is recorded, the message is not consumed: the star dims in place */
+    if (STORE) STORE.markRead(msgId);
+    var sig = findSignal(msgId);
+    if (sig && sig.el) sig.el.classList.remove('is-held');
+    log('info', 'closed by user — message ' + msgId + ' dimmed and still available');
+    hideRevealWindow();
+  }
+  function hideRevealWindow() {
     if (revealHidPanel) {
       var pnl2 = document.querySelector('.signals-instrument');
       var tb2 = document.querySelector('.signals-tab');
@@ -591,17 +795,15 @@
       if (tb2) tb2.hidden = true;
       revealHidPanel = false;
     }
-    if (revealFor) {
-      var s = findSignal(revealFor);
-      if (s && s.el) s.el.classList.remove('is-held');
-    }
     revealFor = null;
     revealEl.classList.remove('is-open');
     later(function () { revealEl.hidden = true; revealEl.textContent = ''; }, cfg.reducedMotion ? 10 : 320);
+    refreshReadStates();
     if (window.VoidSignalsPreview && window.VoidSignalsPreview.onchange) window.VoidSignalsPreview.onchange();
   }
 
-  /* ---------------- clear / revalidate ---------------- */
+  /* Clears the visual field only. Messages are NOT deleted (§2): an open
+     window keeps its text, and the Notification Center can still open them. */
   function clearAll() {
     var i;
     for (i = 0; i < state.signals.length; i++) {
@@ -611,11 +813,15 @@
     }
     state.signals = [];
     state.held = [];
-    closeReveal();
     renderShelf();
-    log('info', 'field cleared');
+    if (revealFor) {
+      if (STORE && !STORE.get(revealFor)) hideRevealWindow();
+      else renderReveal(revealFor);
+    }
+    log('info', 'field cleared — every message stays available');
     if (window.VoidSignalsPreview && window.VoidSignalsPreview.onchange) window.VoidSignalsPreview.onchange();
   }
+  /* ---------------- revalidate (geometry / rule changes) ---------------- */
   function revalidate() {
     state.geom = readGeom();
     state.vp = state.geom.vp;
@@ -675,7 +881,12 @@
     }
     state.held = stillHeld;
     renderShelf();
-    if (revealFor) { var rs = findSignal(revealFor); if (rs && !rs.held) reveal(revealFor); else closeReveal(); }
+    /* a resize, rule or threshold change re-places the window but never closes
+       it, and never marks the message read (§2: only the user closes it) */
+    if (revealFor) {
+      if (STORE && !STORE.get(revealFor)) hideRevealWindow();
+      else renderReveal(revealFor);
+    }
   }
 
   /* ---------------- metrics: sampled on demand, never polled ---------------- */
@@ -738,7 +949,7 @@
     state.log = [];
     state.candKey = '';
     cfg.rule = 'R-F'; cfg.thr = 0.15; cfg.companions = true; cfg.glow = 1; cfg.enterMs = 900;
-    cfg.lifeMs = 14000; cfg.importantLifeMs = 24000; cfg.railReserve = true; cfg.fallback = 'hold';
+    cfg.lifeMs = 0; cfg.importantLifeMs = 0; cfg.railReserve = true; cfg.fallback = 'hold';
     cfg.autoDemo = false; cfg.showBoxes = false; cfg.showCentre = false; cfg.enabled = true;
     cfg.seed = 20261126; cfg.centreGuard = 0.22; cfg.order = 'ring';
     applyViewportDefaults();
@@ -767,9 +978,13 @@
       metrics: state.metrics,
       candidates: state.candidates.length,
       signals: state.signals.map(function (s) {
-        return { id: s.id, k: s.k, type: s.type, title: s.title, x: round(s.x, 1), y: round(s.y, 1), size: s.size, rule: s.rule, thr: s.thr, ci: s.ci, box: round(s.box, 1), r_px: round(Math.hypot(s.x - g.cx, s.y - g.cy), 1), r_of_scale: round(Math.hypot(s.x - g.cx, s.y - g.cy) / g.scale, 3) };
+        return { id: s.id, k: s.k, msgId: s.msgId, read: STORE ? STORE.isRead(s.msgId) : false, type: s.type, title: s.title, x: round(s.x, 1), y: round(s.y, 1), size: s.size, rule: s.rule, thr: s.thr, ci: s.ci, box: round(s.box, 1), r_px: round(Math.hypot(s.x - g.cx, s.y - g.cy), 1), r_of_scale: round(Math.hypot(s.x - g.cx, s.y - g.cy) / g.scale, 3) };
       }),
-      held: state.held.map(function (s) { return { id: s.id, k: s.k, type: s.type, title: s.title }; }),
+      held: state.held.map(function (s) { return { id: s.id, k: s.k, msgId: s.msgId, type: s.type, title: s.title }; }),
+      /* presentation and lifetime are separate records by design (§7) */
+      star: { config: starCfg(), tokens: (STAR ? STAR.tokens() : { tokens: fallbackTokens(starCfg()) }).tokens },
+      messages: STORE ? { session: STORE.sessionId(), stats: STORE.stats(), entries: STORE.all() } : null,
+      window: { open: revealFor, autoClosePaths: 'none — close control and Escape only' },
       log: state.log.slice(0, 40),
       isolation: { productionFilesModified: 0, network: 'all API traffic simulated locally', intercepted: (window.__VOID_PREVIEW__ && window.__VOID_PREVIEW__.intercepted.length) || 0 }
     };
@@ -788,14 +1003,48 @@
 
   /* ---------------- public surface ---------------- */
   var api = {
-    version: 'phase-b-preview-1',
+    version: 'phase-b-preview-2',
     config: cfg,
     state: state,
+    store: STORE,
     data: function () { return DATA; },
     setConfig: setConfig,
     spawn: spawn,
-    reveal: reveal,
+    /* message-keyed window API (§2/§3/§4) */
+    openMessage: openMessage,
+    renderReveal: renderReveal,
     closeReveal: closeReveal,
+    hideRevealWindow: hideRevealWindow,
+    revealed: function () { return revealFor; },
+    messages: function () { return STORE ? STORE.all() : []; },
+    liveMessages: function () { return STORE ? STORE.live() : []; },
+    readState: function (id) { return STORE ? STORE.isRead(id) : false; },
+    markRead: function (id) { var ok = STORE ? STORE.markRead(id) : false; if (ok) refreshReadStates(); return ok; },
+    markUnread: function (id) { var ok = STORE ? STORE.setUnread(id) : false; if (ok) refreshReadStates(); return ok; },
+    removeMessage: function (id) {
+      var i;
+      for (i = state.signals.length - 1; i >= 0; i--) if (state.signals[i].msgId === id) expire(state.signals[i].id);
+      for (i = state.held.length - 1; i >= 0; i--) if (state.held[i].msgId === id) { if (state.held[i].el) state.held[i].el.parentNode.removeChild(state.held[i].el); state.held.splice(i, 1); }
+      renderShelf();
+      if (revealFor === id) hideRevealWindow();
+      var ok = STORE ? STORE.remove(id) : false;
+      log('info', 'message ' + id + ' removed (administrative)');
+      return ok;
+    },
+    resetSession: function () {
+      var sid = STORE ? STORE.resetSession() : null;
+      refreshReadStates();
+      if (revealFor) renderReveal(revealFor);
+      log('info', 'site session reset — unread brightness restored (' + sid + ')');
+      return sid;
+    },
+    /* Star Studio API (§5/§6): appearance only, never message content */
+    star: function () { return starCfg(); },
+    setStar: function (patch) { if (STAR) STAR.setGlobal(patch); applyStar(); return starCfg(); },
+    setExperimental: function (on) { if (STAR) STAR.setExperimental(!!on); applyStar(); return starCfg(); },
+    resetStar: function () { if (STAR) STAR.reset(); applyStar(); return starCfg(); },
+    reStar: function () { applyStar(); restarSignals(); return starCfg(); },
+    starTokens: function () { return STAR ? STAR.tokens().tokens : {}; },
     clear: clearAll,
     reset: reset,
     randomize: randomize,
@@ -808,6 +1057,7 @@
     candidates: function () { return buildCandidates(); },
     testAt: function (x, y, k) { return testPosition(x, y, k || 1, state.geom, collectChrome(), []); },
     auditCompare: auditCompare,
+    refreshReadStates: refreshReadStates,
     destroy: destroy,
     onchange: null, onlog: null
   };
@@ -856,6 +1106,8 @@
 
   function destroy() {
     state.destroyed = true;
+    if (storeSub) { storeSub(); storeSub = null; }
+    hideRevealWindow();
     clearAll();
     if (autoTimer) clearTimeout(autoTimer);
     for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
@@ -887,8 +1139,19 @@
       if (window.VoidSignalsPreview && window.VoidSignalsPreview.onchange) window.VoidSignalsPreview.onchange();
     }, 200);
   });
-  listen(document, 'keydown', function (ev) { if (ev.key === 'Escape' && revealFor) closeReveal(); });
-  listen(host, 'click', function (ev) { if (ev.target === host || ev.target === field) closeReveal(); });
+  /* Explicit close only: the close control (bound in renderReveal) or Escape.
+     Clicking anywhere else — the galaxy, the field, outside the window — must
+     never consume or dismiss the message (§2).
+     The player claims Escape on document in the capture phase to leave Music Mode,
+     so the window takes it on window capture first; otherwise Escape closes the
+     message and tears the experience down underneath it (void-invite.js does the
+     same for its share sheet). */
+  listen(window, 'keydown', function (ev) {
+    if (!revealFor || ev.key !== 'Escape' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    closeReveal();
+  }, true);
   var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   if (mq) {
     cfg.reducedMotion = !!mq.matches;
@@ -899,12 +1162,25 @@
 
   function start() {
     mountHost();
+    applyStar();
     state.geom = readGeom();
     state.vp = state.geom.vp;
     applyViewportDefaults();
     state.ready = true;
     revalidate();
-    log('info', 'preview layer ready · ' + state.vp + ' · ' + (state.geom.live ? 'live renderer geometry' : 'formula geometry (renderer not ready)'));
+    if (STORE && STORE.subscribe) {
+      storeSub = STORE.subscribe(function (reason) {
+        if (reason === 'remove') { if (revealFor && !STORE.get(revealFor)) hideRevealWindow(); revalidate(); }
+        /* a read-state change has to reach both views: refreshReadStates updates
+           the field, the notify repaints the Notification Center instrument */
+        else {
+          refreshReadStates();
+          if (window.VoidSignalsPreview && window.VoidSignalsPreview.onchange) window.VoidSignalsPreview.onchange();
+        }
+      });
+    }
+    log('info', 'preview layer ready · ' + state.vp + ' · ' + (state.geom.live ? 'live renderer geometry' : 'formula geometry (renderer not ready)') +
+      (STORE ? ' · session ' + STORE.sessionId() : ' · no message store'));
     if (window.VoidSignalsPreview && window.VoidSignalsPreview.onchange) window.VoidSignalsPreview.onchange();
   }
 

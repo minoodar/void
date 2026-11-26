@@ -147,3 +147,102 @@ bit/RLE reads; candidate fields are cached per geometry+config key.
 - `origin/main` still `404c9b49d050b9e58db05c308ad77cef766bbddc`.
 - No Worker code, D1, R2, API contract, playback implementation, Letters behaviour,
   notification, push message, environment variable, DNS or hosting change was made.
+
+---
+
+# Iteration 2 — persistent messages, session read state, Void Star Studio
+
+Branch `preview/signals-first-visual`, built on iteration-1 commit `44a70f684f3e49af3a5a08c59e9508710917ce6e`.
+Iteration-1 files were copied to `signals-preview/_iteration1-backup/` before any edit; the
+prototype was extended in place, not recreated. Per the brief, the 28-control campaign and the
+production suites were **not** re-run — their recorded results are reused (§6 above, carried into
+`reusedFromIteration1` in the new results file), and only the changed behaviour was tested.
+
+## 9. Permanent message availability (§2)
+
+Message lifetime is now separate from presentation. Ambient, Important and Notification Center
+messages all default to `lifeMs: 0` — persistent until server expiry or administrative removal —
+so reading can never consume one. The 10-step contract is demonstrated with real mouse clicks in
+headless Chrome at 1440×900 and 390×844: appear at initial brightness → click → window opens →
+window survives 9 s of page time, a viewport resize, unrelated spawns and rule changes, glyph
+expiry (`lifeMs` 2500 ms while the window is open) and clicks on empty sky → close control closes →
+same star becomes dim but stays hit-testable → clicking it again reopens the original text and
+states `re-read · read this session`.
+
+One genuine defect was found and fixed here: Escape was registered on `document`, while the
+production player claims Escape on `document` **in the capture phase** to leave Music Mode
+(`void-music.js:2640`). Closing a message with Escape therefore also tore down the whole
+experience — `#void-music-root[hidden]`, and with it the galaxy signals and the instrument. The
+layer now takes Escape on `window` capture and stops it, the same convention `void-invite.js:162`
+documents for its share sheet. A regression check asserts the root is still laid out
+(`rootHidden:false`, width 1440/390) after an Escape close. Clicking outside the window remains a
+no-op by design, and `store.remove()` is the only path that makes a message disappear (verified:
+6 → 5, gone from both views).
+
+## 10. Session-scoped read state (§3)
+
+`signals-preview/message-store.js` owns three separate concerns: message lifetime (server fields),
+read state (current site session only) and visual state (a class the renderer reads). Storage is
+`sessionStorage` only — `void-sig-session-v1` holds the session id `site-…`, `void-sig-read-v1`
+holds a JSON array of stable `m-…` message ids and nothing else. Proven in-page: the stored value
+is `["m-20261126-i2"]` (no whitespace, no title-like strings, no body keys), a message read before
+a reload comes back dim under the same id while an unread one stays bright, and `resetSession()`
+restores initial brightness for every still-valid message without deleting any. Nothing is written
+to D1 and no endpoint was added. Titles and array positions are never used as identity.
+
+## 11. Notification Center parity (§4)
+
+The Center and the Galaxy render the same `messages()` list — the audit compares row count against
+store count and finds no copies and no second lifecycle. A read from either view dims the same
+star; `markUnread()` repaints the Center without a manual refresh (fixed by having the layer's
+store subscription call `refreshReadStates()` plus the instrument's `onchange`, `signals-layer.js:1172`);
+opening from a Center row and closing, then clicking the star, reopens the identical id and title.
+
+## 12. Void Star Studio (§5–§7)
+
+A third tab is injected into the existing `?admin=true` Notification Management interface, so the
+section sits beside the current tabs rather than replacing them. Controls: 4 star styles, 5 colours,
+8 arrangement presets (Organic, Constellation, Circular, Spiral, Geometric, plus Heart, Star and a
+disabled "custom" slot), 7 sliders split into Appearance and Motion, an experimental on/off switch,
+per-event-type scopes (Ambient / Important), Reset to default, side-by-side preset comparison and a
+JSON readout. Badges state `Preview only`, `sessionStorage · cleared when the tab closes` and
+`no Worker, no D1, no R2, no production config`; changes apply on the next input event with no save
+button, and nothing leaves the page.
+
+`signals-preview/star-config.js` keeps the six responsibilities of §7 separated: the event engine,
+the lifecycle and the session read set never see presentation, and appearance is a layered model
+(defaults ← `global` ← `profiles.byType`, with `occasion` and `timeBased` reserved but unimplemented
+in this iteration) written to `void-star-config-v1` and rendered as `--ss-*` custom properties.
+Verified: a per-type glow override layers under a global colour; the message record keys stay
+`body, createdAt, demo, expiresAt, id, readInSession, title, type` — no preset or glow field can leak
+into message content; and the control room contains no galaxy host, instrument or reveal node.
+
+## 13. Visual quality and placement re-measured (§8)
+
+Deep-black field, restrained gold/silver/ice palettes, CSS transform/opacity only, reduced motion
+honoured from both the instrument and the OS media query. The dim state measures opacity **0.52**
+(well above the "must not disappear into pure black" floor) with `pointer-events: auto`; the reopened
+star reaches 1.0, which is the "star awakening again" read the brief asked for.
+
+Honest note on the invariant: iteration-1's `overlapAudit` recorded `signals = 0`, so it proved
+nothing about collisions and could not be reused as evidence. It was replaced with a per-star audit
+that mirrors the engine's own test (each point of a cluster at `size/2 + STAR_PAD`) against
+**visible** chrome only, with decorative halo touches reported separately. Both viewports: `blocked: []`,
+`centreOverlaps: 0`, `revealOverSeek: false`, and the engine's own `counters.chrome = 0`. The Podcast
+Seek handoff constraint holds — no signal footprint overlaps `.vm-seek`.
+
+## 14. Iteration-2 validation
+
+`node signals-preview/validate-iteration2.mjs --port=8970` → **114 checks, 114 pass, 0 fail**
+(desktop 1440×900, phone 390×844, admin/Star Studio), 19 screenshots in
+`signals-preview/validation/shots2/`, results in
+`signals-preview/validation/validation-results-iteration2.json` with the pinned `head`, the byte
+proof (`productionFilesModified: 0` over 96 tracked files) and the reused iteration-1 record.
+Off-origin requests: 0. Uncaught exceptions and console errors: 0 in every context.
+
+Two CDP facts were learned while building it and are worth recording for the next harness: a DOM
+`keydown` from `Input.dispatchKeyEvent` needs `type:"rawKeyDown"` carrying `key`, `code` **and**
+`windowsVirtualKeyCode`/`nativeVirtualKeyCode` (`type:"keyDown"` alone delivered nothing here, and a
+raw frame without `key` produces an `e.key`-less event), and a probe listener for a key the overlay
+consumes must be registered on `window` capture, since `stopPropagation` halts the document-level
+listeners.

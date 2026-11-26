@@ -41,7 +41,9 @@ let drifted = 0;
    LF, and one file (privacy-policy.html) stores mixed endings. Raw hashing reports
    false drift in both directions. `git diff --name-only HEAD` + `git status` are the
    state-of-record checks; per-file hashes are recorded as evidence only. */
-const changedPaths = execFileSync('git', ['-C', ROOT, 'diff', '--name-only', 'HEAD'], { encoding: 'utf8' }).split('\n').filter(Boolean);
+const changedPathsAll = execFileSync('git', ['-C', ROOT, 'diff', '--name-only', 'HEAD'], { encoding: 'utf8' }).split('\n').filter(Boolean);
+/* the preview's own directory is allowed to be dirty: the proof is about production files */
+const changedPaths = changedPathsAll.filter(p => !p.startsWith('signals-preview/'));
 for (const rel of tracked) {
   const disk = join(ROOT, rel);
   if (!existsSync(disk)) { proof.push({ rel, state: 'missing-on-disk' }); drifted++; continue; }
@@ -52,8 +54,13 @@ for (const rel of tracked) {
   proof.push({ rel, state: gitClean ? 'identical-per-git' : 'MODIFIED', bytes: statSync(disk).size, blobSha, diskSha, rawBytesEqual: blobSha === diskSha });
 }
 let gitDiffClean = changedPaths.length === 0;
-const status = execFileSync('git', ['-C', ROOT, 'status', '--porcelain'], { encoding: 'utf8' }).trim();
-const dirtyProduction = status.split('\n').filter(Boolean).filter(l => !l.slice(3).startsWith('signals-preview/'));
+const status = execFileSync('git', ['-C', ROOT, 'status', '--porcelain'], { encoding: 'utf8' });
+/* parse the XY status column properly: it is position-sensitive (" M path"), so
+   trimming or fixed-offset slicing misreads the path — strip the code instead */
+const dirtyProduction = status.split('\n')
+  .map(l => l.replace(/^.{0,2}\s+/, '').trim())
+  .filter(Boolean)
+  .filter(p => !p.startsWith('signals-preview/'));
 console.log(`PRODUCTION BYTE-PROOF  head=${HEAD}  branch=${BRANCH}  files=${proof.length}  gitModified=${drifted}  gitDiffClean=${gitDiffClean}  dirtyProductionPaths=${dirtyProduction.length}`);
 console.log(`                     raw-byte identical=${proof.filter(p => p.rawBytesEqual).length}/${proof.length} (rest differ only by the checkout's CRLF smudge)`);
 if (drifted || !gitDiffClean || dirtyProduction.length) {
@@ -63,8 +70,14 @@ if (drifted || !gitDiffClean || dirtyProduction.length) {
   process.exit(3);
 }
 
-const INJECT_HEAD = '<script src="signals-preview/preview-shim.js"></script>\n<link rel="stylesheet" href="signals-preview/signals-layer.css">';
-const INJECT_BODY = '<script src="signals-preview/signals-layer.js"></script>\n<script src="signals-preview/signals-demo-console.js"></script>';
+const INJECT_HEAD = '<script src="signals-preview/preview-shim.js"></script>\n<link rel="stylesheet" href="signals-preview/signals-layer.css">\n<link rel="stylesheet" href="signals-preview/star-studio.css">';
+/* order matters: identity/lifetime and the appearance model exist before the
+   layer and the studio read them */
+const INJECT_BODY = '<script src="signals-preview/message-store.js"></script>' +
+  '\n<script src="signals-preview/star-config.js"></script>' +
+  '\n<script src="signals-preview/signals-layer.js"></script>' +
+  '\n<script src="signals-preview/signals-demo-console.js"></script>' +
+  '\n<script src="signals-preview/star-studio.js"></script>';
 
 function injectIndex(html) {
   let out = String(html);
@@ -87,7 +100,19 @@ function sim(path) {
   if (path.startsWith('/letters/count')) return { ok: true, count: 0, simulated: true };
   if (path.startsWith('/letters/quota')) return { ok: true, remaining: 0, simulated: true };
   if (path.startsWith('/letters')) return { ok: true, letters: [], simulated: true };
-  if (path.startsWith('/admin/session')) return { ok: false, error: 'preview: admin disabled', simulated: true };
+  /* The control-room shell is opened against a local sandbox session so the
+     Void Star Studio can be shown inside the real admin interface. It is not a
+     production credential: every read is simulated and the server refuses all
+     writes (non-GET) with 405, so nothing here can reach a Worker or D1. */
+  if (path.startsWith('/admin/session')) return { ok: true, simulated: true, previewSandbox: true, role: 'preview-sandbox' };
+  if (path.startsWith('/admin/tracks/reorder')) return { ok: true, simulated: true };
+  if (path.startsWith('/admin/tracks')) return { ok: true, tracks: SIM_TRACKS, simulated: true };
+  if (path.startsWith('/admin/letters/clear')) return { ok: true, simulated: true };
+  if (path.startsWith('/admin/letters')) return { ok: true, letters: [], total: 0, page: 1, has_more: false, simulated: true };
+  if (path.startsWith('/admin/domain-readiness')) return { ok: true, ready: true, state_version: 0, unclassified: [], simulated: true };
+  if (path.startsWith('/admin/domain-tracks')) return { ok: true, tracks: [], simulated: true };
+  if (path.startsWith('/admin/domain-audit')) return { ok: true, records: [], simulated: true };
+  if (path.startsWith('/admin/')) return { ok: true, simulated: true, empty: true, path };
   if (path.startsWith('/podcast')) return { ok: true, episodes: [], simulated: true };
   return { ok: true, simulated: true, empty: true, path };
 }
