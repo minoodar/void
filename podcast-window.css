@@ -248,10 +248,9 @@
 
 /* Show view */
 .pw__showhead { display: flex; align-items: center; }
-.pw__art--lg { flex: 0 0 auto; }
+.pw__art--lg { flex: 0 0 auto; cursor: default; }
 .pw__showmeta { margin: 0 14px; min-width: 0; }
 .pw__showtitle { margin: 0; font-size: 15px; font-weight: 600; }
-.pw__showart-link { display: block; flex: 0 0 auto; color: inherit; text-decoration: none; }
 .pw__showtitle-link { display: block; width: fit-content; max-width: 100%; color: inherit; text-decoration: none; border-radius: 3px; }
 .pw__showtitle-link::after { content: " ↗"; color: rgba(251, 191, 36, .72); font-size: .8em; }
 .pw__showtitle-link:hover, .pw__showtitle-link:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
@@ -593,6 +592,8 @@ html[dir="rtl"] .pw-sheet__qtitle { margin-right: 0; margin-left: 8px; }
   border-radius: 50%;
   object-fit: cover;
 }
+.pw__art--lg .pw__artimg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; opacity: 0; }
+.pw__art--lg .pw__artimg.is-loaded { opacity: 1; }
 .pw__newitem { overflow: hidden; }
 .pw__newitem .pw__artimg { position: absolute; top: 0; left: 0; }
 .pw__newitem .pw__initials { position: relative; }

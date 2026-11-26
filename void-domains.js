@@ -668,9 +668,9 @@
     openPodcastWindow=function(returnFocus){
       if(!pwPromise){
         pwPromise=new Promise(function(resolve,reject){
-          var link=document.createElement('link');link.rel='stylesheet';link.href='podcast-window.css?v=20261126-homepage1';document.head.appendChild(link);
+          var link=document.createElement('link');link.rel='stylesheet';link.href='podcast-window.css?v=20261127-artfix1';document.head.appendChild(link);
           var tl=document.createElement('link');tl.rel='stylesheet';tl.href='podcast-thread.css?v=20261122';document.head.appendChild(tl);
-          var files=['podcast-sample-data.js?v=20261117','podcast-store.js?v=20261127-backfill1','podcast-feed.js?v=20261126-homepage1','podcast-window.js?v=20261127-backfill1','podcast-player.js?v=20261125','void-podcast-thread.js?v=20261122'],i=0;
+          var files=['podcast-sample-data.js?v=20261117','podcast-store.js?v=20261127-backfill1','podcast-feed.js?v=20261126-homepage1','podcast-window.js?v=20261127-artfix1','podcast-player.js?v=20261125','void-podcast-thread.js?v=20261122'],i=0;
           var next=function(){
             if(i>=files.length){resolve();return;}
             var s=document.createElement('script');s.src=files[i++];

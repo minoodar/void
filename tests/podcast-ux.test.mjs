@@ -42,16 +42,121 @@ function block(src, first, last) {
 }
 const occurrences = (hay, needle) => hay.split(needle).length - 1;
 
-test('podcast homepage links are limited to the desktop show header', () => {
+test('podcast homepage link stays on the title and artwork stays non-interactive', () => {
   const render = fn(WIN, 'renderShow');
   assert.match(render, /if \(!siteUrl \|\| isTV\(\)\) \{ return; \}/, 'missing sites and TV keep plain header elements');
-  assert.match(render, /showArtLink\.setAttribute\('aria-hidden', 'true'\)/);
-  assert.match(render, /showArtLink\.tabIndex = -1/);
+  assert.doesNotMatch(render, /showArtLink|pw__showart-link|showHead\.replaceChild/);
+  assert.doesNotMatch(WIN, /showArt\.addEventListener|showArtLink|pw__showart-link/);
   assert.match(render, /showTitleLink\.setAttribute\('aria-label', \(Feed\.isPlatformSiteUrl\(siteUrl\) \? 'Podcast page: ' : 'Podcast website: '\) \+ title\)/);
-  assert.equal((render.match(/show(?:Art|Title)Link\.addEventListener/g) || []).length, 0, 'header anchors have no playback or navigation handlers');
+  assert.match(render, /showTitleLink\.href = siteUrl/);
+  assert.match(render, /showTitleLink\.target = '_blank'/);
   const css = read('podcast-window.css');
   assert.match(css, /\.pw__showtitle-link::after \{ content: " ↗"/);
   assert.match(css, /\.pw__showtitle-link:focus-visible \{ outline: 2px solid/);
+});
+
+test('existing show renderer preserves the artwork element across unchanged-source rerenders', () => {
+  const render = fn(WIN, 'renderShow');
+  assert.doesNotMatch(render, /showArt\.textContent = ''/, 'renderShow must not clear the artwork tree on every event');
+  assert.match(render, /updateShowArt\(showArt, sh\.artUrl, sh\.initials\)/, 'show art must flow through the idempotent updater');
+});
+
+test('show artwork handles cached, loading, changed, and stale image results without refetching', () => {
+  const requests = [];
+  function element(tag) {
+    const classes = new Set();
+    const attrs = Object.create(null);
+    const node = {
+      tagName: tag.toUpperCase(), className: '', textContent: '', hidden: false,
+      children: [], parentNode: null, complete: false, naturalWidth: 0,
+      classList: {
+        add: (...names) => names.forEach((name) => classes.add(name)),
+        remove: (...names) => names.forEach((name) => classes.delete(name)),
+        contains: (name) => classes.has(name)
+      },
+      setAttribute(name, value) {
+        attrs[name] = String(value);
+        if (name === 'src') { node.complete = false; node.naturalWidth = 0; requests.push(attrs[name]); }
+      },
+      getAttribute: (name) => Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null,
+      appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+      removeChild(child) { this.children.splice(this.children.indexOf(child), 1); child.parentNode = null; return child; },
+      querySelector(selector) {
+        return this.children.find((child) => selector === 'img.pw__artimg'
+          ? child.tagName === 'IMG' && child.className.split(' ').includes('pw__artimg')
+          : selector === '.pw__initials' && child.className.split(' ').includes('pw__initials')) || null;
+      }
+    };
+    Object.defineProperty(node, 'src', {
+      get() { return attrs.src || ''; },
+      set(value) { node.setAttribute('src', value); }
+    });
+    return node;
+  }
+  const ctx = vm.createContext({ document: { createElement: element } });
+  vm.runInContext(fn(WIN, 'el') + '\n' + fn(WIN, 'updateShowArt'), ctx);
+  const art = element('span');
+  const update = ctx.updateShowArt;
+  const image = () => art.querySelector('img.pw__artimg');
+  const fallback = () => art.querySelector('.pw__initials');
+
+  update(art, 'https://img.example/a.jpg', 'AA');
+  let img = image();
+  const ini = fallback();
+  assert.equal(requests.length, 1, 'first render starts one request');
+  assert.equal(ini.textContent, 'AA');
+  assert.equal(ini.hidden, false, 'initials remain visible while loading');
+  const oldLoad = img.onload;
+  const oldError = img.onerror;
+  update(art, 'https://img.example/a.jpg', 'AA');
+  assert.equal(image(), img, 'playback rerender keeps the same image node');
+  assert.equal(requests.length, 1, 'unchanged source does not restart its request');
+  assert.equal(ini.hidden, false, 'in-flight render keeps initials visible');
+
+  update(art, 'https://img.example/b.jpg', 'BB');
+  const nextImg = image();
+  const nextLoad = nextImg.onload;
+  assert.notEqual(nextImg, img, 'a changed source gets a fresh image request node');
+  assert.equal(ini.textContent, 'BB');
+  assert.equal(ini.hidden, false, 'source change while loading keeps fallback visible');
+  oldLoad();
+  oldError();
+  assert.equal(nextImg.classList.contains('is-loaded'), false, 'late old callbacks cannot mark new source loaded');
+  assert.equal(ini.hidden, false, 'late old callbacks cannot hide the new fallback');
+  img = nextImg;
+  img.complete = true;
+  img.naturalWidth = 320;
+  nextLoad();
+  assert.equal(img.classList.contains('is-loaded'), true, 'new source success is displayed');
+  assert.equal(ini.hidden, true);
+  update(art, 'https://img.example/b.jpg', 'BB');
+  assert.equal(image(), img, 'cached success preserves the loaded image element');
+  assert.equal(img.classList.contains('is-loaded'), true, 'cached successful image stays displayed');
+  assert.equal(ini.hidden, true, 'cached success keeps initials hidden');
+  assert.equal(requests.length, 2, 'cached success does not issue another request');
+
+  update(art, 'https://img.example/c.jpg', 'CC');
+  img = image();
+  const failedError = img.onerror;
+  img.complete = true;
+  img.naturalWidth = 0;
+  failedError();
+  assert.equal(img.classList.contains('is-loaded'), false, 'failed image is not displayed');
+  assert.equal(ini.textContent, 'CC');
+  assert.equal(ini.hidden, false, 'failed image keeps initials visible');
+  update(art, 'https://img.example/c.jpg', 'CC');
+  assert.equal(requests.length, 3, 'cached failure does not retry an unchanged source');
+  assert.equal(ini.hidden, false, 'cached failure keeps initials on rerender');
+
+  update(art, 'https://img.example/d.jpg', 'DD');
+  img = image();
+  img.complete = true;
+  img.naturalWidth = 180;
+  img.onload();
+  assert.equal(img.classList.contains('is-loaded'), true, 'new source loads after a previous failure');
+  assert.equal(ini.textContent, 'DD');
+  assert.equal(ini.hidden, true);
+  assert.equal(requests.length, 4);
 });
 
 /* ================= A — auto-close after a successful start ================= */
@@ -303,15 +408,15 @@ test('keys: every changed asset is keyed away from its HEAD key', () => {
   const from = (src, re) => { const m = src.match(re); assert.ok(m, 'key found for ' + re); return m[1]; };
   const head = (f) => execFileSync('git', ['-C', ROOT, 'show', 'HEAD:' + f], { encoding: 'utf8' }).replace(/\r\n/g, '\n');
   const pairs = [
-    ['podcast-store.js', read('void-domains.js'), head('void-domains.js'), /podcast-store\.js\?v=([^"']+)/],
-    ['podcast-window.js', read('void-domains.js'), head('void-domains.js'), /podcast-window\.js\?v=([^"']+)/]
+    ['podcast-window.js', read('void-domains.js'), head('void-domains.js'), /podcast-window\.js\?v=([^"']+)/],
+    ['podcast-window.css', read('void-domains.js'), head('void-domains.js'), /podcast-window\.css\?v=([^"']+)/]
   ];
   for (const [file, here, before, re] of pairs) {
     assert.notEqual(from(here, re), from(before, re), file + ' ships new bytes under the old key');
   }
   /* Unchanged podcast assets must keep their keys — no needless re-download. */
   const dom = read('void-domains.js'), domHead = head('void-domains.js');
-  for (const re of [/podcast-window\.css\?v=([^"']+)/, /podcast-feed\.js\?v=([^"']+)/,
+  for (const re of [/podcast-store\.js\?v=([^"']+)/, /podcast-feed\.js\?v=([^"']+)/,
     /podcast-sample-data\.js\?v=([^"']+)/,
     /void-podcast-thread\.js\?v=([^"']+)/, /podcast-thread\.css\?v=([^"']+)/]) {
     assert.equal(from(dom, re), from(domHead, re), 'unchanged asset keeps its key');

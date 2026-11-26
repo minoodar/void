@@ -58,6 +58,59 @@
     }
     node.appendChild(ini);
   }
+  /* Playback events rerender the show view. Reuse the image for the same URL;
+     a changed URL gets a fresh node so detached requests cannot update it. */
+  function updateShowArt(node, artUrl, initials) {
+    var img = node.querySelector('img.pw__artimg');
+    var ini = node.querySelector('.pw__initials');
+    if (!ini) {
+      ini = el('span', 'pw__initials', initials || '?');
+      node.appendChild(ini);
+    } else {
+      ini.textContent = initials || '?';
+    }
+    if (!artUrl) {
+      if (img && img.parentNode === node) { node.removeChild(img); }
+      ini.hidden = false;
+      return;
+    }
+    if (img && img.getAttribute('src') === artUrl) {
+      if (img.complete) {
+        if (img.naturalWidth > 0) {
+          img.classList.add('is-loaded');
+          ini.hidden = true;
+        } else {
+          img.classList.remove('is-loaded');
+          ini.hidden = false;
+        }
+      } else {
+        img.classList.remove('is-loaded');
+        ini.hidden = false;
+      }
+      return;
+    }
+    if (img && img.parentNode === node) { node.removeChild(img); }
+    ini.hidden = false;
+    img = document.createElement('img');
+    img.className = 'pw__artimg';
+    img.alt = '';
+    var requestedUrl = artUrl;
+    function settle(loaded) {
+      if (img.parentNode !== node || img.getAttribute('src') !== requestedUrl) { return; }
+      if (loaded && img.naturalWidth > 0) {
+        img.classList.add('is-loaded');
+        ini.hidden = true;
+      } else {
+        img.classList.remove('is-loaded');
+        ini.hidden = false;
+      }
+    }
+    img.onload = function () { settle(true); };
+    img.onerror = function () { settle(false); };
+    node.appendChild(img);
+    img.src = artUrl;
+    if (img.complete) { settle(img.naturalWidth > 0); }
+  }
 
   /* ---- live catalogue ----
      The player reads data.SHOWS / data.EPISODES (findEpisode, episodesOf), so
@@ -184,7 +237,7 @@
   showView.hidden = true;
   var showHead = el('div', 'pw__showhead');
   var showArt = el('span', 'pw__art pw__art--lg');
-  var showArtLink = null, showTitleLink = null;
+  var showTitleLink = null;
   var showMeta = el('div', 'pw__showmeta');
   var showTitle = el('h3', 'pw__showtitle');
   var showTitleFa = el('p', 'pw__showtitle-fa'); showTitleFa.dir = 'rtl'; showTitleFa.lang = 'fa';
@@ -833,24 +886,11 @@
       : data.episodesOf(showId);
     var ps = window.VoidPodcastPlayer ? window.VoidPodcastPlayer.getState() : null;
     function setHomepageLinks(siteUrl, title) {
-      if (showArtLink && showArt.parentNode === showArtLink) {
-        showHead.replaceChild(showArt, showArtLink);
-      }
       if (showTitleLink && showTitle.parentNode === showTitleLink) {
         showMeta.replaceChild(showTitle, showTitleLink);
       }
-      showArtLink = null;
       showTitleLink = null;
       if (!siteUrl || isTV()) { return; }
-      showArtLink = el('a', 'pw__showart-link');
-      showArtLink.href = siteUrl;
-      showArtLink.target = '_blank';
-      showArtLink.rel = 'noopener noreferrer';
-      showArtLink.setAttribute('aria-hidden', 'true');
-      showArtLink.tabIndex = -1;
-      showHead.replaceChild(showArtLink, showArt);
-      showArtLink.appendChild(showArt);
-
       showTitleLink = el('a', 'pw__showtitle-link');
       showTitleLink.href = siteUrl;
       showTitleLink.target = '_blank';
@@ -860,8 +900,7 @@
       showTitleLink.appendChild(showTitle);
     }
     artStyle(showArt);
-    showArt.textContent = '';
-    fillArt(showArt, sh.artUrl, sh.initials);
+    updateShowArt(showArt, sh.artUrl, sh.initials);
     showArt.classList.toggle('is-loading', !!(ps && ps.loading && ps.showId === showId));
     showTitle.textContent = isSavedView ? 'Bookmarks' : sh.title;
     setHomepageLinks(isSavedView ? null : sh.siteUrl, showTitle.textContent);
