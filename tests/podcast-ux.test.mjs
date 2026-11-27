@@ -18,6 +18,7 @@ const WIN = read('podcast-window.js');
 const PLAYER = read('podcast-player.js');
 const DOMAINS = read('void-domains.js');
 const Feed = require('../podcast-feed.js');
+const Store = require('../podcast-store.js');
 
 /* A whole function declaration, braces balanced. */
 function fn(src, name) {
@@ -162,6 +163,123 @@ test('podcast homepage links are limited to the desktop show title and artwork i
   assert.match(css, /\.pw__showtitle-link::after \{ content: " ↗"/);
   assert.match(css, /\.pw__showtitle-link:focus-visible \{ outline: 2px solid/);
 });
+
+test('Library keyed rendering preserves successful artwork across Store emits and updates/removes keyed items', () => {
+  const source = [fn(WIN, 'el'), fn(WIN, 'setLibraryArtworkState'), fn(WIN, 'updateLibraryArtwork'),
+    fn(WIN, 'disposeLibraryArtwork'), fn(WIN, 'reconcileByKey'), fn(WIN, 'rerenderFromLiveState')].join('\n');
+  const ctx = vm.createContext({ document: { createElement: libraryElement }, Object, requestAnimationFrame, rerender });
+  function requestAnimationFrame(callback) { frames.push(callback); }
+  function rerender() { renderCount++; if (afterRerender) afterRerender(); }
+  const frames = [];
+  let renderCount = 0;
+  let afterRerender = null;
+  vm.runInContext('var libraryArtworkStates = Object.create(null); var view = "library"; var libraryRerenderScheduled = false;\n' + source, ctx);
+
+  const root = libraryElement('div');
+  const tileMap = Object.create(null);
+  let items = [{ id: 'show-a', url: 'https://img.example/a.jpg', initials: 'AA' }];
+  let renderCalls = 0;
+  function render() {
+    renderCalls++;
+    ctx.reconcileByKey(root, items, tileMap, (item) => item.id,
+      () => {
+        const tile = libraryElement('button');
+        tile.art = libraryElement('span');
+        tile.appendChild(tile.art);
+        return tile;
+      },
+      (tile, item) => ctx.updateLibraryArtwork(tile.art, item.url, item.initials),
+      (tile) => ctx.disposeLibraryArtwork(tile.art), null);
+  }
+  afterRerender = render;
+  render();
+  const tile = tileMap['show-a'];
+  const art = tile.art;
+  const img = art.__podcastArtwork.img;
+  const initials = art.__podcastArtwork.initials;
+  assert.equal(img.getAttribute('src'), items[0].url);
+  assert.equal(img.srcAssignments, 1, 'initial render assigns the source once');
+  assert.equal(initials.hidden, false, 'fallback is visible while first request is pending');
+  img.onload();
+  assert.equal(img.classList.contains('is-loaded'), true, 'successful load becomes sticky and visible');
+  assert.equal(initials.hidden, true, 'successful artwork hides initials');
+  const requestsAfterLoad = img.srcAssignments;
+
+  const storage = { values: new Map(), getItem(key) { return this.values.get(key) || null; }, setItem(key, value) { this.values.set(key, value); } };
+  const store = Store.create(storage);
+  let storeEmits = 0;
+  store.onChange(() => { storeEmits++; ctx.rerenderFromLiveState(); });
+  for (let i = 0; i < 10; i++) { store.setProgress('episode-' + i, i + 1, 120, false); }
+  assert.equal(storeEmits, 10, 'ten Store mutations emit ten synchronous change notifications');
+  assert.equal(frames.length, 1, 'Library rerenders coalesce into one animation frame');
+  frames.shift()();
+  assert.equal(renderCount, 1, 'only one Store-triggered render occurs');
+  assert.equal(renderCalls, 2, 'the keyed list is reconciled once after the initial render');
+  assert.equal(tileMap['show-a'].art.__podcastArtwork.img, img, 'the same image node survives all ten emits');
+  assert.equal(img.srcAssignments, requestsAfterLoad, 'unchanged artUrl causes no new request or src write');
+  assert.equal(img.classList.contains('is-loaded'), true);
+  assert.equal(initials.hidden, true, 'initials stay hidden after successful loading');
+
+  const oldLoad = img.onload;
+  items = [{ id: 'show-a', url: 'https://img.example/b.jpg', initials: 'BB' }];
+  store.setProgress('episode-url-change', 1, 120, false);
+  frames.shift()();
+  assert.equal(tileMap['show-a'].art.__podcastArtwork.img, img, 'URL changes reuse the image element');
+  assert.equal(img.getAttribute('src'), items[0].url, 'the new URL is assigned to the existing image');
+  assert.equal(img.srcAssignments, requestsAfterLoad + 1);
+  assert.equal(initials.textContent, 'BB', 'fallback text updates for the newly selected podcast');
+  assert.equal(initials.hidden, false, 'fallback is available while the new URL loads');
+  oldLoad();
+  assert.equal(initials.hidden, false, 'a callback captured for the old URL cannot hide the new fallback');
+  img.onload();
+  assert.equal(img.classList.contains('is-loaded'), true, 'the new URL loads and becomes visible');
+  assert.equal(initials.hidden, true);
+
+  items = [];
+  store.setProgress('episode-remove', 1, 120, false);
+  frames.shift()();
+  assert.equal(root.children.length, 0, 'removed Library items leave the DOM');
+  assert.equal(Object.hasOwn(tileMap, 'show-a'), false, 'removed items leave the key map');
+  assert.equal(tile.parentNode, null, 'the removed tile is detached');
+  assert.equal(tile.__podcastArtwork, undefined, 'removed artwork is disposed rather than cached as a node');
+});
+
+function libraryElement(tag) {
+  const classes = new Set();
+  const attrs = Object.create(null);
+  const node = {
+    tagName: tag.toUpperCase(), className: '', textContent: '', hidden: false, children: [], parentNode: null,
+    classList: {
+      add(...names) { names.forEach((name) => classes.add(name)); },
+      remove(...names) { names.forEach((name) => classes.delete(name)); },
+      contains(name) { return classes.has(name); },
+      toggle(name, force) { const on = force === undefined ? !classes.has(name) : !!force; if (on) classes.add(name); else classes.delete(name); return on; }
+    },
+    setAttribute(name, value) { attrs[name] = String(value); },
+    getAttribute(name) { return Object.hasOwn(attrs, name) ? attrs[name] : null; },
+    removeAttribute(name) { delete attrs[name]; },
+    appendChild(child) { if (child.parentNode) child.parentNode.removeChild(child); child.parentNode = this; this.children.push(child); return child; },
+    removeChild(child) { const i = this.children.indexOf(child); if (i >= 0) this.children.splice(i, 1); child.parentNode = null; return child; },
+    insertBefore(child, reference) {
+      if (child.parentNode) child.parentNode.removeChild(child);
+      const i = reference ? this.children.indexOf(reference) : -1;
+      child.parentNode = this;
+      if (i < 0) this.children.push(child); else this.children.splice(i, 0, child);
+      return child;
+    },
+    querySelector(selector) {
+      return this.children.find((child) => selector === '.pw__dot'
+        ? child.className.split(' ').includes('pw__dot')
+        : selector === '.pw__initials' && child.className.split(' ').includes('pw__initials')) || null;
+    }
+  };
+  Object.defineProperty(node, 'src', {
+    get() { return attrs.src || ''; },
+    set(value) { node.srcAssignments = (node.srcAssignments || 0) + 1; attrs.src = String(value); }
+  });
+  Object.defineProperty(node, 'children', { value: node.children, enumerable: true });
+  return node;
+}
 
 /* ================= A — auto-close after a successful start ================= */
 
@@ -878,7 +996,8 @@ test('D3: no probe pass, no timers, no polling — one synchronous placement', (
   assert.equal(occurrences(WIN, 'sharePopScheduleSettle'), 0, 'their call site too');
   assert.equal(occurrences(WIN, 'sharePopTimers'), 0, 'no timer bookkeeping left');
   assert.equal(occurrences(WIN, 'setInterval'), 0, 'no polling loop was introduced');
-  assert.equal(occurrences(WIN, 'requestAnimationFrame'), 1, 'the one rAF is the pre-existing scroll/resize watcher');
+  assert.equal(occurrences(WIN, 'requestAnimationFrame'), 2,
+    'one rAF is the pre-existing scroll/resize watcher and one batches Library rerenders');
   const open = fn(WIN, 'sharePopOpen');
   assert.equal(occurrences(open, 'sharePopPlace()'), 2, 'placed before the reveal and again after focus settles');
   assert.equal(occurrences(WIN, 'sharePop.style.visibility'), 0,

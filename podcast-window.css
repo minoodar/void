@@ -597,8 +597,25 @@ html[dir="rtl"] .pw-sheet__qtitle { margin-right: 0; margin-left: 8px; }
 .pw__art--lg .pw__artimg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; opacity: 0; transition: opacity .18s ease; }
 .pw__art--lg .pw__artimg.is-loaded { opacity: 1; }
 .pw__newitem { overflow: hidden; }
-.pw__newitem .pw__artimg { position: absolute; top: 0; left: 0; }
-.pw__newitem .pw__initials { position: relative; }
+.pw__tile .pw__artimg,
+.pw__newitem .pw__artimg {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity .18s ease;
+}
+.pw__tile .pw__artimg.is-loaded,
+.pw__newitem .pw__artimg.is-loaded { opacity: 1; }
+.pw__tile .pw__initials,
+.pw__newitem .pw__initials {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pw__tile .pw__initials[hidden],
+.pw__newitem .pw__initials[hidden] { display: none; }
 .pw__newitem .pw__dot { z-index: 1; }
 
 /* Add-by-RSS row: input + explicit Add button, both 44px */
