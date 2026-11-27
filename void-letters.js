@@ -304,6 +304,8 @@
   var toolsHideTimer = 0;
   var toolsRevealed = false;
   var toolsIntro = false;
+  var toolsPointerActive = false;
+  var toolsTouchMode = false;
   var letterHistory = [];
   var historyIndex = -1;
   var uncertainSubmission = null;
@@ -312,6 +314,8 @@
   function hideToolPalette() {
     clearTimeout(toolsHideTimer);
     toolsHideTimer = 0;
+    toolsPointerActive = false;
+    toolsTouchMode = false;
     toolsRevealed = false;
     toolsIntro = false;
     hideQuotaPop();
@@ -343,28 +347,40 @@
       quillBtn.title = 'Tools shown; activate again to write a message';
     }
     clearTimeout(toolsHideTimer);
-    // Touch users need time to choose the second action; keep the palette open
-    // until the quill or discovery control is activated again.
-    if (!initialIntro && window.matchMedia && window.matchMedia('(hover: none)').matches) {
+    if (!initialIntro && document.documentElement && document.documentElement.classList.contains('void-tv')) {
       toolsHideTimer = 0;
       return;
     }
     toolsHideTimer = setTimeout(function hideWhenIdle() {
-      var nav = document.getElementById('void-topnav');
-      var active = document.activeElement;
-      var hovered = false;
-      try {
-        hovered = !!((nav && nav.matches(':hover')) || (quillBtn && quillBtn.matches(':hover')) ||
-          (discoveryBtn && discoveryBtn.matches(':hover')));
-      } catch (e) {}
-      if (hovered || (nav && active && nav.contains(active)) ||
-          (quillBtn && active === quillBtn && quillBtn.matches(':focus-visible')) ||
-          (discoveryBtn && active === discoveryBtn && discoveryBtn.matches(':focus-visible'))) {
+      if (toolsPointerActive) {
         toolsHideTimer = setTimeout(hideWhenIdle, 1200);
         return;
       }
+      var nav = document.getElementById('void-topnav');
+      var active = document.activeElement;
+      var hovered = false;
+      // Touch browsers can retain :hover and focus after a tap. Those states
+      // must not keep the mobile palette expanded indefinitely.
+      if (!toolsTouchMode && !touchPointer()) {
+        try {
+          hovered = !!((nav && nav.matches(':hover')) || (quillBtn && quillBtn.matches(':hover')) ||
+            (discoveryBtn && discoveryBtn.matches(':hover')));
+        } catch (e) {}
+        if (hovered || (nav && active && nav.contains(active)) ||
+            (quillBtn && active === quillBtn && quillBtn.matches(':focus-visible')) ||
+            (discoveryBtn && active === discoveryBtn && discoveryBtn.matches(':focus-visible'))) {
+          toolsHideTimer = setTimeout(hideWhenIdle, 1200);
+          return;
+        }
+      }
       hideToolPalette();
     }, 4200);
+  }
+
+  function finishToolPointer() {
+    if (!toolsPointerActive) return;
+    toolsPointerActive = false;
+    if (toolsRevealed) showToolPalette();
   }
 
   function findRoot() {
@@ -4574,11 +4590,23 @@
     guardOn = true;
     window.addEventListener('pointerdown', function (e) {
       rememberMusicPresentation();
+      if (e && e.pointerType === 'touch') {
+        toolsTouchMode = true;
+        if (e.target && e.target.closest &&
+            e.target.closest('#void-topnav, #void-god-quill, #void-god-discover')) {
+          toolsPointerActive = true;
+          if (toolsRevealed) showToolPalette();
+        }
+      } else if (e && (e.pointerType === 'mouse' || e.pointerType === 'pen')) {
+        toolsTouchMode = false;
+      }
       if (toolsIntro && e && e.target && e.target.closest &&
           e.target.closest('#void-topnav, #void-god-quill, #void-god-discover, #void-music-root')) {
         showToolPalette(true);
       }
     }, true);
+    window.addEventListener('pointerup', finishToolPointer, true);
+    window.addEventListener('pointercancel', finishToolPointer, true);
     window.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ') rememberMusicPresentation();
       if (e.key === 'Tab' && !panelOpen && !(compose && compose.open) &&
