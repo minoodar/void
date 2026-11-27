@@ -28,7 +28,8 @@
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/>',
     reset: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4"/>',
     music: '<path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
-    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    signal: '<path d="M12 3l2.2 5.1 5.5.5-4.2 3.6 1.2 5.4L12 15l-4.7 2.6 1.2-5.4L4.3 8.6l5.5-.5L12 3Z"/><path d="M18.5 17.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z"/>'
   };
 
   var TRACK_MESSAGES = {
@@ -61,7 +62,6 @@
 
   var state = {
     token: '',
-    view: 'music',
     tracks: [],
     letters: {
       q: '',
@@ -78,6 +78,13 @@
     originTitle: document.title
   };
 
+  /* Every admin module is one entry here, at the same level. Modules register
+     themselves; the shell owns navigation, feedback and the shared chrome only. */
+  var modules = [];
+  var moduleIndex = {};
+  var activeModuleId = 'music';
+  var activeSectionId = {};
+
   var dom = {};
   var root = null;
   var letterSeq = 0;
@@ -91,6 +98,7 @@
   var confirmResolve = null;
   var sortButtons = [];
   var loginInFlight = false;
+  var loginListeners = [];
 
   /* ---------------------------------------------------------------- */
   /* tiny helpers                                                      */
@@ -304,10 +312,14 @@
     loginError('');
     dom.login.hidden = true;
     dom.app.hidden = false;
-    setView(state.view);
+    renderModuleNav();
     document.title = 'Control Room · Void';
+    var tab = byId('va-tab-' + activeModuleId);
+    for (var i = 0; i < loginListeners.length; i++) {
+      try { loginListeners[i]({ authorized: true, module: activeModuleId }); } catch (e) {}
+    }
     setTimeout(function () {
-      try { dom.tabMusic.focus({ preventScroll: true }); } catch (e) {}
+      try { if (tab) tab.focus({ preventScroll: true }); } catch (e) {}
     }, 30);
   }
 
@@ -317,7 +329,15 @@
     state.tracks = [];
     state.letters.rows = [];
     state.letters.total = 0;
+    for (var i = 0; i < modules.length; i++) {
+      modules[i].loaded = false;
+      setCount(modules[i].id, null);
+      if (typeof modules[i].reset === 'function') modules[i].reset();
+    }
     if (dom.trackList) dom.trackList.textContent = '';
+    for (var j = 0; j < loginListeners.length; j++) {
+      try { loginListeners[j]({ authorized: false, module: activeModuleId }); } catch (e) {}
+    }
     setConn(false);
     showLogin(message || 'Locked. Enter the secret to continue.');
   }
@@ -399,29 +419,293 @@
   /* tabs                                                              */
   /* ---------------------------------------------------------------- */
 
-  function setView(view) {
-    state.view = view === 'letters' ? 'letters' : 'music';
-    var music = state.view === 'music';
-    dom.tabMusic.setAttribute('aria-selected', music ? 'true' : 'false');
-    dom.tabLetters.setAttribute('aria-selected', music ? 'false' : 'true');
-    dom.tabMusic.tabIndex = music ? 0 : -1;
-    dom.tabLetters.tabIndex = music ? -1 : 0;
-    dom.panelMusic.hidden = !music;
-    dom.panelLetters.hidden = music;
+  /* ---------------------------------------------------------------- */
+  /* shell: modules and sections                                       */
+  /* ---------------------------------------------------------------- */
+
+  function sectionIdOf(moduleId) {
+    var mod = moduleIndex[moduleId];
+    if (!mod) return '';
+    return activeSectionId[moduleId] || (mod.sections[0] && mod.sections[0].id) || '';
   }
 
-  function onTabKey(event) {
-    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+  function ensureModuleDom(mod) {
+    var panel = byId('va-panel-' + mod.id);
+    if (!panel) {
+      panel = document.createElement('section');
+      panel.className = 'va-panel';
+      panel.id = 'va-panel-' + mod.id;
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', 'va-tab-' + mod.id);
+      panel.hidden = true;
+      var nav = document.createElement('div');
+      nav.className = 'va-secnav';
+      nav.id = 'va-secnav-' + mod.id;
+      nav.setAttribute('role', 'tablist');
+      nav.setAttribute('aria-label', mod.label + ' sections');
+      panel.appendChild(nav);
+      dom.app.appendChild(panel);
+    }
+    var handles = { panel: panel, sections: {} };
+    for (var i = 0; i < mod.sections.length; i++) {
+      var sec = mod.sections[i];
+      var body = byId('va-sec-' + mod.id + '-' + sec.id);
+      if (!body) {
+        body = document.createElement('div');
+        body.className = 'va-section';
+        body.id = 'va-sec-' + mod.id + '-' + sec.id;
+        body.setAttribute('role', 'region');
+        body.setAttribute('aria-labelledby', 'va-sectab-' + mod.id + '-' + sec.id);
+        body.hidden = true;
+        panel.appendChild(body);
+      }
+      handles.sections[sec.id] = body;
+    }
+    return handles;
+  }
+
+  function registerModule(def) {
+    if (!def || !def.id || moduleIndex[def.id]) return null;
+    var mod = {
+      id: def.id,
+      label: def.label || def.id,
+      icon: def.icon || '',
+      sections: def.sections || [],
+      enter: def.enter || null,
+      reset: def.reset || null,
+      perSection: !!def.perSection,
+      count: null,
+      countNode: null,
+      loaded: false
+    };
+    if (!mod.sections.length) mod.sections = [{ id: 'main', label: mod.label }];
+    modules.push(mod);
+    moduleIndex[mod.id] = mod;
+    activeSectionId[mod.id] = mod.sections[0].id;
+    var handles = ensureModuleDom(mod);
+    if (typeof def.mount === 'function') {
+      try { def.mount(handles, shell); } catch (e) {
+        toast('Module "' + mod.label + '" failed to initialise: ' + (e && e.message ? e.message : e), 'error');
+      }
+    }
+    if (dom.modules) renderModuleNav();
+    return mod;
+  }
+
+  function setCount(moduleId, value) {
+    var mod = moduleIndex[moduleId];
+    if (!mod || !mod.countNode) return;
+    mod.count = value;
+    mod.countNode.textContent = value === null || value === undefined || value === '' ? '—' : String(value);
+  }
+
+  function renderModuleNav() {
+    if (!dom.modules) return;
+    dom.modules.textContent = '';
+    for (var i = 0; i < modules.length; i++) {
+      var mod = modules[i];
+      var btn = document.createElement('button');
+      btn.className = 'va-tab';
+      btn.id = 'va-tab-' + mod.id;
+      btn.type = 'button';
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-controls', 'va-panel-' + mod.id);
+      btn.setAttribute('aria-selected', mod.id === activeModuleId ? 'true' : 'false');
+      btn.tabIndex = mod.id === activeModuleId ? 0 : -1;
+      if (mod.icon) {
+        var slot = document.createElement('span');
+        slot.setAttribute('data-icon', mod.icon);
+        btn.appendChild(slot);
+      }
+      btn.appendChild(document.createTextNode(mod.label));
+      var count = document.createElement('span');
+      count.className = 'va-tab__count';
+      count.id = 'va-count-' + mod.id;
+      count.textContent = '—';
+      btn.appendChild(count);
+      mod.countNode = count;
+      if (mod.count !== null) setCount(mod.id, mod.count);
+      dom.modules.appendChild(btn);
+      if (mod.sections.length > 1) renderSectionNav(mod);
+    }
+    hydrateIcons(dom.modules);
+  }
+
+  function renderSectionNav(mod) {
+    var host = byId('va-secnav-' + mod.id);
+    if (!host) return;
+    host.textContent = '';
+    for (var i = 0; i < mod.sections.length; i++) {
+      var sec = mod.sections[i];
+      var on = sec.id === sectionIdOf(mod.id);
+      var btn = document.createElement('button');
+      btn.className = 'va-sectab' + (on ? ' is-on' : '');
+      btn.id = 'va-sectab-' + mod.id + '-' + sec.id;
+      btn.type = 'button';
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-controls', 'va-sec-' + mod.id + '-' + sec.id);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.tabIndex = on ? 0 : -1;
+      btn.textContent = sec.label;
+      host.appendChild(btn);
+    }
+  }
+
+  function showSection(moduleId) {
+    var mod = moduleIndex[moduleId];
+    if (!mod) return;
+    var current = sectionIdOf(moduleId);
+    for (var i = 0; i < mod.sections.length; i++) {
+      var sec = mod.sections[i];
+      var on = sec.id === current;
+      var body = byId('va-sec-' + moduleId + '-' + sec.id);
+      if (body) body.hidden = !on;
+      var tab = byId('va-sectab-' + moduleId + '-' + sec.id);
+      if (tab) {
+        tab.classList.toggle('is-on', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        tab.tabIndex = on ? 0 : -1;
+      }
+    }
+  }
+
+  function setSection(moduleId, sectionId, refresh) {
+    var mod = moduleIndex[moduleId];
+    if (!mod) return;
+    var found = false;
+    for (var i = 0; i < mod.sections.length; i++) if (mod.sections[i].id === sectionId) found = true;
+    if (!found) return;
+    activeSectionId[moduleId] = sectionId;
+    showSection(moduleId);
+    if (moduleId === activeModuleId) {
+      writeRoute();
+      enterSection(mod, refresh);
+    }
+  }
+
+  function enterSection(mod, refresh) {
+    if (!mod.enter) return;
+    if (!refresh && mod.loaded && !mod.perSection) return;
+    try { mod.enter(sectionIdOf(mod.id), !!refresh); } catch (e) {
+      toast('This module failed to load: ' + (e && e.message ? e.message : e), 'error');
+    }
+    mod.loaded = true;
+  }
+
+  function setModule(moduleId, options) {
+    var opts = options || {};
+    if (!moduleIndex[moduleId]) moduleId = modules.length ? modules[0].id : '';
+    if (!moduleId) return;
+    activeModuleId = moduleId;
+    for (var i = 0; i < modules.length; i++) {
+      var mod = modules[i];
+      var on = mod.id === activeModuleId;
+      var tab = byId('va-tab-' + mod.id);
+      if (tab) {
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        tab.tabIndex = on ? 0 : -1;
+      }
+      var panel = byId('va-panel-' + mod.id);
+      if (panel) panel.hidden = !on;
+      if (on) showSection(mod.id);
+    }
+    if (!opts.silent) writeRoute();
+    var active = moduleIndex[activeModuleId];
+    if (active) {
+      showSection(active.id);
+      enterSection(active, !!opts.refresh);
+    }
+  }
+
+  function onModuleKey(event) {
+    var keys = { ArrowRight: 1, ArrowLeft: 1, Home: 1, End: 1 };
+    if (!keys[event.key]) return;
     event.preventDefault();
-    var next = state.view === 'music' ? 'letters' : 'music';
-    setView(next);
-    (next === 'music' ? dom.tabMusic : dom.tabLetters).focus();
+    var pos = 0;
+    for (var i = 0; i < modules.length; i++) if (modules[i].id === activeModuleId) pos = i;
+    if (event.key === 'ArrowRight') pos = (pos + 1) % modules.length;
+    else if (event.key === 'ArrowLeft') pos = (pos - 1 + modules.length) % modules.length;
+    else if (event.key === 'Home') pos = 0;
+    else pos = modules.length - 1;
+    setModule(modules[pos].id);
+    var tab = byId('va-tab-' + modules[pos].id);
+    if (tab) { try { tab.focus({ preventScroll: true }); } catch (e) { tab.focus(); } }
   }
 
+  function onSectionKey(moduleId, event) {
+    var keys = { ArrowRight: 1, ArrowLeft: 1, Home: 1, End: 1 };
+    if (!keys[event.key]) return;
+    var mod = moduleIndex[moduleId];
+    if (!mod || mod.sections.length < 2) return;
+    event.preventDefault();
+    var current = sectionIdOf(moduleId);
+    var pos = 0;
+    for (var i = 0; i < mod.sections.length; i++) if (mod.sections[i].id === current) pos = i;
+    if (event.key === 'ArrowRight') pos = (pos + 1) % mod.sections.length;
+    else if (event.key === 'ArrowLeft') pos = (pos - 1 + mod.sections.length) % mod.sections.length;
+    else if (event.key === 'Home') pos = 0;
+    else pos = mod.sections.length - 1;
+    var next = mod.sections[pos].id;
+    setSection(moduleId, next);
+    var tab = byId('va-sectab-' + moduleId + '-' + next);
+    if (tab) { try { tab.focus({ preventScroll: true }); } catch (e) { tab.focus(); } }
+  }
+
+  function bindSectionNavs() {
+    var navs = document.querySelectorAll('.va-secnav');
+    for (var i = 0; i < navs.length; i++) {
+      (function (nav) {
+        var moduleId = nav.id.replace('va-secnav-', '');
+        nav.addEventListener('click', function (event) {
+          var tab = event.target && event.target.closest ? event.target.closest('.va-sectab') : null;
+          if (!tab) return;
+          setSection(moduleId, tab.id.replace('va-sectab-' + moduleId + '-', ''));
+        });
+        nav.addEventListener('keydown', function (event) { onSectionKey(moduleId, event); });
+      })(navs[i]);
+    }
+  }
+
+  /* #/module/section keeps refresh and a shared link on the same workspace. */
+  function writeRoute() {
+    if (!activeModuleId) return;
+    try {
+      var hash = '#admin/' + activeModuleId + '/' + sectionIdOf(activeModuleId);
+      if (global.location.hash !== hash) global.history.replaceState(null, '', hash);
+    } catch (e) {}
+  }
+
+  function readRoute() {
+    var m = /^#admin\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?/i.exec(global.location.hash || '');
+    if (!m) return null;
+    var mod = moduleIndex[m[1]];
+    if (!mod) return null;
+    var section = m[2] ? null : '';
+    for (var i = 0; i < mod.sections.length; i++) if (m[2] && mod.sections[i].id === m[2]) section = m[2];
+    if (m[2] && !section) section = mod.sections[0].id;
+    return { module: mod.id, section: section || sectionIdOf(mod.id) };
+  }
+
+  function applyRoute(options) {
+    var route = readRoute();
+    if (route) {
+      activeSectionId[route.module] = route.section;
+      setModule(route.module, { silent: true, refresh: !!(options && options.refresh) });
+    } else {
+      setModule(activeModuleId, { silent: true, refresh: !!(options && options.refresh) });
+    }
+    writeRoute();
+  }
+
+  function refreshCurrent() {
+    var mod = moduleIndex[activeModuleId];
+    if (mod) { enterSection(mod, true); return; }
+    if (state.token) setModule(activeModuleId, { refresh: true });
+  }
+
+  /* Only the workspace on screen is fetched; the others load when opened. */
   function loadAll() {
-    loadTracks();
-        loadDomainAdmin();
-    loadLetters();
+    applyRoute({ refresh: true });
   }
 
   /* ---------------------------------------------------------------- */
@@ -466,7 +750,7 @@
 
   function renderTracks() {
     dom.trackList.textContent = '';
-    dom.countTracks.textContent = String(state.tracks.length);
+    setCount('music', state.tracks.length);
     dom.tracksEmpty.hidden = state.tracks.length > 0 || !dom.tracksNote.hidden;
     for (var i = 0; i < state.tracks.length; i++) {
       dom.trackList.appendChild(trackRow(state.tracks[i], i, state.tracks.length));
@@ -926,7 +1210,14 @@
 
   function renderLetters() {
     dom.letterRows.textContent = '';
-    dom.countLetters.textContent = String(state.letters.total);
+    setCount('letters', state.letters.total);
+    var summary = byId('va-letters-summary');
+    if (summary) {
+      summary.textContent = state.letters.total
+        ? state.letters.total + (state.letters.total === 1 ? ' letter' : ' letters') +
+          ' in this filter. Deleting one letter never reveals who wrote it.'
+        : 'No letters match this filter.';
+    }
     dom.lettersTotal.textContent = state.letters.total
       ? state.letters.total + (state.letters.total === 1 ? ' letter' : ' letters')
       : '';
@@ -1179,6 +1470,73 @@
     if (resolve) resolve(value);
   }
 
+  /* ---- reusable prompt: same dialog language, caller-supplied body ---- */
+
+  var promptDialog = null;
+
+  function ensurePromptDialog() {
+    if (promptDialog) return promptDialog;
+    promptDialog = document.createElement('dialog');
+    promptDialog.className = 'va-dialog va-dialog--sm';
+    var head = document.createElement('div');
+    head.className = 'va-dialog__head';
+    var heading = document.createElement('h2');
+    head.appendChild(heading);
+    var body = document.createElement('div');
+    body.className = 'va-dialog__body';
+    var foot = document.createElement('div');
+    foot.className = 'va-dialog__foot';
+    var cancel = document.createElement('button');
+    cancel.className = 'va-btn';
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    var ok = document.createElement('button');
+    ok.className = 'va-btn va-btn--primary';
+    ok.type = 'button';
+    foot.appendChild(cancel);
+    foot.appendChild(ok);
+    promptDialog.appendChild(head);
+    promptDialog.appendChild(body);
+    promptDialog.appendChild(foot);
+    cancel.addEventListener('click', function () { promptDialog.close(); });
+    promptDialog.__heading = heading;
+    promptDialog.__body = body;
+    promptDialog.__ok = ok;
+    (root || document.body).appendChild(promptDialog);
+    return promptDialog;
+  }
+
+  function askPrompt(title, node, label) {
+    var dlg = ensurePromptDialog();
+    dlg.__heading.textContent = title;
+    dlg.__body.textContent = '';
+    dlg.__body.appendChild(node);
+    dlg.__ok.textContent = label || 'Confirm';
+    if (dlg.open) dlg.close();
+    dlg.showModal();
+    var first = node.querySelector('input, textarea, select');
+    if (first) {
+      window.setTimeout(function () {
+        try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); }
+      }, 40);
+    }
+    return new Promise(function (resolve) {
+      function accept() {
+        dlg.__ok.removeEventListener('click', accept);
+        dlg.removeEventListener('close', close);
+        resolve(true);
+        dlg.close();
+      }
+      function close() {
+        dlg.__ok.removeEventListener('click', accept);
+        dlg.removeEventListener('close', close);
+        resolve(false);
+      }
+      dlg.__ok.addEventListener('click', accept);
+      dlg.addEventListener('close', close);
+    });
+  }
+
   /* ---------------------------------------------------------------- */
   /* shell                                                             */
   /* ---------------------------------------------------------------- */
@@ -1214,11 +1572,10 @@
     '    </form>',
     '  </section>',
     '  <section class="va-app" id="va-app" hidden aria-label="Admin dashboard">',
-    '    <div class="va-tabs" role="tablist" aria-label="Admin sections">',
-    '      <button class="va-tab" id="va-tab-music" type="button" role="tab" aria-selected="true" aria-controls="va-panel-music"><span data-icon="music"></span>Music<span class="va-tab__count" id="va-count-tracks">0</span></button>',
-    '      <button class="va-tab" id="va-tab-letters" type="button" role="tab" aria-selected="false" aria-controls="va-panel-letters"><span data-icon="mail"></span>Letters<span class="va-tab__count" id="va-count-letters">0</span></button>',
-    '    </div>',
+    '    <div class="va-tabs" id="va-modules" role="tablist" aria-label="Admin modules"></div>',
     '    <section class="va-panel" id="va-panel-music" role="tabpanel" aria-labelledby="va-tab-music">',
+    '      <div class="va-secnav" id="va-secnav-music" role="tablist" aria-label="Music sections"></div>',
+    '      <div class="va-section" id="va-sec-music-tracks" role="region" aria-labelledby="va-sectab-music-tracks">',
     '      <div class="va-panelhead">',
     '        <div>',
     '          <h2>Golden Folder playlist</h2>',
@@ -1228,23 +1585,28 @@
     '      </div>',
     '      <div class="va-note" id="va-tracks-note" hidden></div>',
     '      <ul class="va-tracks" id="va-track-list" aria-label="Playlist tracks"></ul>',
-    '      <section class="va-domains" aria-labelledby="va-domains-title">',
+    '      <p class="va-empty" id="va-tracks-empty" hidden>No tracks in the playlist. Add the first one.</p>',
+    '      </div>',
+    '      <div class="va-section va-domains" id="va-sec-music-domains" role="region" aria-labelledby="va-sectab-music-domains" hidden>',
     '        <div class="va-domains__head"><div><h3 id="va-domains-title">Music domains</h3><p id="va-domains-readiness" role="status">Checking domain readiness…</p></div><button class="va-btn" id="va-domains-refresh" type="button">Refresh domains</button></div>',
     '        <div id="va-domains-tracks" class="va-domains__tracks"></div>',
     '        <button class="va-btn va-btn--primary" id="va-domains-save" type="button">Save classifications</button>',
-    '        <div class="va-domains__accept"><p id="va-domains-unclassified"></p><button class="va-btn" id="va-domains-accept" type="button" hidden>Accept exact unclassified snapshot…</button></div>',
-    '        <details><summary>Domain audit history</summary><ol id="va-domains-audit"></ol></details>',
-    '      </section>',
+    '        <p class="va-hint">Classification is always manual: nothing here assigns a domain on its own.</p>',
+    '      </div>',
+    '      <div class="va-section va-domains" id="va-sec-music-audit" role="region" aria-labelledby="va-sectab-music-audit" hidden>',
+    '        <div class="va-domains__head"><div><h3>Release gate</h3><p id="va-domains-unclassified"></p></div><button class="va-btn" id="va-domains-accept" type="button" hidden>Accept exact unclassified snapshot…</button></div>',
+    '        <details open><summary>Domain audit history</summary><ol id="va-domains-audit"></ol></details>',
+    '      </div>',
 
-    '      <p class="va-empty" id="va-tracks-empty" hidden>No tracks in the playlist. Add the first one.</p>',
     '    </section>',
     '    <section class="va-panel" id="va-panel-letters" role="tabpanel" aria-labelledby="va-tab-letters" hidden>',
+    '      <div class="va-secnav" id="va-secnav-letters" role="tablist" aria-label="Letters sections"></div>',
+    '      <div class="va-section" id="va-sec-letters-messages" role="region" aria-labelledby="va-sectab-letters-messages">',
     '      <div class="va-panelhead">',
     '        <div>',
     '          <h2>Letters to the galaxy</h2>',
-    '          <p>Active and expired messages. Search, sort, read in full, delete one, or clear the whole galaxy.</p>',
+    '          <p>Active and expired messages. Search, sort, read in full, or delete one.</p>',
     '        </div>',
-    '        <button class="va-btn va-btn--danger-ghost" id="va-reset" type="button"><span data-icon="reset"></span>Reset galaxy\u2026</button>',
     '      </div>',
     '      <div class="va-toolbar">',
     '        <label class="va-search" for="va-q"><span class="va-sr">Search letters</span><span data-icon="search"></span><input id="va-q" type="search" maxlength="120" autocomplete="off" placeholder="Search text or paste a 32-character ID"></label>',
@@ -1271,6 +1633,15 @@
     '        <button class="va-btn" id="va-prev" type="button" disabled>\u2190 Previous</button>',
     '        <span id="va-page-info">Page 1 of 1</span>',
     '        <button class="va-btn" id="va-next" type="button" disabled>Next \u2192</button>',
+    '      </div>',
+    '      </div>',
+    '      <div class="va-section" id="va-sec-letters-moderation" role="region" aria-labelledby="va-sectab-letters-moderation" hidden>',
+    '        <div class="va-panelhead"><div><h2>Moderation</h2><p>Deletion is immediate and irreversible. Nothing here changes what a visitor can submit.</p></div></div>',
+    '        <div class="va-cards">',
+    '          <div class="va-card"><h3>One letter</h3><p>Use the delete control on a row in Messages. The sender hash stays salted, so a letter cannot be traced back to a person.</p><button class="va-btn" id="va-goto-messages" type="button">Open Messages</button></div>',
+    '          <div class="va-card va-card--danger"><h3>Whole galaxy</h3><p>Clears every letter and vote in the database. Visitor counts are never touched.</p><button class="va-btn va-btn--danger-ghost" id="va-reset" type="button"><span data-icon="reset"></span>Reset galaxy\u2026</button></div>',
+    '        </div>',
+    '        <p class="va-note" id="va-letters-summary" role="status"></p>',
     '      </div>',
     '    </section>',
     '  </section>',
@@ -1340,11 +1711,7 @@
     dom.loginError = byId('va-login-error');
     dom.loginSubmit = byId('va-login-submit');
     dom.app = byId('va-app');
-    dom.tabMusic = byId('va-tab-music');
-    dom.tabLetters = byId('va-tab-letters');
-    dom.countTracks = byId('va-count-tracks');
-    dom.countLetters = byId('va-count-letters');
-    dom.panelMusic = byId('va-panel-music');
+    dom.modules = byId('va-modules');
     dom.panelLetters = byId('va-panel-letters');
     dom.tracksNote = byId('va-tracks-note');
     dom.trackList = byId('va-track-list');
@@ -1418,18 +1785,41 @@
       dom.reveal.setAttribute('aria-label', showing ? 'Show secret' : 'Hide secret');
     });
 
-    dom.tabMusic.addEventListener('click', function () { setView('music'); });
-    byId('va-domains-refresh').addEventListener('click',loadDomainAdmin);
+    dom.modules.addEventListener('click', function (event) {
+      var tab = event.target && event.target.closest ? event.target.closest('.va-tab') : null;
+      if (!tab) return;
+      setModule(tab.id.replace('va-tab-', ''));
+    });
+    dom.modules.addEventListener('keydown', onModuleKey);
+    bindSectionNavs();
+    var gotoMessages = byId('va-goto-messages');
+    if (gotoMessages) gotoMessages.addEventListener('click', function () { setSection('letters', 'messages'); });
+    byId('va-domains-refresh').addEventListener('click', function () { loadDomainAdmin(true); });
     byId('va-domains-save').addEventListener('click',saveDomainAdmin);
-    byId('va-domains-accept').addEventListener('click',function(){var btn=this,version=Number(btn.dataset.version);if(!window.confirm('Accept exactly the currently listed unclassified track IDs? New tracks will not be included.'))return;api('/admin/domain-release/accept',{method:'POST',body:{expected_state_version:version}}).then(function(r){if(r.status===200&&r.data&&r.data.ok){toast('Exact unclassified snapshot accepted.','success');loadDomainAdmin();}else toast('Acceptance rejected; refresh and review the current unclassified tracks.','error');});});
-    byId('va-domains-audit').addEventListener('click',function(e){var id=e.target&&e.target.dataset&&e.target.dataset.undo;if(!id)return;if(!window.confirm('Undo this batch if no conflicting membership changes occurred?'))return;api('/admin/domain-audit/'+encodeURIComponent(id)+'/undo',{method:'POST',body:{}}).then(function(r){if(r.status===200&&r.data&&r.data.ok){toast('Batch undone.','success');loadDomainAdmin();}else toast('Undo conflict; no changes were applied.','error');});});
-    dom.tabLetters.addEventListener('click', function () { setView('letters'); });
-    dom.tabMusic.addEventListener('keydown', onTabKey);
-    dom.tabLetters.addEventListener('keydown', onTabKey);
-
+    byId('va-domains-accept').addEventListener('click', function () {
+      var version = Number(this.dataset.version);
+      askConfirm('Accept this snapshot?', 'Accept exactly the unclassified track IDs listed now. Tracks added afterwards are not included.', 'Accept snapshot').then(function (yes) {
+        if (!yes) return;
+        api('/admin/domain-release/accept', { method: 'POST', body: { expected_state_version: version } }).then(function (r) {
+          if (r.status === 200 && r.data && r.data.ok) { toast('Exact unclassified snapshot accepted.', 'success'); loadDomainAdmin(true); }
+          else toast('Acceptance rejected; refresh and review the current unclassified tracks.', 'error');
+        });
+      });
+    });
+    byId('va-domains-audit').addEventListener('click', function (event) {
+      var id = event.target && event.target.dataset && event.target.dataset.undo;
+      if (!id) return;
+      askConfirm('Undo this batch?', 'The change is reversed only if no conflicting membership edit happened since.', 'Undo batch').then(function (yes) {
+        if (!yes) return;
+        api('/admin/domain-audit/' + encodeURIComponent(id) + '/undo', { method: 'POST', body: {} }).then(function (r) {
+          if (r.status === 200 && r.data && r.data.ok) { toast('Batch undone.', 'success'); loadDomainAdmin(true); }
+          else toast('Undo conflict; no changes were applied.', 'error');
+        });
+      });
+    });
     dom.refresh.addEventListener('click', function () {
       if (!state.token) return;
-      loadAll();
+      refreshCurrent();
     });
     dom.lock.addEventListener('click', function () {
       lock('Session locked. Enter the secret to continue.');
@@ -1509,6 +1899,83 @@
     });
   }
 
+  var domainLoaded = false;
+
+  function registerBuiltins() {
+    registerModule({
+      id: 'music',
+      label: 'Music',
+      icon: 'music',
+      sections: [
+        { id: 'tracks', label: 'Golden Folder' },
+        { id: 'domains', label: 'Music Domains' },
+        { id: 'audit', label: 'Audit and readiness' }
+      ],
+      enter: function (section, refresh) {
+        if (section === 'tracks') {
+          if (refresh || !state.tracks.length) loadTracks();
+          return;
+        }
+        if (refresh || !domainLoaded) {
+          domainLoaded = true;
+          loadDomainAdmin();
+        }
+      },
+      reset: function () { domainLoaded = false; }
+    });
+
+    registerModule({
+      id: 'letters',
+      label: 'Letters',
+      icon: 'mail',
+      sections: [
+        { id: 'messages', label: 'Messages' },
+        { id: 'moderation', label: 'Moderation' }
+      ],
+      enter: function (section, refresh) {
+        if (refresh || !state.letters.rows.length) loadLetters();
+      }
+    });
+  }
+
+  var shell = {
+    version: 1,
+    registerModule: registerModule,
+    hasModule: function (id) { return !!moduleIndex[id]; },
+    listModules: function () { return modules.map(function (m) { return m.id; }); },
+    go: function (moduleId, sectionId) {
+      if (!moduleIndex[moduleId]) return false;
+      activeSectionId[moduleId] = sectionId || sectionIdOf(moduleId);
+      setModule(moduleId);
+      if (sectionId) setSection(moduleId, sectionId);
+      return true;
+    },
+    current: function () { return { module: activeModuleId, section: sectionIdOf(activeModuleId) }; },
+    onLoginState: function (fn) { loginListeners.push(fn); },
+    authorized: function () { return !!state.token; },
+    baseUrl: baseUrl,
+    api: api,
+    toast: toast,
+    confirm: askConfirm,
+    prompt: askPrompt,
+    setCount: setCount,
+    setBusy: function (moduleId, sectionId, busy) {
+      var host = byId('va-sec-' + moduleId + '-' + (sectionId || sectionIdOf(moduleId)));
+      if (host) host.classList.toggle('is-busy', !!busy);
+    },
+    el: function (tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined && text !== null) node.textContent = String(text);
+      return node;
+    },
+    icon: icon,
+    hydrateIcons: hydrateIcons,
+    fmtTime: fmtTime,
+    shortId: shortId,
+    signalsErrors: null
+  };
+
   function boot() {
     root = document.createElement('div');
     root.id = 'void-admin-root';
@@ -1517,11 +1984,66 @@
     document.body.classList.add('void-admin-on');
     hydrateIcons(root);
     cacheDom();
+    registerBuiltins();
+    global.VoidAdminShell = shell;
+    if (typeof global.VoidSignalsAdmin === 'function') {
+      try { global.VoidSignalsAdmin(shell); } catch (e) {
+        toast('Void Signals module failed to load: ' + (e && e.message ? e.message : e), 'error');
+      }
+    } else {
+      toast('Void Signals module scripts did not load, so that module is unavailable.', 'error');
+    }
+    renderModuleNav();
     bind();
     updateSortIndicators();
+    global.addEventListener('hashchange', function () {
+      if (!state.token || dom.app.hidden) return;
+      applyRoute();
+    });
     verifyStoredToken();
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
+  /* Admin-only module bundles. Visitors never fetch these: the whole file already
+     returned unless ?admin=true, and these tags are injected here rather than
+     committed into the public HTML head. async=false keeps execution in order. */
+  var MODULE_STAMP = '20261127';
+  var ADMIN_BUNDLES = ['void-signals-api.js', 'void-star-studio.js', 'void-signals-admin.js'];
+
+  function inject(src, kind) {
+    var node = document.createElement(kind === 'css' ? 'link' : 'script');
+    if (kind === 'css') {
+      node.rel = 'stylesheet';
+      node.href = src;
+    } else {
+      node.src = src;
+      node.async = false;
+    }
+    (document.head || document.documentElement).appendChild(node);
+    return node;
+  }
+
+  var bundlesDone = 0;
+  var pageReady = document.readyState !== 'loading';
+  var booted = false;
+
+  function maybeBoot() {
+    if (booted || !pageReady || bundlesDone < ADMIN_BUNDLES.length) return;
+    booted = true;
+    boot();
+  }
+
+  function bundleSettled() {
+    bundlesDone += 1;
+    maybeBoot();
+  }
+
+  inject('void-signals-admin.css?v=' + MODULE_STAMP, 'css');
+  for (var b = 0; b < ADMIN_BUNDLES.length; b++) {
+    var tag = inject(ADMIN_BUNDLES[b] + '?v=' + MODULE_STAMP);
+    /* load and error are mutually exclusive, so a missing file cannot hang the shell */
+    tag.addEventListener('load', bundleSettled);
+    tag.addEventListener('error', bundleSettled);
+  }
+  if (pageReady) maybeBoot();
+  else document.addEventListener('DOMContentLoaded', function () { pageReady = true; maybeBoot(); });
 })(window);
