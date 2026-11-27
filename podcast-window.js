@@ -58,6 +58,155 @@
     }
     node.appendChild(ini);
   }
+  var libraryArtworkStates = Object.create(null);
+  function setLibraryArtworkState(art, status) {
+    art.status = status;
+    art.img.classList.toggle('is-loaded', status === 'loaded');
+    art.initials.hidden = status === 'loaded';
+  }
+  function updateLibraryArtwork(node, artUrl, initials) {
+    var art = node.__podcastArtwork;
+    var url = typeof artUrl === 'string' ? artUrl.trim() : '';
+    if (!art) {
+      var img = document.createElement('img');
+      img.className = 'pw__artimg';
+      img.alt = '';
+      var ini = el('span', 'pw__initials', initials || '?');
+      node.appendChild(img);
+      node.appendChild(ini);
+      art = node.__podcastArtwork = { node: node, img: img, initials: ini, url: null, status: 'idle', generation: 0 };
+    } else if (art.initials.textContent !== (initials || '?')) {
+      art.initials.textContent = initials || '?';
+    }
+    if (art.url === url) { return; }
+    art.generation++;
+    var generation = art.generation;
+    art.url = url;
+    art.img.onload = null;
+    art.img.onerror = null;
+    art.img.classList.remove('is-loaded');
+    if (!url) {
+      if (art.img.getAttribute('src')) { art.img.removeAttribute('src'); }
+      setLibraryArtworkState(art, 'idle');
+      return;
+    }
+    var entry = libraryArtworkStates[url];
+    if (!entry) { entry = libraryArtworkStates[url] = { status: 'loading' }; }
+    art.cacheEntry = entry;
+    if (entry.status === 'failed') {
+      if (art.img.getAttribute('src')) { art.img.removeAttribute('src'); }
+      setLibraryArtworkState(art, 'failed');
+      return;
+    }
+    if (art.img.getAttribute('src') !== url) { art.img.src = url; }
+    setLibraryArtworkState(art, entry.status);
+    if (entry.status === 'loaded') { return; }
+    function settle(loaded) {
+      if (art.generation !== generation || art.url !== url || art.cacheEntry !== entry ||
+          !art.node || art.node.__podcastArtwork !== art || art.img.getAttribute('src') !== url) { return; }
+      if (entry.status !== 'loaded') { entry.status = loaded ? 'loaded' : 'failed'; }
+      setLibraryArtworkState(art, entry.status);
+    }
+    art.img.onload = function () { settle(true); };
+    art.img.onerror = function () { settle(false); };
+  }
+  function disposeLibraryArtwork(node) {
+    var art = node && node.__podcastArtwork;
+    if (!art) { return; }
+    art.generation++;
+    art.img.onload = null;
+    art.img.onerror = null;
+    if (art.img.getAttribute('src')) { art.img.removeAttribute('src'); }
+    art.node = null;
+    delete node.__podcastArtwork;
+  }
+
+  /* Reconcile keyed rows in place. Existing nodes keep their identity and are
+     only moved when their order changes; obsolete artwork is disposed. */
+  function reconcileByKey(container, items, nodesByKey, keyOf, createNode, updateNode, removeNode, emptyNode) {
+    var active = Object.create(null), ordered = [];
+    (items || []).forEach(function (item) {
+      var key = keyOf(item);
+      if (key === null || key === undefined || active[key]) { return; }
+      active[key] = true;
+      var node = nodesByKey[key];
+      if (!node) { node = nodesByKey[key] = createNode(item); }
+      updateNode(node, item);
+      ordered.push(node);
+    });
+    Object.keys(nodesByKey).forEach(function (key) {
+      if (active[key]) { return; }
+      var old = nodesByKey[key];
+      if (old.parentNode === container) { container.removeChild(old); }
+      removeNode(old);
+      delete nodesByKey[key];
+    });
+    if (!ordered.length && emptyNode) {
+      if (emptyNode.parentNode !== container) { container.appendChild(emptyNode); }
+      return;
+    }
+    if (emptyNode && emptyNode.parentNode === container) { container.removeChild(emptyNode); }
+    ordered.forEach(function (node, index) {
+      var current = container.children[index] || null;
+      if (current !== node) { container.insertBefore(node, current); }
+    });
+  }
+
+  /* The show view rerenders on playback and store events. Keep the image node
+     when its URL is unchanged so those updates cannot flash the fallback or
+     restart an image request. */
+  function updateShowArt(node, artUrl, initials) {
+    var img = node.querySelector('img.pw__artimg');
+    var ini = node.querySelector('.pw__initials');
+    if (!ini) {
+      ini = el('span', 'pw__initials', initials || '?');
+      node.appendChild(ini);
+    } else {
+      ini.textContent = initials || '?';
+    }
+    if (!artUrl) {
+      if (img && img.parentNode === node) { node.removeChild(img); }
+      ini.hidden = false;
+      return;
+    }
+    if (img && img.getAttribute('src') === artUrl) {
+      if (img.complete) {
+        if (img.naturalWidth > 0) {
+          img.classList.add('is-loaded');
+          ini.hidden = true;
+        } else {
+          img.classList.remove('is-loaded');
+          ini.hidden = false;
+        }
+      } else {
+        img.classList.remove('is-loaded');
+        ini.hidden = true;
+      }
+      return;
+    }
+    if (img && img.parentNode === node) { node.removeChild(img); }
+    ini.hidden = true;
+    img = document.createElement('img');
+    img.className = 'pw__artimg';
+    img.alt = '';
+    var requestedUrl = artUrl;
+    var requestedImage = img;
+    function settle(loaded) {
+      if (requestedImage.parentNode !== node || requestedImage.getAttribute('src') !== requestedUrl) { return; }
+      if (loaded && requestedImage.naturalWidth > 0) {
+        requestedImage.classList.add('is-loaded');
+        ini.hidden = true;
+      } else {
+        requestedImage.classList.remove('is-loaded');
+        ini.hidden = false;
+      }
+    }
+    img.onload = function () { settle(true); };
+    img.onerror = function () { settle(false); };
+    node.appendChild(img);
+    img.src = artUrl;
+    if (img.complete) { settle(img.naturalWidth > 0); }
+  }
 
   /* ---- live catalogue ----
      The player reads data.SHOWS / data.EPISODES (findEpisode, episodesOf), so
@@ -184,7 +333,7 @@
   showView.hidden = true;
   var showHead = el('div', 'pw__showhead');
   var showArt = el('span', 'pw__art pw__art--lg');
-  var showArtLink = null, showTitleLink = null;
+  var showTitleLink = null;
   var showMeta = el('div', 'pw__showmeta');
   var showTitle = el('h3', 'pw__showtitle');
   var showTitleFa = el('p', 'pw__showtitle-fa'); showTitleFa.dir = 'rtl'; showTitleFa.lang = 'fa';
@@ -489,31 +638,39 @@
     var w = body.clientWidth || 396;
     return Math.max(1, Math.min(6, Math.floor(w / item)));
   }
+  var libraryTilesByShow = Object.create(null);
+  var libraryNewByEpisode = Object.create(null);
+  var libraryEmptyNode = null;
   function renderLibrary() {
     var opened = store.getState().opened;
-    newRow.textContent = '';
     var fresh = data.latest(60).filter(function (ep) {
       return ep.showId !== SAVED_ID && store.isSubscribed(ep.showId);
-    }).slice(0, newCount());
-    fresh.forEach(function (ep) {
+    }).slice(0, newCount()).map(function (ep) {
       var sh = data.showById(ep.showId);
-      if (!sh) { return; }
-      var un = !store.getProgress(ep.id) && Feed.parseDateMs(ep.publishedAt) > (opened[ep.showId] || 0);
+      return sh ? { episode: ep, show: sh } : null;
+    }).filter(function (item) { return !!item; });
+    reconcileByKey(newRow, fresh, libraryNewByEpisode, function (item) { return item.episode.id; }, function (item) {
       var b = el('button', 'pw__newitem');
       b.type = 'button';
       artStyle(b);
-      fillArt(b, sh.artUrl, sh.initials);
-      if (un) {
-        var dot = el('span', 'pw__dot');
+      b.__showId = item.episode.showId;
+      b.addEventListener('click', function () { openShow(b.__showId, b); });
+      return b;
+    }, function (b, item) {
+      var ep = item.episode, sh = item.show;
+      b.__showId = ep.showId;
+      updateLibraryArtwork(b, sh.artUrl, sh.initials);
+      var un = !store.getProgress(ep.id) && Feed.parseDateMs(ep.publishedAt) > (opened[ep.showId] || 0);
+      var dot = b.querySelector('.pw__dot');
+      if (un && !dot) {
+        dot = el('span', 'pw__dot');
         dot.setAttribute('aria-hidden', 'true');
         b.appendChild(dot);
-      }
+      } else if (!un && dot) { b.removeChild(dot); }
       var label = ep.title + ' — ' + sh.title + (un ? ' · new' : '');
-      b.setAttribute('aria-label', label);
-      b.title = label;
-      b.addEventListener('click', function () { openShow(ep.showId, b); });
-      newRow.appendChild(b);
-    });
+      if (b.getAttribute('aria-label') !== label) { b.setAttribute('aria-label', label); }
+      if (b.title !== label) { b.title = label; }
+    }, function (b) { disposeLibraryArtwork(b); }, null);
     newSection.hidden = !fresh.length;
     newRow.hidden = !fresh.length;
 
@@ -541,31 +698,46 @@
         'Bookmark episodes with the bookmark icon · با نشان‌گذاری، قسمت‌ها اینجا می‌آیند'));
     }
 
-    grid.textContent = '';
     var subs = store.getState().subscriptions;
     var shows = subs.map(function (id) { return data.showById(id); }).filter(function (s) { return !!s; });
-    shows.forEach(function (sh) {
+    if (!libraryEmptyNode) { libraryEmptyNode = el('p', 'pw__empty'); }
+    var emptyText = isTV()
+      ? 'No podcasts yet · هنوز پادکستی نیست'
+      : 'No podcasts yet — paste an RSS link above · هنوز پادکستی نیست؛ نشانی RSS را بالا بچسبانید';
+    if (libraryEmptyNode.textContent !== emptyText) { libraryEmptyNode.textContent = emptyText; }
+    reconcileByKey(grid, shows, libraryTilesByShow, function (sh) { return sh.id; }, function (sh) {
       var b = el('button', 'pw__tile');
       b.type = 'button';
-      b.setAttribute('aria-label', sh.title + (sh.titleFa ? ' · ' + sh.titleFa : '') + ' — ' + sh.publisher);
       var art = el('span', 'pw__art');
       artStyle(art);
-      fillArt(art, sh.artUrl, sh.initials);
       b.appendChild(art);
-      b.appendChild(el('span', 'pw__tilename', sh.title));
+      b.__artNode = art;
+      b.__titleNode = el('span', 'pw__tilename');
+      b.appendChild(b.__titleNode);
+      b.addEventListener('click', function () { openShow(b.__showId, b); });
+      return b;
+    }, function (b, sh) {
+      b.__showId = sh.id;
+      updateLibraryArtwork(b.__artNode, sh.artUrl, sh.initials);
+      var label = sh.title + (sh.titleFa ? ' · ' + sh.titleFa : '') + ' — ' + sh.publisher;
+      if (b.getAttribute('aria-label') !== label) { b.setAttribute('aria-label', label); }
+      if (b.__titleNode.textContent !== sh.title) { b.__titleNode.textContent = sh.title; }
       if (sh.titleFa) {
-        var tileFa = el('span', 'pw__tilefa', sh.titleFa); tileFa.dir = 'rtl'; tileFa.lang = 'fa';
-        b.appendChild(tileFa);
+        if (!b.__tileFa) {
+          b.__tileFa = el('span', 'pw__tilefa'); b.__tileFa.dir = 'rtl'; b.__tileFa.lang = 'fa';
+          b.appendChild(b.__tileFa);
+        }
+        if (b.__tileFa.textContent !== sh.titleFa) { b.__tileFa.textContent = sh.titleFa; }
+      } else if (b.__tileFa) {
+        b.removeChild(b.__tileFa); b.__tileFa = null;
       }
-      if (sh.publisher) { b.appendChild(el('span', 'pw__tilepub', sh.publisher)); }
-      b.addEventListener('click', function () { openShow(sh.id, b); });
-      grid.appendChild(b);
-    });
-    if (!shows.length) {
-      grid.appendChild(el('p', 'pw__empty', isTV()
-        ? 'No podcasts yet · هنوز پادکستی نیست'
-        : 'No podcasts yet — paste an RSS link above · هنوز پادکستی نیست؛ نشانی RSS را بالا بچسبانید'));
-    }
+      if (sh.publisher) {
+        if (!b.__tilePub) { b.__tilePub = el('span', 'pw__tilepub'); b.appendChild(b.__tilePub); }
+        if (b.__tilePub.textContent !== sh.publisher) { b.__tilePub.textContent = sh.publisher; }
+      } else if (b.__tilePub) {
+        b.removeChild(b.__tilePub); b.__tilePub = null;
+      }
+    }, function (b) { disposeLibraryArtwork(b.__artNode); }, libraryEmptyNode);
   }
 
   /* ---- show rendering ---- */
@@ -833,24 +1005,11 @@
       : data.episodesOf(showId);
     var ps = window.VoidPodcastPlayer ? window.VoidPodcastPlayer.getState() : null;
     function setHomepageLinks(siteUrl, title) {
-      if (showArtLink && showArt.parentNode === showArtLink) {
-        showHead.replaceChild(showArt, showArtLink);
-      }
       if (showTitleLink && showTitle.parentNode === showTitleLink) {
         showMeta.replaceChild(showTitle, showTitleLink);
       }
-      showArtLink = null;
       showTitleLink = null;
       if (!siteUrl || isTV()) { return; }
-      showArtLink = el('a', 'pw__showart-link');
-      showArtLink.href = siteUrl;
-      showArtLink.target = '_blank';
-      showArtLink.rel = 'noopener noreferrer';
-      showArtLink.setAttribute('aria-hidden', 'true');
-      showArtLink.tabIndex = -1;
-      showHead.replaceChild(showArtLink, showArt);
-      showArtLink.appendChild(showArt);
-
       showTitleLink = el('a', 'pw__showtitle-link');
       showTitleLink.href = siteUrl;
       showTitleLink.target = '_blank';
@@ -860,8 +1019,7 @@
       showTitleLink.appendChild(showTitle);
     }
     artStyle(showArt);
-    showArt.textContent = '';
-    fillArt(showArt, sh.artUrl, sh.initials);
+    updateShowArt(showArt, sh.artUrl, sh.initials);
     showArt.classList.toggle('is-loading', !!(ps && ps.loading && ps.showId === showId));
     showTitle.textContent = isSavedView ? 'Bookmarks' : sh.title;
     setHomepageLinks(isSavedView ? null : sh.siteUrl, showTitle.textContent);
@@ -1298,9 +1456,19 @@
     }
     focusFirst();
   }
-  store.onChange(rerender);
+  var libraryRerenderScheduled = false;
+  function rerenderFromLiveState() {
+    if (view !== 'library') { rerender(); return; }
+    if (libraryRerenderScheduled) { return; }
+    libraryRerenderScheduled = true;
+    requestAnimationFrame(function () {
+      libraryRerenderScheduled = false;
+      rerender();
+    });
+  }
+  store.onChange(rerenderFromLiveState);
   ['podcast:episode', 'podcast:playing'].forEach(function (name) {
-    window.addEventListener(name, function () { if (isOpen()) { rerender(); } });
+    window.addEventListener(name, function () { if (isOpen()) { rerenderFromLiveState(); } });
   });
   /* Phase 1: surface playback errors in the dialog's existing status note while
      the dialog is open (the orb overlay covers the dialog-closed case). The
