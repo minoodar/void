@@ -16,7 +16,7 @@ Iteration 3" brief. The unified administration shell around it is documented in
 | Working branch | `feature/signals-operational-infrastructure` @ `fccbfdc` |
 | Follow-on branch (same worktree) | `feature/admin-unified-experience` @ `91e7257` (parent `fccbfdc`) |
 | Worktree | `E:\google chrome extention\_feature\signals-operational-infrastructure` |
-| Commits ahead of `origin/main` | 4 (`44a70f6`, `79339d3`, `fccbfdc`, `91e7257`) |
+| Commits ahead of `origin/main` | 5 (`44a70f6`, `79339d3`, `fccbfdc`, `91e7257`, and the report commit) |
 | Pushed / merged / deployed | **no / no / no** — `origin` was never written to |
 
 `fccbfdc` carries the backend (Worker, schema, migration, tests). `91e7257`
@@ -342,7 +342,8 @@ configuration. `git diff --name-only 79339d3 -- "*podcast*" "*seek*"` is empty.
   `feature/admin-unified-experience`, parent `fccbfdc`.
 - This report is committed in the child of `91e7257` on the same branch;
   `git log --oneline -3` shows both.
-- Nothing was pushed: `origin/main..HEAD` still lists the same 4 local commits.
+- Nothing was pushed: `git log --oneline origin/main..HEAD` lists exactly the 5
+  local commits named in item 1.
 
 ## 18. Remaining production release requirements
 
