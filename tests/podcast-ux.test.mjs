@@ -42,11 +42,120 @@ function block(src, first, last) {
 }
 const occurrences = (hay, needle) => hay.split(needle).length - 1;
 
-test('podcast homepage links are limited to the desktop show header', () => {
+function showArtworkHarness() {
+  const requests = [];
+  function element(tag) {
+    const classes = new Set();
+    const attrs = Object.create(null);
+    const node = {
+      tagName: tag.toUpperCase(), className: '', textContent: '', hidden: false,
+      children: [], parentNode: null, complete: false, naturalWidth: 0, style: {},
+      classList: {
+        add: (...names) => names.forEach((name) => classes.add(name)),
+        remove: (...names) => names.forEach((name) => classes.delete(name)),
+        contains: (name) => classes.has(name),
+        toggle(name, force) { const on = force === undefined ? !classes.has(name) : !!force; if (on) classes.add(name); else classes.delete(name); return on; }
+      },
+      setAttribute(name, value) {
+        attrs[name] = String(value);
+        if (name === 'src') { node.complete = false; node.naturalWidth = 0; requests.push(attrs[name]); }
+      },
+      getAttribute: (name) => Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null,
+      appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+      removeChild(child) { this.children.splice(this.children.indexOf(child), 1); child.parentNode = null; return child; },
+      querySelector(selector) {
+        return this.children.find((child) => selector === 'img.pw__artimg'
+          ? child.tagName === 'IMG' && child.className.split(' ').includes('pw__artimg')
+          : selector === '.pw__initials' && child.className.split(' ').includes('pw__initials')) || null;
+      }
+    };
+    Object.defineProperty(node, 'src', {
+      get() { return attrs.src || ''; },
+      set(value) { node.setAttribute('src', value); }
+    });
+    return node;
+  }
+  const ctx = vm.createContext({ document: { createElement: element } });
+  vm.runInContext(fn(WIN, 'el') + '\n' + fn(WIN, 'artStyle') + '\n' + fn(WIN, 'updateShowArt'), ctx);
+  const art = element('span');
+  return { art, requests, style: ctx.artStyle, update: ctx.updateShowArt,
+    image: () => art.querySelector('img.pw__artimg'), fallback: () => art.querySelector('.pw__initials') };
+}
+
+test('artwork stays stable through image success, playback rotation, and UI rerender', () => {
+  const h = showArtworkHarness();
+  h.style(h.art);
+  h.update(h.art, 'https://img.example/first.jpg', 'NF');
+  const img = h.image(), initials = h.fallback();
+  assert.equal(initials.hidden, true, 'initials stay hidden during normal loading');
+  img.complete = true;
+  img.naturalWidth = 320;
+  img.onload();
+  assert.equal(img.classList.contains('is-loaded'), true, 'successful art is marked visible');
+  h.art.classList.toggle('is-loading', true);
+  h.art.classList.toggle('is-loading', false);
+  h.update(h.art, 'https://img.example/first.jpg', 'NF');
+  assert.equal(h.image(), img, 'playback/UI rerender preserves the image DOM node');
+  assert.equal(h.requests.length, 1, 'rerender does not reset src or restart the request');
+  assert.equal(initials.hidden, true, 'rotation completion and rerender do not reveal initials');
+});
+
+test('artwork handles cached success, cached failure, in-flight loading, and retry after failure', () => {
+  const h = showArtworkHarness();
+  h.update(h.art, 'https://img.example/cached-ok.jpg', 'OK');
+  const good = h.image();
+  good.complete = true;
+  good.naturalWidth = 240;
+  h.update(h.art, 'https://img.example/cached-ok.jpg', 'OK');
+  assert.equal(good.classList.contains('is-loaded'), true, 'cached success is immediately visible');
+  assert.equal(h.fallback().hidden, true);
+
+  h.update(h.art, 'https://img.example/bad.jpg', 'BD');
+  const bad = h.image();
+  assert.equal(h.fallback().hidden, true, 'fallback remains hidden while the request is in flight');
+  bad.complete = true;
+  bad.naturalWidth = 0;
+  h.update(h.art, 'https://img.example/bad.jpg', 'BD');
+  assert.equal(h.fallback().hidden, false, 'cached failure shows the intended initials');
+
+  h.update(h.art, 'https://img.example/retry.jpg', 'RT');
+  const retry = h.image();
+  retry.complete = true;
+  retry.naturalWidth = 180;
+  retry.onload();
+  assert.equal(retry.classList.contains('is-loaded'), true, 'a later successful source displays normally');
+  assert.equal(h.fallback().hidden, true);
+});
+
+test('switching artwork ignores callbacks from an obsolete source and missing art uses initials', () => {
+  const h = showArtworkHarness();
+  h.update(h.art, 'https://img.example/old.jpg', 'OL');
+  const old = h.image(), oldError = old.onerror, oldLoad = old.onload;
+  h.update(h.art, 'https://img.example/new.jpg', 'NW');
+  const current = h.image(), initials = h.fallback();
+  oldError();
+  oldLoad();
+  assert.equal(h.image(), current, 'source switch owns the current image node');
+  assert.equal(initials.textContent, 'NW');
+  assert.equal(initials.hidden, true, 'obsolete callbacks cannot reveal stale fallback text');
+  current.onerror();
+  assert.equal(initials.hidden, false, 'current genuine failure reveals initials');
+  h.update(h.art, '', 'NA');
+  assert.equal(h.image(), null);
+  assert.equal(initials.textContent, 'NA');
+  assert.equal(initials.hidden, false, 'missing artwork has a deliberate fallback');
+});
+
+test('podcast homepage links are limited to the desktop show title and artwork is non-clickable', () => {
   const render = fn(WIN, 'renderShow');
   assert.match(render, /if \(!siteUrl \|\| isTV\(\)\) \{ return; \}/, 'missing sites and TV keep plain header elements');
-  assert.match(render, /showArtLink\.setAttribute\('aria-hidden', 'true'\)/);
-  assert.match(render, /showArtLink\.tabIndex = -1/);
+  assert.match(render, /updateShowArt\(showArt, sh\.artUrl, sh\.initials\)/, 'the show renderer uses the persistent artwork updater');
+  assert.doesNotMatch(render, /showArt\.textContent\s*=\s*['"]['"]/, 'the show renderer never clears and rebuilds the artwork subtree');
+  assert.doesNotMatch(render, /showArtLink|pw__showart-link|showHead\.replaceChild/);
+  assert.doesNotMatch(WIN, /showArt\.addEventListener|showArtLink|pw__showart-link/);
+  assert.match(render, /showTitleLink\.href = siteUrl/);
+  assert.match(render, /showTitleLink\.target = '_blank'/);
+  assert.match(render, /showTitleLink\.rel = 'noopener noreferrer'/);
   assert.match(render, /showTitleLink\.setAttribute\('aria-label', \(Feed\.isPlatformSiteUrl\(siteUrl\) \? 'Podcast page: ' : 'Podcast website: '\) \+ title\)/);
   assert.equal((render.match(/show(?:Art|Title)Link\.addEventListener/g) || []).length, 0, 'header anchors have no playback or navigation handlers');
   const css = read('podcast-window.css');
@@ -299,11 +408,11 @@ test('B: ?follow= is validated on arrival and only pre-fills the Add field', () 
 
 /* ========== release candidate: changed bytes must carry new cache keys ========== */
 
-test('keys: every changed asset is keyed away from its HEAD key', () => {
+test('keys: changed Podcast window assets use new keys and unrelated assets keep theirs', () => {
   const from = (src, re) => { const m = src.match(re); assert.ok(m, 'key found for ' + re); return m[1]; };
   const head = (f) => execFileSync('git', ['-C', ROOT, 'show', 'HEAD:' + f], { encoding: 'utf8' }).replace(/\r\n/g, '\n');
   const pairs = [
-    ['podcast-store.js', read('void-domains.js'), head('void-domains.js'), /podcast-store\.js\?v=([^"']+)/],
+    ['podcast-window.css', read('void-domains.js'), head('void-domains.js'), /podcast-window\.css\?v=([^"']+)/],
     ['podcast-window.js', read('void-domains.js'), head('void-domains.js'), /podcast-window\.js\?v=([^"']+)/]
   ];
   for (const [file, here, before, re] of pairs) {
@@ -311,7 +420,7 @@ test('keys: every changed asset is keyed away from its HEAD key', () => {
   }
   /* Unchanged podcast assets must keep their keys — no needless re-download. */
   const dom = read('void-domains.js'), domHead = head('void-domains.js');
-  for (const re of [/podcast-window\.css\?v=([^"']+)/, /podcast-feed\.js\?v=([^"']+)/,
+  for (const re of [/podcast-store\.js\?v=([^"']+)/, /podcast-feed\.js\?v=([^"']+)/,
     /podcast-sample-data\.js\?v=([^"']+)/,
     /void-podcast-thread\.js\?v=([^"']+)/, /podcast-thread\.css\?v=([^"']+)/]) {
     assert.equal(from(dom, re), from(domHead, re), 'unchanged asset keeps its key');
@@ -776,7 +885,7 @@ test('D3: no probe pass, no timers, no polling — one synchronous placement', (
     'no hide-while-measuring: the un-hide was a transition that held the popover hidden for a frame');
 });
 
-test('D3: the popover is a positioned child of the dialog, styled exactly as before', () => {
+test('D3: the glass menus preserve placement and sizing with restrained Podcast-only styling', () => {
   const css = read('podcast-window.css');
   const rule = css.match(/\.pw__sharepop \{([\s\S]*?)\}/);
   assert.ok(rule, 'the rule exists');
@@ -787,13 +896,15 @@ test('D3: the popover is a positioned child of the dialog, styled exactly as bef
   assert.doesNotMatch(css, /\.pw__sharepop[^{]*\{[^}]*animation:/, 'the popover itself is not animated');
   assert.match(css, /#void-podcast-modal \.pw__sharepop \{ transition: none !important; \}/,
     'and it is not transitioned either, whatever html.void-lowfx * forces on every element');
-  const headCss = execFileSync('git', ['-C', ROOT, 'show', 'HEAD:podcast-window.css'], { encoding: 'utf8' })
-    .replace(/\r\n/g, '\n');
-  const headRule = headCss.match(/\.pw__sharepop \{([\s\S]*?)\}/)[1];
   for (const decl of ['z-index: 2147483000', 'width: 264px', 'padding: 10px 12px 4px',
-    'border-radius: 12px', 'backdrop-filter: blur(14px)']) {
-    assert.ok(headRule.indexOf(decl) >= 0 && rule[1].indexOf(decl) >= 0, decl + ' kept — the design is unchanged');
+    'border-radius: 14px', 'backdrop-filter: blur(12px) saturate(118%)',
+    'background: linear-gradient(155deg', 'inset 0 1px 0']) {
+    assert.ok(rule[1].indexOf(decl) >= 0, decl + ' is present on the share popover');
   }
+  assert.match(css, /\.pw-sheet\.vm-sound-pop \{[\s\S]*?backdrop-filter: blur\(12px\) saturate\(118%\)/,
+    'the playback settings sheet uses restrained blur');
+  assert.doesNotMatch(css, /(^|\s)(\.menu|\.dropdown|\.context-menu)\s*\{/,
+    'the glass treatment is scoped to Podcast selectors');
   const headJs = execFileSync('git', ['-C', ROOT, 'show', 'HEAD:podcast-window.js'], { encoding: 'utf8' })
     .replace(/\r\n/g, '\n');
   /* What this fix must not have touched: the sharing targets themselves. */
