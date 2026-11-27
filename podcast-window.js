@@ -184,6 +184,7 @@
   showView.hidden = true;
   var showHead = el('div', 'pw__showhead');
   var showArt = el('span', 'pw__art pw__art--lg');
+  var showArtLink = null, showTitleLink = null;
   var showMeta = el('div', 'pw__showmeta');
   var showTitle = el('h3', 'pw__showtitle');
   var showTitleFa = el('p', 'pw__showtitle-fa'); showTitleFa.dir = 'rtl'; showTitleFa.lang = 'fa';
@@ -313,6 +314,10 @@
     var show = parsed.show;
     show.addedAt = prev && prev.addedAt ? prev.addedAt : Date.now();
     show.lastFetchedAt = Date.now();
+    /* A successful parse completes discovery even when the feed has no usable link. */
+    show.siteUrlCheckedAt = show.lastFetchedAt;
+    /* A missing replacement link is not a reason to discard a known safe one. */
+    if (!show.siteUrl && prev && prev.siteUrl) { show.siteUrl = prev.siteUrl; }
     catalogSet(show, parsed.episodes);
     store.registerShow(show, parsed.episodes);
     var meta = parsed.fetchedMeta || {};
@@ -827,11 +832,39 @@
       ? store.getSaved().slice().sort(function (a, b) { return b.savedAt - a.savedAt; })
       : data.episodesOf(showId);
     var ps = window.VoidPodcastPlayer ? window.VoidPodcastPlayer.getState() : null;
+    function setHomepageLinks(siteUrl, title) {
+      if (showArtLink && showArt.parentNode === showArtLink) {
+        showHead.replaceChild(showArt, showArtLink);
+      }
+      if (showTitleLink && showTitle.parentNode === showTitleLink) {
+        showMeta.replaceChild(showTitle, showTitleLink);
+      }
+      showArtLink = null;
+      showTitleLink = null;
+      if (!siteUrl || isTV()) { return; }
+      showArtLink = el('a', 'pw__showart-link');
+      showArtLink.href = siteUrl;
+      showArtLink.target = '_blank';
+      showArtLink.rel = 'noopener noreferrer';
+      showArtLink.setAttribute('aria-hidden', 'true');
+      showArtLink.tabIndex = -1;
+      showHead.replaceChild(showArtLink, showArt);
+      showArtLink.appendChild(showArt);
+
+      showTitleLink = el('a', 'pw__showtitle-link');
+      showTitleLink.href = siteUrl;
+      showTitleLink.target = '_blank';
+      showTitleLink.rel = 'noopener noreferrer';
+      showTitleLink.setAttribute('aria-label', (Feed.isPlatformSiteUrl(siteUrl) ? 'Podcast page: ' : 'Podcast website: ') + title);
+      showMeta.replaceChild(showTitleLink, showTitle);
+      showTitleLink.appendChild(showTitle);
+    }
     artStyle(showArt);
     showArt.textContent = '';
     fillArt(showArt, sh.artUrl, sh.initials);
     showArt.classList.toggle('is-loading', !!(ps && ps.loading && ps.showId === showId));
     showTitle.textContent = isSavedView ? 'Bookmarks' : sh.title;
+    setHomepageLinks(isSavedView ? null : sh.siteUrl, showTitle.textContent);
     showTitleFa.textContent = isSavedView ? 'نشان‌شده‌ها' : (sh.titleFa || '');
     showTitleFa.hidden = !sh.titleFa;
     showPub.textContent = isSavedView ? (list.length + ' episodes · قسمت') : sh.publisher;
@@ -985,19 +1018,30 @@
     var due = [];
     st.subscriptions.forEach(function (id) {
       var sh = st.shows[id];
-      if (sh && sh.feedUrl && now - (sh.lastFetchedAt || 0) > REFRESH_MS) { due.push(sh.feedUrl); }
+      /* Legacy shows bypass the ordinary interval once; failed fetches remain eligible. */
+      var homepageUnchecked = sh && !sh.siteUrl && !sh.siteUrlCheckedAt;
+      var episodeRefreshDue = sh && now - (sh.lastFetchedAt || 0) > REFRESH_MS;
+      if (sh && sh.feedUrl && (homepageUnchecked || episodeRefreshDue)) {
+        due.push({ feedUrl: sh.feedUrl, showId: id, homepageOnly: homepageUnchecked && !episodeRefreshDue });
+      }
     });
     if (!due.length) { return; }
     refreshing = true;
     var idx = 0, running = 0;
     function next() {
       while (running < 3 && idx < due.length) {
-        var url = due[idx++];
+        var item = due[idx++];
         running++;
-        (function (u) {
-          addFeed(u).then(function (parsed) { adoptFeed(parsed); }, function () { /* silent per-show failure */ })
+        (function (work) {
+          addFeed(work.feedUrl).then(function (parsed) {
+            if (work.homepageOnly) {
+              store.setHomepageDiscovery(work.showId, parsed.show.siteUrl, Date.now());
+            } else {
+              adoptFeed(parsed);
+            }
+          }, function () { /* silent per-show failure; unchecked discovery can retry */ })
             .then(function () { running--; next(); });
-        })(url);
+        })(item);
       }
       if (!running && idx >= due.length) { refreshing = false; }
     }

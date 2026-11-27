@@ -209,6 +209,29 @@ test('OPML export/import round trip, escaping and 200 cap', () => {
 });
 
 /* ---- RSS extraction ---- */
+test('RSS channel siteUrl accepts only a safe plain channel link', () => {
+  function site(linkXml, feedUrl, effectiveUrl) {
+    return Feed.extractFeed(miniDom('<rss><channel><title>Site test</title>' + (linkXml || '') + '</channel></rss>'), feedUrl || FEED_URL, effectiveUrl);
+  }
+  assert.equal(site('<link> https://show.example.com/home#about </link>').show.siteUrl, 'https://show.example.com/home');
+  assert.equal(site('').show.siteUrl, null);
+  assert.equal(site('<atom:link rel="self" href="https://feeds.example.com/show.xml"/>').show.siteUrl, null);
+  const both = site('<atom:link rel="self" href="https://feeds.example.com/canonical.xml"/><link>https://rss.com/shows/abc</link>');
+  assert.equal(both.show.siteUrl, 'https://rss.com/shows/abc');
+  assert.equal(both.resolvedFeedUrl, '', 'RSS parsing never treats an Atom link as feed identity');
+  assert.equal(site('<link>javascript:alert(1)</link>').show.siteUrl, null);
+  assert.equal(site('<link>/relative/path</link>').show.siteUrl, null);
+  assert.equal(site('<link>' + FEED_URL + '</link>').show.siteUrl, null);
+  assert.equal(site('<link>https://feeds.example.com/canonical.xml</link>', FEED_URL, 'https://feeds.example.com/canonical.xml').show.siteUrl, null);
+  assert.equal(site('<link>https://user:pass@show.example.com/</link>').show.siteUrl, null);
+  assert.equal(site('<link>https://show.example.com/' + 'a'.repeat(510) + '</link>').show.siteUrl, null);
+  assert.equal(site('<link>https://castbox.fm/channel/abc</link>').show.siteUrl, 'https://castbox.fm/channel/abc');
+  assert.equal(Feed.isPlatformSiteUrl('https://castbox.fm/channel/abc'), true);
+  assert.equal(Feed.isPlatformSiteUrl('https://www.rss.com/show/abc'), true);
+  assert.equal(Feed.isPlatformSiteUrl('https://show.example.com'), false);
+  assert.equal(site('<link href="https://show.example.com/">ignored</link>').show.siteUrl, null);
+});
+
 test('extractFeed parses RSS 2.0 + iTunes, strips HTML, dedupes, sorts, skips no-audio', () => {
   const r = Feed.extractFeed(miniDom(RSS), FEED_URL);
   assert.equal(r.ok, true);
@@ -270,6 +293,7 @@ test('extractFeed parses basic Atom with enclosure links', () => {
   assert.equal(r.kind, 'atom');
   assert.equal(r.show.title, 'Atom Show');
   assert.equal(r.show.publisher, 'Atom Author');
+  assert.equal(r.show.siteUrl, null, 'Atom alternate links are not used as homepage links; RSS plain channel link is the supported source');
   assert.equal(r.count, 1);
   const e = r.episodes[0];
   assert.equal(e.title, 'First entry');

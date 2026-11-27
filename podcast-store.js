@@ -54,6 +54,30 @@
   function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
   function isObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
 
+  function sanitizeSiteUrl(raw, feedUrl, resolvedFeedUrl) {
+    if (typeof raw !== 'string') { return null; }
+    var s = raw.trim();
+    if (!s || s.length > 500) { return null; }
+    try {
+      var p = new URL(s);
+      if ((p.protocol !== 'http:' && p.protocol !== 'https:') || p.username || p.password) { return null; }
+      p.hash = '';
+      var value = p.toString();
+      if (value.length > 500) { return null; }
+      function canonical(u) {
+        try {
+          var parsed = new URL(String(u || '').trim());
+          parsed.hash = '';
+          parsed.hostname = parsed.hostname.toLowerCase().replace(/\.$/, '');
+          return parsed.toString();
+        }
+        catch (e) { return ''; }
+      }
+      if (canonical(value) === canonical(feedUrl) || canonical(value) === canonical(resolvedFeedUrl)) { return null; }
+      return value;
+    } catch (e) { return null; }
+  }
+
   function sanitizeShow(id, s) {
     if (!isObj(s)) { return null; }
     return {
@@ -63,6 +87,9 @@
       publisher: str(s.publisher, 120),
       feedUrl: str(s.feedUrl, 2048),
       resolvedFeedUrl: str(s.resolvedFeedUrl, 2048),
+      siteUrl: sanitizeSiteUrl(s.siteUrl, s.feedUrl, s.resolvedFeedUrl),
+      /* Zero means an older record has not yet had a successful homepage check. */
+      siteUrlCheckedAt: num(s.siteUrlCheckedAt),
       artUrl: str(s.artUrl, 2048),
       initials: str(s.initials, 4),
       addedAt: num(s.addedAt),
@@ -291,6 +318,15 @@
     }
     return next;
   }
+  function withHomepageDiscovery(state, showId, siteUrl, checkedAt) {
+    var next = copyState(state);
+    var s = next.shows[showId];
+    if (!s || typeof checkedAt !== 'number' || !isFinite(checkedAt) || checkedAt <= 0) { return null; }
+    var safeUrl = sanitizeSiteUrl(siteUrl, s.feedUrl, s.resolvedFeedUrl);
+    if (safeUrl) { s.siteUrl = safeUrl; }
+    s.siteUrlCheckedAt = checkedAt;
+    return next;
+  }
   function withSaved(savedState, snap) {
     var clean = sanitizeSnapshot(snap);
     var list = (savedState.saved || []).slice();
@@ -405,6 +441,15 @@
       payload.episodes = {};
       try { st.setItem(KEY, JSON.stringify(payload)); } catch (e2) { /* memory only */ }
     }
+    /* Homepage discovery must never use the quota fallback that drops cached
+       episodes. If the complete state cannot be written, leave it untouched. */
+    function persistMainExact(nextState) {
+      if (!st) { return false; }
+      var payload = copyState(nextState);
+      payload.v = SCHEMA_VERSION;
+      try { st.setItem(KEY, JSON.stringify(payload)); return true; }
+      catch (e) { return false; }
+    }
     function persistSaved() {
       if (!st) { return; }
       try { st.setItem(SAVED_KEY, JSON.stringify(savedState)); return; } catch (e) {
@@ -450,6 +495,11 @@
       setEpisodes: function (showId, eps) { state = withEpisodes(state, showId, eps); persistMain(); emit(); return state; },
       markOpened: function (showId) { state = withOpened(state, showId, Date.now()); persistMain(); emit(); return state; },
       setFetchMeta: function (showId, meta) { state = withFetchMeta(state, showId, meta); persistMain(); emit(); return state; },
+      setHomepageDiscovery: function (showId, siteUrl, checkedAt) {
+        var next = withHomepageDiscovery(state, showId, siteUrl, checkedAt);
+        if (!next || !persistMainExact(next)) { return false; }
+        state = next; emit(); return true;
+      },
       getSaved: function () { return savedState.saved.slice(); },
       isSaved: function (episodeId) {
         for (var i = 0; i < savedState.saved.length; i++) { if (savedState.saved[i].id === episodeId) { return true; } }
