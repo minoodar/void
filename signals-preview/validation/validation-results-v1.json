@@ -1,0 +1,3690 @@
+{
+ "instrument": "void-signals-phase-b-validation-v1",
+ "at": "2026-11-26T13:33:36.697Z",
+ "base": "http://127.0.0.1:8970",
+ "manifest": {
+  "head": "404c9b49d050b9e58db05c308ad77cef766bbddc",
+  "branch": "preview/signals-first-visual",
+  "productionFilesModified": 0,
+  "productionFilesChecked": 96
+ },
+ "results": [
+  {
+   "viewport": "desktop",
+   "css": {
+    "w": 1440,
+    "h": 900
+   },
+   "steps": [
+    {
+     "name": "clear",
+     "out": "cleared",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 3,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-ambient-1",
+     "out": "ok",
+     "state": {
+      "signals": 1,
+      "held": 0,
+      "placed": 4,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-ambient-2",
+     "out": "ok",
+     "state": {
+      "signals": 2,
+      "held": 0,
+      "placed": 5,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-important",
+     "out": "ok",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reveal-first",
+     "out": "true",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "close-reveal",
+     "out": "closed",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rule-R-C-thr0.15",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 3,
+      "placed": 6,
+      "heldCount": 3,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 3,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "R-C-spawn",
+     "out": "ok",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 39,
+      "centre": 2,
+      "bright": 58,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fallback-shelf",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 39,
+      "centre": 2,
+      "bright": 58,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fallback-hold",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 39,
+      "centre": 2,
+      "bright": 58,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reset-default",
+     "out": "reset",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 0,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fill-default",
+     "out": 12,
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rail-off",
+     "out": "off",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rail-on",
+     "out": "on",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "size-slider",
+     "out": "size18",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "separation-slider",
+     "out": "sep40",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "glow-slider",
+     "out": "glow",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "companions-off",
+     "out": "off",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "companions-on",
+     "out": "on",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "boxes-on",
+     "out": "on",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "boxes-off",
+     "out": "off",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reduced-motion",
+     "out": "rm",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "motion-back",
+     "out": "back",
+     "state": {
+      "signals": 12,
+      "held": 0,
+      "placed": 12,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "auto-on",
+     "out": "on",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 14,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 1,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "auto-off",
+     "out": "off",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 14,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 1,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "experiment-off",
+     "out": "off",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 14,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 1,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "experiment-on",
+     "out": "on",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 14,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 1,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "randomize",
+     "out": "rand",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 14,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 1,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "export",
+     "out": "4009",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 14,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 1,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "final-reset",
+     "out": "reset",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 0,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "final-fill",
+     "out": 10,
+     "state": {
+      "signals": 10,
+      "held": 0,
+      "placed": 10,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    }
+   ],
+   "screenshots": [
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-01-default.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-02-three-signals.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-03-reveal.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-04-rev3-fallback.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-05-shelf.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-06-diagnostics.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-07-reduced-motion.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-08-clean.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\desktop-09-final.png"
+   ],
+   "ready": true,
+   "tone": "added",
+   "geometry": {
+    "w": 1440,
+    "h": 900,
+    "cx": 720,
+    "cy": 405,
+    "scale": 633.6,
+    "live": true,
+    "vp": "desktop"
+   },
+   "instrument": {
+    "present": true,
+    "x": 16,
+    "y": 64,
+    "w": 276,
+    "h": 820,
+    "visibility": "visible",
+    "opacity": "1",
+    "display": "flex",
+    "hidden": false,
+    "controls": 28
+   },
+   "initial": {
+    "signals": 3,
+    "held": 0,
+    "counters": {
+     "spawned": 3,
+     "placed": 3,
+     "held": 0,
+     "expired": 0,
+     "revealed": 0,
+     "edge": 0,
+     "chrome": 0,
+     "centre": 0,
+     "bright": 0,
+     "separation": 0,
+     "capacity": 0
+    },
+    "candidates": 96,
+    "metrics": {
+     "stage": "calm",
+     "fps": 0,
+     "cpuMs": 1.85524559023401,
+     "tier": 2,
+     "rs": 1
+    }
+   },
+   "openedFromTab": false,
+   "revealRect": {
+    "hidden": false,
+    "x": 996,
+    "y": 492,
+    "w": 288,
+    "h": 142.84375,
+    "open": true
+   },
+   "revealAudit": {
+    "chromeHits": [],
+    "signalCover": []
+   },
+   "rev3Fallback": {
+    "signals": 0,
+    "held": 4,
+    "shelfHidden": true
+   },
+   "sweep": [
+    {
+     "rule": "R-C",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.3,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 4,
+     "held": 10
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 12,
+     "held": 2
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.3,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.05,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.15,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.3,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.05,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.15,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.3,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.3,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.05,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.15,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.3,
+     "spawned": 12,
+     "inField": 12,
+     "held": 0
+    }
+   ],
+   "auditCompare": [
+    {
+     "rule": "R-C",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.05,
+     "livePlaced": 1,
+     "auditK1": 2,
+     "slots": 12
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.1,
+     "livePlaced": 6,
+     "auditK1": 5,
+     "slots": 12
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.15,
+     "livePlaced": 11,
+     "auditK1": 9,
+     "slots": 12
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.2,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.25,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.3,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.05,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.1,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.15,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.2,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.25,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.3,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.05,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.1,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.15,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.2,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.25,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.3,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 12
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.05,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.1,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.15,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.2,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.25,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.3,
+     "livePlaced": 12,
+     "auditK1": 12,
+     "slots": 12
+    }
+   ],
+   "auditMismatches": 3,
+   "railBothWays": {
+    "on": {
+     "rail": true,
+     "signals": 12,
+     "held": 0,
+     "chrome": 0
+    },
+    "off": {
+     "rail": false,
+     "signals": 12,
+     "held": 0,
+     "chrome": 0
+    }
+   },
+   "reducedMotion": {
+    "rootClass": "has-panel is-reduced",
+    "animation": "none",
+    "transition": "0.001s"
+   },
+   "osReducedMotion": {
+    "animation": "none",
+    "transition": "0.001s",
+    "matches": true,
+    "cfg": true
+   },
+   "autoDemo": {
+    "signals": 6,
+    "held": 0,
+    "spawned": 14
+   },
+   "disabled": {
+    "fieldDisplay": "none",
+    "signals": 0
+   },
+   "overlapAudit": {
+    "signals": [],
+    "chromeOverlaps": [],
+    "centreOverlaps": [],
+    "seekRect": {
+     "x": 430,
+     "y": 812,
+     "w": 580,
+     "h": 52
+    },
+    "chromeRects": 6
+   },
+   "metrics": {
+    "stage": "galaxy",
+    "fps": 10.644474550029015,
+    "cpuMs": 2.841663602206564,
+    "quality": {
+     "tier": 0,
+     "q": 0.4,
+     "rs": 0.8499999999999999,
+     "budget": 950000,
+     "auroraEvery": 2,
+     "band": 0.65,
+     "calm": 15
+    }
+   },
+   "perfSamples": [
+    {
+     "fps": 10.82038166437145,
+     "cpuMs": 3.7932033349425422
+    },
+    {
+     "fps": 11.802891708468524,
+     "cpuMs": 2.9902917968547
+    },
+    {
+     "fps": 11.802891708468524,
+     "cpuMs": 2.5148891941576066
+    }
+   ],
+   "network": {
+    "total": 49,
+    "offOrigin": []
+   },
+   "intercepted": 0,
+   "exceptions": [],
+   "consoleErrors": []
+  },
+  {
+   "viewport": "tablet",
+   "css": {
+    "w": 820,
+    "h": 1180
+   },
+   "steps": [
+    {
+     "name": "clear",
+     "out": "cleared",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 3,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-ambient-1",
+     "out": "ok",
+     "state": {
+      "signals": 1,
+      "held": 0,
+      "placed": 4,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-ambient-2",
+     "out": "ok",
+     "state": {
+      "signals": 2,
+      "held": 0,
+      "placed": 5,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-important",
+     "out": "ok",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reveal-first",
+     "out": "true",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "close-reveal",
+     "out": "closed",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rule-R-C-thr0.15",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 3,
+      "placed": 6,
+      "heldCount": 3,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 3,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "R-C-spawn",
+     "out": "ok",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 52,
+      "centre": 3,
+      "bright": 44,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fallback-shelf",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 52,
+      "centre": 3,
+      "bright": 44,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fallback-hold",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 52,
+      "centre": 3,
+      "bright": 44,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reset-default",
+     "out": "reset",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 0,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fill-default",
+     "out": 8,
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rail-off",
+     "out": "off",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rail-on",
+     "out": "on",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "size-slider",
+     "out": "size18",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "separation-slider",
+     "out": "sep40",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "glow-slider",
+     "out": "glow",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "companions-off",
+     "out": "off",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "companions-on",
+     "out": "on",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "boxes-on",
+     "out": "on",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "boxes-off",
+     "out": "off",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reduced-motion",
+     "out": "rm",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "motion-back",
+     "out": "back",
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "auto-on",
+     "out": "on",
+     "state": {
+      "signals": 4,
+      "held": 0,
+      "placed": 9,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 5,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "auto-off",
+     "out": "off",
+     "state": {
+      "signals": 4,
+      "held": 0,
+      "placed": 9,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 5,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "experiment-off",
+     "out": "off",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 9,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 5,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "experiment-on",
+     "out": "on",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 9,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 5,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "randomize",
+     "out": "rand",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 9,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 5,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "export",
+     "out": "3576",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 9,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 5,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "final-reset",
+     "out": "reset",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 0,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "final-fill",
+     "out": 8,
+     "state": {
+      "signals": 8,
+      "held": 0,
+      "placed": 8,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 2,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    }
+   ],
+   "screenshots": [
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-01-default.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-02-three-signals.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-03-reveal.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-04-rev3-fallback.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-05-shelf.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-06-diagnostics.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-07-reduced-motion.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-08-clean.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\tablet-09-final.png"
+   ],
+   "ready": true,
+   "tone": "added",
+   "geometry": {
+    "w": 820,
+    "h": 1180,
+    "cx": 410,
+    "cy": 472,
+    "scale": 754.4,
+    "live": true,
+    "vp": "tablet"
+   },
+   "instrument": {
+    "present": true,
+    "x": 12,
+    "y": 60,
+    "w": 252,
+    "h": 1108,
+    "visibility": "visible",
+    "opacity": "1",
+    "display": "flex",
+    "hidden": false,
+    "controls": 28
+   },
+   "initial": {
+    "signals": 3,
+    "held": 0,
+    "counters": {
+     "spawned": 3,
+     "placed": 3,
+     "held": 0,
+     "expired": 0,
+     "revealed": 0,
+     "edge": 0,
+     "chrome": 0,
+     "centre": 0,
+     "bright": 0,
+     "separation": 0,
+     "capacity": 0
+    },
+    "candidates": 96,
+    "metrics": {
+     "stage": "calm",
+     "fps": 0,
+     "cpuMs": 1.7251475938614844,
+     "tier": 2,
+     "rs": 1
+    }
+   },
+   "openedFromTab": false,
+   "revealRect": {
+    "hidden": false,
+    "x": 540,
+    "y": 732,
+    "w": 266,
+    "h": 142.84375,
+    "open": true
+   },
+   "revealAudit": {
+    "chromeHits": [],
+    "signalCover": []
+   },
+   "rev3Fallback": {
+    "signals": 0,
+    "held": 4,
+    "shelfHidden": true
+   },
+   "sweep": [
+    {
+     "rule": "R-C",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.3,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 1,
+     "held": 13
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 1,
+     "held": 13
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.3,
+     "spawned": 14,
+     "inField": 8,
+     "held": 6
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.05,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.15,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.3,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.05,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.15,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.3,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.3,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.05,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.15,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.3,
+     "spawned": 8,
+     "inField": 8,
+     "held": 0
+    }
+   ],
+   "auditCompare": [
+    {
+     "rule": "R-C",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 8
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 8
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 8
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 3,
+     "slots": 8
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.3,
+     "livePlaced": 1,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.05,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.1,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.15,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.2,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.25,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.3,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.05,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.1,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.15,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.2,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.25,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.3,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 8
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.05,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.1,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.15,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.2,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.25,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.3,
+     "livePlaced": 8,
+     "auditK1": 8,
+     "slots": 8
+    }
+   ],
+   "auditMismatches": 6,
+   "railBothWays": {
+    "on": {
+     "rail": true,
+     "signals": 8,
+     "held": 0,
+     "chrome": 0
+    },
+    "off": {
+     "rail": false,
+     "signals": 8,
+     "held": 0,
+     "chrome": 0
+    }
+   },
+   "reducedMotion": {
+    "rootClass": "has-panel is-reduced",
+    "animation": "none",
+    "transition": "0.001s"
+   },
+   "osReducedMotion": {
+    "animation": "none",
+    "transition": "0.001s",
+    "matches": true,
+    "cfg": true
+   },
+   "autoDemo": {
+    "signals": 4,
+    "held": 0,
+    "spawned": 9
+   },
+   "disabled": {
+    "fieldDisplay": "none",
+    "signals": 0
+   },
+   "overlapAudit": {
+    "signals": [],
+    "chromeOverlaps": [],
+    "centreOverlaps": [],
+    "seekRect": {
+     "x": 120,
+     "y": 1092,
+     "w": 580,
+     "h": 52
+    },
+    "chromeRects": 6
+   },
+   "metrics": {
+    "stage": "galaxy",
+    "fps": 10.475192838777275,
+    "cpuMs": 1.8933246488485767,
+    "quality": {
+     "tier": 0,
+     "q": 0.4,
+     "rs": 0.95,
+     "budget": 950000,
+     "auroraEvery": 2,
+     "band": 0.65,
+     "calm": 15
+    }
+   },
+   "perfSamples": [
+    {
+     "fps": 10.644474550028942,
+     "cpuMs": 1.5829494630005005
+    },
+    {
+     "fps": 10.646535036778895,
+     "cpuMs": 1.224587460716267
+    },
+    {
+     "fps": 10.90909090909091,
+     "cpuMs": 1.8659708931535905
+    }
+   ],
+   "network": {
+    "total": 43,
+    "offOrigin": []
+   },
+   "intercepted": 0,
+   "exceptions": [],
+   "consoleErrors": []
+  },
+  {
+   "viewport": "phone",
+   "css": {
+    "w": 390,
+    "h": 844
+   },
+   "steps": [
+    {
+     "name": "clear",
+     "out": "cleared",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 3,
+      "heldCount": 0,
+      "chrome": 3,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-ambient-1",
+     "out": "ok",
+     "state": {
+      "signals": 1,
+      "held": 0,
+      "placed": 4,
+      "heldCount": 0,
+      "chrome": 3,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-ambient-2",
+     "out": "ok",
+     "state": {
+      "signals": 2,
+      "held": 0,
+      "placed": 5,
+      "heldCount": 0,
+      "chrome": 3,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "spawn-important",
+     "out": "ok",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 3,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reveal-first",
+     "out": "true",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 3,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "close-reveal",
+     "out": "closed",
+     "state": {
+      "signals": 3,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 3,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rule-R-C-thr0.15",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 3,
+      "placed": 6,
+      "heldCount": 3,
+      "chrome": 3,
+      "centre": 0,
+      "bright": 3,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "R-C-spawn",
+     "out": "ok",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 38,
+      "centre": 3,
+      "bright": 24,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fallback-shelf",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 38,
+      "centre": 3,
+      "bright": 24,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fallback-hold",
+     "out": "set",
+     "state": {
+      "signals": 0,
+      "held": 4,
+      "placed": 6,
+      "heldCount": 4,
+      "chrome": 38,
+      "centre": 3,
+      "bright": 24,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-C",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reset-default",
+     "out": "reset",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 0,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "fill-default",
+     "out": 6,
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rail-off",
+     "out": "off",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "rail-on",
+     "out": "on",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "size-slider",
+     "out": "size18",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "separation-slider",
+     "out": "sep40",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "glow-slider",
+     "out": "glow",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "companions-off",
+     "out": "off",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "companions-on",
+     "out": "on",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "boxes-on",
+     "out": "on",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "boxes-off",
+     "out": "off",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "reduced-motion",
+     "out": "rm",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "motion-back",
+     "out": "back",
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 6,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "auto-on",
+     "out": "on",
+     "state": {
+      "signals": 2,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 8,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "auto-off",
+     "out": "off",
+     "state": {
+      "signals": 2,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 8,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "experiment-off",
+     "out": "off",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 8,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "experiment-on",
+     "out": "on",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 8,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "randomize",
+     "out": "rand",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 8,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "export",
+     "out": "3460",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 8,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "final-reset",
+     "out": "reset",
+     "state": {
+      "signals": 0,
+      "held": 0,
+      "placed": 0,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 0,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    },
+    {
+     "name": "final-fill",
+     "out": 6,
+     "state": {
+      "signals": 6,
+      "held": 0,
+      "placed": 6,
+      "heldCount": 0,
+      "chrome": 0,
+      "centre": 0,
+      "bright": 0,
+      "edge": 0,
+      "separation": 0,
+      "capacity": 4,
+      "rule": "R-F",
+      "thr": 0.15
+     },
+     "newExceptions": 0
+    }
+   ],
+   "screenshots": [
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-01-default.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-01b-instrument-open.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-02-three-signals.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-03-reveal.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-04-rev3-fallback.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-05-shelf.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-06-diagnostics.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-07-reduced-motion.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-08-clean.png",
+    "E:\\google chrome extention\\_preview\\signals-first-visual\\signals-preview\\validation\\shots\\phone-09-final.png"
+   ],
+   "ready": true,
+   "tone": "added",
+   "geometry": {
+    "w": 390,
+    "h": 844,
+    "cx": 195,
+    "cy": 337.6,
+    "scale": 358.8,
+    "live": true,
+    "vp": "phone"
+   },
+   "instrument": {
+    "present": true,
+    "x": 10,
+    "y": 60,
+    "w": 370,
+    "h": 255.1875,
+    "visibility": "visible",
+    "opacity": "1",
+    "display": "flex",
+    "hidden": false,
+    "controls": 28
+   },
+   "initial": {
+    "signals": 3,
+    "held": 0,
+    "counters": {
+     "spawned": 3,
+     "placed": 3,
+     "held": 0,
+     "expired": 0,
+     "revealed": 0,
+     "edge": 0,
+     "chrome": 0,
+     "centre": 0,
+     "bright": 0,
+     "separation": 0,
+     "capacity": 0
+    },
+    "candidates": 59,
+    "metrics": {
+     "stage": "calm",
+     "fps": 12.57983355912522,
+     "cpuMs": 1.3326868470226418,
+     "tier": 1,
+     "rs": 1
+    }
+   },
+   "openedFromTab": true,
+   "tab": {
+    "x": 10,
+    "y": 60,
+    "w": 136.4375,
+    "h": 27,
+    "hidden": false
+   },
+   "revealRect": {
+    "hidden": false,
+    "x": 36,
+    "y": 420,
+    "w": 288,
+    "h": 142.84375,
+    "open": true
+   },
+   "revealAudit": {
+    "chromeHits": [],
+    "signalCover": []
+   },
+   "rev3Fallback": {
+    "signals": 0,
+    "held": 4,
+    "shelfHidden": true
+   },
+   "sweep": [
+    {
+     "rule": "R-C",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.3,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.3,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 1,
+     "held": 13
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.15,
+     "spawned": 6,
+     "inField": 6,
+     "held": 0
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.3,
+     "spawned": 6,
+     "inField": 6,
+     "held": 0
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 2,
+     "held": 12
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.15,
+     "spawned": 6,
+     "inField": 6,
+     "held": 0
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.3,
+     "spawned": 6,
+     "inField": 6,
+     "held": 0
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.05,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.15,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.3,
+     "spawned": 14,
+     "inField": 0,
+     "held": 14
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.05,
+     "spawned": 6,
+     "inField": 6,
+     "held": 0
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.15,
+     "spawned": 6,
+     "inField": 6,
+     "held": 0
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.3,
+     "spawned": 6,
+     "inField": 6,
+     "held": 0
+    }
+   ],
+   "auditCompare": [
+    {
+     "rule": "R-C",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 1,
+     "slots": 6
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 6
+    },
+    {
+     "rule": "R-C",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 6
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 1,
+     "slots": 6
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 6
+    },
+    {
+     "rule": "R-C2",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 6
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 1,
+     "slots": 6
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 6
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 6
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 3,
+     "slots": 6
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 4,
+     "slots": 6
+    },
+    {
+     "rule": "R-Cn",
+     "thr": 0.3,
+     "livePlaced": 2,
+     "auditK1": 5,
+     "slots": 6
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.05,
+     "livePlaced": 3,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.1,
+     "livePlaced": 4,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.15,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.2,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.25,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-F",
+     "thr": 0.3,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.05,
+     "livePlaced": 3,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.1,
+     "livePlaced": 4,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.15,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.2,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.25,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-G",
+     "thr": 0.3,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 1,
+     "slots": 6
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 6
+    },
+    {
+     "rule": "R-A",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 2,
+     "slots": 6
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.05,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.1,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.15,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.2,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.25,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-B",
+     "thr": 0.3,
+     "livePlaced": 0,
+     "auditK1": 0,
+     "slots": 6
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.05,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.1,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.15,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.2,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.25,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    },
+    {
+     "rule": "R-0",
+     "thr": 0.3,
+     "livePlaced": 6,
+     "auditK1": 6,
+     "slots": 6
+    }
+   ],
+   "auditMismatches": 19,
+   "railBothWays": {
+    "on": {
+     "rail": true,
+     "signals": 6,
+     "held": 0,
+     "chrome": 0
+    },
+    "off": {
+     "rail": false,
+     "signals": 6,
+     "held": 0,
+     "chrome": 0
+    }
+   },
+   "reducedMotion": {
+    "rootClass": "has-panel is-reduced",
+    "animation": "none",
+    "transition": "0.001s"
+   },
+   "osReducedMotion": {
+    "animation": "none",
+    "transition": "0.001s",
+    "matches": true,
+    "cfg": true
+   },
+   "autoDemo": {
+    "signals": 2,
+    "held": 0,
+    "spawned": 6
+   },
+   "disabled": {
+    "fieldDisplay": "none",
+    "signals": 0
+   },
+   "overlapAudit": {
+    "signals": [],
+    "chromeOverlaps": [],
+    "centreOverlaps": [],
+    "seekRect": {
+     "x": 12,
+     "y": 766,
+     "w": 366,
+     "h": 42
+    },
+    "chromeRects": 6
+   },
+   "metrics": {
+    "stage": "galaxy",
+    "fps": 15.69568830209575,
+    "cpuMs": 1.934650499772953,
+    "quality": {
+     "tier": 0,
+     "q": 0.4,
+     "rs": 1,
+     "budget": 950000,
+     "auroraEvery": 2,
+     "band": 0.65,
+     "calm": 15
+    }
+   },
+   "perfSamples": [
+    {
+     "fps": 15.482872072769478,
+     "cpuMs": 1.6838293559926834
+    },
+    {
+     "fps": 16.72076325366386,
+     "cpuMs": 1.7629271786280662
+    },
+    {
+     "fps": 14.999999999999996,
+     "cpuMs": 1.8308010036624611
+    }
+   ],
+   "network": {
+    "total": 43,
+    "offOrigin": []
+   },
+   "intercepted": 0,
+   "exceptions": [],
+   "consoleErrors": []
+  }
+ ]
+}

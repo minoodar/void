@@ -1,0 +1,537 @@
+/* ======================================================================
+   Void — Signals administration (module 3 of the control room)
+   Everything is scoped under #void-admin-root so no visitor page is affected.
+   Presentation only: the data contract lives in void-signals-api.js.
+   ====================================================================== */
+
+#void-admin-root .vsa-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+#void-admin-root .vsa-note-block {
+    border: 1px solid var(--va-line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .025);
+    padding: 12px 14px;
+}
+#void-admin-root .vsa-h3 {
+    margin: 18px 0 8px;
+    font-size: 12.5px;
+    font-weight: 650;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--va-dim);
+}
+#void-admin-root .vsa-hint {
+    margin: 0 0 10px;
+    font-size: 12.5px;
+    color: var(--va-dim);
+    line-height: 1.6;
+}
+#void-admin-root .vsa-ids {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 12px;
+    color: var(--va-dim);
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+}
+#void-admin-root .vsa-empty { color: var(--va-faint); font-size: 13px; }
+#void-admin-root .vsa-faint { color: var(--va-faint); font-size: 12px; }
+#void-admin-root .vsa-error {
+    margin: 10px 0;
+    padding: 10px 12px;
+    border: 1px solid rgba(251, 113, 133, .34);
+    border-left: 3px solid var(--va-rose);
+    border-radius: 10px;
+    background: rgba(225, 29, 72, .10);
+    color: #ffd7dd;
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+#void-admin-root .vsa-strong { font-weight: 620; }
+
+/* ---- status and weight chips ---- */
+
+#void-admin-root .vsa-pill,
+#void-admin-root .vsa-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--va-line);
+    background: rgba(255, 255, 255, .05);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    white-space: nowrap;
+}
+#void-admin-root .vsa-pill--live,
+#void-admin-root .vsa-tag--live {
+    border-color: rgba(110, 231, 183, .38);
+    background: rgba(16, 185, 129, .14);
+    color: #b9f5dd;
+}
+#void-admin-root .vsa-pill--wait {
+    border-color: rgba(251, 191, 36, .38);
+    background: rgba(245, 158, 11, .13);
+    color: #ffe6a8;
+}
+#void-admin-root .vsa-pill--draft,
+#void-admin-root .vsa-tag--draft {
+    border-color: rgba(165, 180, 255, .30);
+    color: var(--va-dim);
+}
+#void-admin-root .vsa-pill--hidden {
+    border-color: rgba(148, 163, 184, .34);
+    background: rgba(148, 163, 184, .12);
+    color: #cbd5e1;
+}
+#void-admin-root .vsa-pill--gone {
+    border-color: rgba(190, 200, 240, .22);
+    color: var(--va-faint);
+    text-decoration: line-through;
+    text-decoration-color: rgba(190, 200, 240, .5);
+}
+#void-admin-root .vsa-pill--off {
+    border-color: rgba(251, 113, 133, .34);
+    background: rgba(225, 29, 72, .12);
+    color: #ffc9d2;
+}
+#void-admin-root .vsa-pill--important {
+    border-color: rgba(251, 191, 36, .42);
+    background: rgba(251, 191, 36, .10);
+    color: #ffe9b5;
+}
+#void-admin-root .vsa-pill--ambient { color: var(--va-dim); }
+#void-admin-root .vsa-tag--dirty {
+    border-color: rgba(251, 191, 36, .44);
+    background: rgba(251, 191, 36, .10);
+    color: #ffe9b5;
+}
+
+/* ---- tables ---- */
+
+#void-admin-root .vsa-table-wrap { margin-top: 4px; }
+#void-admin-root .vsa-table { min-width: 880px; }
+#void-admin-root .vsa-cell { font-size: 12.5px; color: var(--va-fg); }
+#void-admin-root .vsa-cell--muted { color: var(--va-dim); }
+#void-admin-root .vsa-id {
+    margin-top: 3px;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--va-faint);
+    letter-spacing: .02em;
+}
+#void-admin-root .vsa-title {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--va-fg);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+#void-admin-root .vsa-title:hover { color: var(--va-gold); }
+#void-admin-root .vsa-title:focus-visible {
+    outline: 2px solid var(--va-gold);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+#void-admin-root .vsa-body-preview {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-left: 2px solid var(--va-line-hi);
+    background: rgba(255, 255, 255, .03);
+    border-radius: 0 8px 8px 0;
+    color: var(--va-dim);
+    font-size: 12.5px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+#void-admin-root .vsa-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+#void-admin-root .vsa-abtn {
+    padding: 6px 10px;
+    border-radius: 9px;
+    border: 1px solid var(--va-line);
+    background: rgba(255, 255, 255, .045);
+    color: var(--va-fg);
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .16s ease, border-color .16s ease, color .16s ease;
+}
+#void-admin-root .vsa-abtn:hover:not(:disabled) { background: rgba(255, 255, 255, .10); border-color: var(--va-line-hi); }
+#void-admin-root .vsa-abtn:active:not(:disabled) { transform: translateY(1px); }
+#void-admin-root .vsa-abtn:disabled { opacity: .42; cursor: progress; }
+#void-admin-root .vsa-abtn:focus-visible { outline: 2px solid var(--va-gold); outline-offset: 2px; }
+#void-admin-root .vsa-abtn--publish {
+    border-color: rgba(110, 231, 183, .40);
+    background: rgba(16, 185, 129, .14);
+    color: #c6f8e4;
+}
+#void-admin-root .vsa-abtn--schedule {
+    border-color: rgba(251, 191, 36, .40);
+    background: rgba(245, 158, 11, .12);
+    color: #ffe6a8;
+}
+#void-admin-root .vsa-abtn--hide { color: var(--va-dim); }
+#void-admin-root .vsa-abtn--reopen { color: var(--va-dim); }
+#void-admin-root .vsa-abtn--revoke,
+#void-admin-root .vsa-abtn--delete,
+#void-admin-root .vsa-abtn.is-danger {
+    border-color: rgba(251, 113, 133, .34);
+    color: #ffc9d2;
+}
+#void-admin-root .vsa-abtn--revoke:hover:not(:disabled),
+#void-admin-root .vsa-abtn--delete:hover:not(:disabled),
+#void-admin-root .vsa-abtn.is-danger:hover:not(:disabled) { background: rgba(225, 29, 72, .18); }
+
+/* ---- expanded row ---- */
+
+#void-admin-root tr.vsa-detail > td { padding: 0 12px 14px; border-top: 0; }
+#void-admin-root .vsa-detail__box {
+    display: grid;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--va-line);
+    border-radius: 12px;
+    background: rgba(8, 6, 20, .55);
+}
+#void-admin-root .vsa-detail__body {
+    margin: 0;
+    color: var(--va-dim);
+    font-size: 13px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+#void-admin-root .vsa-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    gap: 4px 14px;
+}
+#void-admin-root .vsa-meta__item { display: flex; gap: 6px; font-size: 11.5px; }
+#void-admin-root .vsa-meta__item b {
+    color: var(--va-faint);
+    font-weight: 600;
+    min-width: 58px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-size: 10px;
+}
+#void-admin-root .vsa-meta__item span { color: var(--va-dim); overflow-wrap: anywhere; }
+
+/* ---- inputs ---- */
+
+#void-admin-root .vsa-input {
+    width: 100%;
+    padding: 9px 11px;
+    border-radius: 10px;
+    border: 1px solid var(--va-line);
+    background: rgba(8, 6, 20, .72);
+    color: var(--va-fg);
+    font: inherit;
+    font-size: 13px;
+}
+#void-admin-root .vsa-input:focus {
+    outline: none;
+    border-color: var(--va-gold);
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, .14);
+}
+#void-admin-root .vsa-input--sm { max-width: 220px; }
+#void-admin-root .vsa-input--pick { max-width: 320px; }
+#void-admin-root textarea.vsa-input { min-height: 74px; resize: vertical; }
+#void-admin-root .vsa-num {
+    width: 74px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    border: 1px solid var(--va-line);
+    background: rgba(8, 6, 20, .72);
+    color: var(--va-dim);
+    font: inherit;
+    font-size: 11.5px;
+}
+#void-admin-root .vsa-num:focus { outline: none; border-color: var(--va-gold); }
+#void-admin-root .vsa-label { font-size: 11.5px; color: var(--va-faint); }
+#void-admin-root .vsa-json {
+    margin: 0;
+    max-height: 260px;
+    overflow: auto;
+    padding: 10px 12px;
+    border: 1px solid var(--va-line);
+    border-radius: 10px;
+    background: rgba(8, 6, 20, .8);
+    color: var(--va-dim);
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.6;
+}
+#void-admin-root .vsa-json::-webkit-scrollbar { width: 9px; height: 9px; }
+#void-admin-root .vsa-json::-webkit-scrollbar-thumb {
+    background: rgba(251, 191, 36, .30);
+    border-radius: 8px;
+}
+#void-admin-root .vsa-ask { display: grid; gap: 10px; }
+
+/* ---- composer ---- */
+
+#void-admin-root .vsa-composer {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 14px;
+    border: 1px solid var(--va-line-hi);
+    border-radius: 14px;
+    background: var(--va-panel);
+}
+#void-admin-root .vsa-composer__row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+}
+#void-admin-root .vsa-composer__actions { display: flex; gap: 8px; }
+
+#void-admin-root .vsa-edit { display: grid; gap: 8px; }
+
+/* ---- star studio ---- */
+
+#void-admin-root .vsa-studio__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+#void-admin-root .vsa-statusline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--va-dim);
+}
+#void-admin-root .vsa-statusline__name { font-size: 13.5px; font-weight: 640; color: var(--va-fg); }
+#void-admin-root .vsa-stage {
+    position: relative;
+    height: 232px;
+    border: 1px solid var(--va-line);
+    border-radius: 16px;
+    background:
+        radial-gradient(120% 90% at 50% 118%, rgba(76, 29, 149, .38), transparent 62%),
+        #05040e;
+    overflow: hidden;
+}
+#void-admin-root .vsa-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0 4px;
+}
+#void-admin-root .vsa-chip {
+    display: inline-flex;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--va-line);
+    background: rgba(255, 255, 255, .04);
+    font-size: 10.5px;
+    color: var(--va-dim);
+}
+#void-admin-root .vsa-chip b {
+    color: var(--va-faint);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+#void-admin-root .vsa-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+    gap: 12px 16px;
+    margin: 8px 0 14px;
+}
+#void-admin-root .vsa-ctl {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--va-line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .025);
+}
+#void-admin-root .vsa-ctl__top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+#void-admin-root .vsa-ctl__name { font-size: 11.5px; font-weight: 600; color: var(--va-dim); }
+#void-admin-root .vsa-ctl__val {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 11px;
+    color: var(--va-gold);
+}
+#void-admin-root .vsa-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+#void-admin-root .vsa-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 20px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+}
+#void-admin-root .vsa-range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, rgba(251, 191, 36, .62), rgba(165, 180, 255, .18));
+}
+#void-admin-root .vsa-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: #fcd34d;
+    border: 1px solid rgba(0, 0, 0, .45);
+    box-shadow: 0 0 10px rgba(251, 191, 36, .42);
+}
+#void-admin-root .vsa-range::-moz-range-track {
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(165, 180, 255, .22);
+}
+#void-admin-root .vsa-range::-moz-range-thumb {
+    width: 13px;
+    height: 13px;
+    border: 1px solid rgba(0, 0, 0, .45);
+    border-radius: 50%;
+    background: #fcd34d;
+}
+#void-admin-root .vsa-range:focus-visible { outline: 2px solid var(--va-gold); outline-offset: 4px; border-radius: 6px; }
+
+/* preview stars — cheap: transform/opacity only, one composite layer per star */
+#void-admin-root .vsa-star {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: var(--vsa-core, #fcd34d);
+    box-shadow: 0 0 calc(var(--vsa-glow, 2) * 4px) calc(var(--vsa-glow, 2) * 1px) var(--vsa-rim, #b45309);
+}
+#void-admin-root .vsa-star--point { box-shadow: none; }
+#void-admin-root .vsa-star--hairline {
+    background: none;
+    border: 1px solid var(--vsa-core, #fcd34d);
+    box-shadow: 0 0 calc(var(--vsa-glow, 2) * 3px) rgba(255, 255, 255, .08);
+}
+#void-admin-root .vsa-star--bloom {
+    border-radius: 42%;
+    filter: blur(calc(var(--vsa-soft, 0) * 1.6px));
+}
+#void-admin-root .vsa-star.is-live {
+    animation: vsa-breathe calc(var(--vsa-ms, 900) * 2ms) ease-in-out infinite alternate,
+        vsa-drift calc(var(--vsa-ms, 900) * 9ms) ease-in-out infinite alternate;
+}
+@keyframes vsa-breathe {
+    from { opacity: calc(var(--vsa-base, 1) * (1 - .45 * var(--vsa-depth, 1))); }
+    to { opacity: var(--vsa-base, 1); }
+}
+@keyframes vsa-drift {
+    from { transform: translate(-50%, -50%) scale(calc(1 - .12 * var(--vsa-drift, .35))); }
+    to { transform: translate(calc(-50% + var(--vsa-drift, .35) * 5px), calc(-50% - var(--vsa-drift, .35) * 4px)) scale(calc(1 + .12 * var(--vsa-drift, .35))); }
+}
+
+/* ---- profiles: assignment + versions ---- */
+
+#void-admin-root .vsa-assign { margin-top: 16px; }
+#void-admin-root .vsa-assign__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+    gap: 10px;
+}
+#void-admin-root .vsa-assign__row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--va-line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .025);
+}
+#void-admin-root .vsa-assign__label { font-size: 11.5px; color: var(--va-dim); }
+#void-admin-root .vsa-assign__note { font-size: 10.5px; color: var(--va-faint); text-align: right; }
+#void-admin-root .vsa-versions { margin-top: 18px; }
+#void-admin-root .vsa-vlist {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+    counter-reset: none;
+}
+#void-admin-root .vsa-vlist li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--va-line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .025);
+}
+#void-admin-root .vsa-vlist__v {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 12.5px;
+    font-weight: 640;
+    color: var(--va-gold);
+    min-width: 40px;
+}
+#void-admin-root .vsa-vlist__meta { font-size: 11.5px; color: var(--va-faint); }
+#void-admin-root .vsa-vlist__sum {
+    flex: 1 1 220px;
+    font-size: 11.5px;
+    color: var(--va-dim);
+    overflow-wrap: anywhere;
+}
+
+/* ---- narrow screens ---- */
+
+@media (max-width: 720px) {
+    #void-admin-root .vsa-stage { height: 172px; }
+    #void-admin-root .vsa-controls { grid-template-columns: 1fr; }
+    #void-admin-root .vsa-composer__row { grid-template-columns: 1fr; }
+    #void-admin-root .vsa-assign__grid { grid-template-columns: 1fr; }
+    #void-admin-root .vsa-acts .va-btn,
+    #void-admin-root .vsa-studio__bar .va-btn { flex: 1 1 auto; }
+    #void-admin-root .vsa-actions { gap: 5px; }
+}
+
+/* Phones: the studio panel is dense, but a fingertip still has to land on it.
+   Only the hit box grows; the visible track stays thin and stays centred. */
+@media (max-width: 520px) {
+    #void-admin-root .vsa-range { height: 40px; }
+    #void-admin-root .vsa-range::-webkit-slider-thumb { width: 20px; height: 20px; margin-top: -8px; }
+    #void-admin-root .vsa-range::-moz-range-thumb { width: 19px; height: 19px; }
+    #void-admin-root .vsa-num {
+        box-sizing: border-box;
+        min-height: 40px;
+        padding: 8px 10px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #void-admin-root .vsa-star.is-live { animation: none; }
+    #void-admin-root .vsa-abtn,
+    #void-admin-root .va-btn { transition: none; }
+}

@@ -167,3 +167,69 @@ CREATE TABLE IF NOT EXISTS rate (
   PRIMARY KEY (ip_hash, hour)
 );
 CREATE INDEX IF NOT EXISTS idx_rate_hour ON rate(hour);
+
+-- Void Signals: persistent notification messages and versioned Star Profiles.
+-- Kept byte-for-byte equivalent to migrations/2026-11-26-void-signals.sql; the
+-- schema-paths test compares the two effective schemas.
+-- Lifecycle lives in status only. Read state is browser session scoped and never
+-- touches these tables, so opening a message can never change its status.
+CREATE TABLE IF NOT EXISTS signal_messages (
+ id TEXT PRIMARY KEY,                        -- opaque 32-hex stable id, never reused
+ title TEXT NOT NULL,
+ body TEXT NOT NULL,                         -- message text, never executable
+ category TEXT NOT NULL DEFAULT 'ambient',   -- vocabulary validated in the Worker
+ importance TEXT NOT NULL DEFAULT 'normal',  -- ambient | normal | important
+ status TEXT NOT NULL DEFAULT 'draft'
+              CHECK (status IN ('draft','scheduled','active','hidden','revoked','expired')),
+ state_version INTEGER NOT NULL DEFAULT 1,   -- optimistic-concurrency counter per row
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL,
+ published_at INTEGER DEFAULT NULL,          -- set when the row first became active
+ scheduled_at INTEGER DEFAULT NULL,          -- future activation time, NULL = unscheduled
+ expires_at INTEGER DEFAULT NULL,            -- end of eligibility, NULL = permanent
+ profile_id TEXT DEFAULT NULL,               -- optional per-message Star Profile override
+ created_by TEXT DEFAULT NULL,               -- self-declared admin label, not an identity
+ metadata TEXT NOT NULL DEFAULT '{}',        -- JSON object of renderer hints (allowlist)
+ FOREIGN KEY(profile_id) REFERENCES star_profiles(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signal_messages_status ON signal_messages(status, published_at);
+CREATE INDEX IF NOT EXISTS idx_signal_messages_expiry ON signal_messages(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_signal_messages_scheduled ON signal_messages(status, scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_signal_messages_category ON signal_messages(category, status);
+CREATE INDEX IF NOT EXISTS idx_signal_messages_profile ON signal_messages(profile_id);
+CREATE TABLE IF NOT EXISTS star_profiles (
+ id TEXT PRIMARY KEY,
+ name TEXT NOT NULL,
+ current_version INTEGER NOT NULL DEFAULT 0, -- newest saved version
+ active_version INTEGER NOT NULL DEFAULT 0,  -- version the public sees; 0 = never activated
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS star_profile_versions (
+ profile_id TEXT NOT NULL,
+ version INTEGER NOT NULL,
+ settings TEXT NOT NULL,                     -- compact versioned presentation schema
+ created_at INTEGER NOT NULL,
+ created_by TEXT DEFAULT NULL,
+ PRIMARY KEY (profile_id, version),
+ FOREIGN KEY(profile_id) REFERENCES star_profiles(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS star_profile_assignments (
+ scope TEXT PRIMARY KEY,                     -- 'global' | 'category:' || category
+ profile_id TEXT NOT NULL,
+ updated_at INTEGER NOT NULL,
+ FOREIGN KEY(profile_id) REFERENCES star_profiles(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_star_profile_assignments_profile ON star_profile_assignments(profile_id);
+-- Change counter for cheap public refresh, mirroring domain_state.
+CREATE TABLE IF NOT EXISTS signal_state (
+ singleton_id INTEGER PRIMARY KEY CHECK (singleton_id=1), version INTEGER NOT NULL DEFAULT 0);
+INSERT OR IGNORE INTO signal_state(singleton_id,version) VALUES(1,0);
+CREATE TRIGGER IF NOT EXISTS signal_messages_insert AFTER INSERT ON signal_messages BEGIN UPDATE signal_state SET version=version+1 WHERE singleton_id=1; END;
+CREATE TRIGGER IF NOT EXISTS signal_messages_update AFTER UPDATE ON signal_messages BEGIN UPDATE signal_state SET version=version+1 WHERE singleton_id=1; END;
+CREATE TRIGGER IF NOT EXISTS signal_messages_delete AFTER DELETE ON signal_messages BEGIN UPDATE signal_state SET version=version+1 WHERE singleton_id=1; END;
+CREATE TRIGGER IF NOT EXISTS star_profile_versions_insert AFTER INSERT ON star_profile_versions BEGIN UPDATE signal_state SET version=version+1 WHERE singleton_id=1; END;
+CREATE TRIGGER IF NOT EXISTS star_profiles_update AFTER UPDATE ON star_profiles BEGIN UPDATE signal_state SET version=version+1 WHERE singleton_id=1; END;
+CREATE TRIGGER IF NOT EXISTS star_profile_assignments_insert AFTER INSERT ON star_profile_assignments BEGIN UPDATE signal_state SET version=version+1 WHERE singleton_id=1; END;
+CREATE TRIGGER IF NOT EXISTS star_profile_assignments_update AFTER UPDATE ON star_profile_assignments BEGIN UPDATE signal_state SET version=version+1 WHERE singleton_id=1; END;
+CREATE TRIGGER IF NOT EXISTS star_profile_assignments_delete AFTER DELETE ON star_profile_assignments BEGIN UPDATE signal_state SET version=version+1 WHERE singleton_id=1; END;

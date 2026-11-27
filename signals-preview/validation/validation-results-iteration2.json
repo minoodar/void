@@ -1,0 +1,1439 @@
+{
+ "instrument": "void-signals-iteration-2-validation-v1",
+ "at": "2026-11-26T17:59:06.196Z",
+ "base": "http://127.0.0.1:8970",
+ "manifest": {
+  "head": "44a70f684f3e49af3a5a08c59e9508710917ce6e",
+  "branch": "preview/signals-first-visual",
+  "productionFilesModified": 0,
+  "productionFilesChecked": 96
+ },
+ "reusedFromIteration1": {
+  "at": "2026-11-26T13:33:36.697Z",
+  "results": [
+   {
+    "viewport": "desktop",
+    "ready": true,
+    "auditMismatches": 3,
+    "offOrigin": 0,
+    "exceptions": 0
+   },
+   {
+    "viewport": "tablet",
+    "ready": true,
+    "auditMismatches": 6,
+    "offOrigin": 0,
+    "exceptions": 0
+   },
+   {
+    "viewport": "phone",
+    "ready": true,
+    "auditMismatches": 19,
+    "offOrigin": 0,
+    "exceptions": 0
+   }
+  ]
+ },
+ "summary": {
+  "total": 114,
+  "pass": 114,
+  "fail": 0,
+  "screenshots": 19
+ },
+ "checks": [
+  {
+   "area": "boot",
+   "name": "desktop: layer + store + star config ready",
+   "verdict": "PASS",
+   "detail": null
+  },
+  {
+   "area": "boot",
+   "name": "desktop: host mounted inside the exempt player root",
+   "verdict": "PASS",
+   "detail": {
+    "parent": "void-music-root",
+    "swept": false,
+    "display": "block"
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: default lifetime is persistent (0 ms, not a reading rule)",
+   "verdict": "PASS",
+   "detail": {
+    "lifeMs": 0,
+    "importantLifeMs": 0
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: spawned messages carry stable IDs",
+   "verdict": "PASS",
+   "detail": {
+    "count": 3,
+    "msgIds": [
+     "m-20261126-a1",
+     "m-20261126-i2",
+     "m-20261126-i3"
+    ],
+    "titles": [
+     "A quiet star joined the field",
+     "Playback reached the far side",
+     "Owner action requested"
+    ]
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: step 2-3 a real click opens the message window",
+   "verdict": "PASS",
+   "detail": {
+    "open": true,
+    "title": "A quiet star joined the field",
+    "hit": "sig sig--ambient is-in"
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: step 3 the read window is fully visible",
+   "verdict": "PASS",
+   "detail": {
+    "opacity": 1,
+    "settledAfterMs": 250
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: no reading/display timer closes it (9 s)",
+   "verdict": "PASS",
+   "detail": {
+    "open": true
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: a viewport resize does not close it",
+   "verdict": "PASS",
+   "detail": {
+    "open": true
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: unrelated galaxy activity does not close it",
+   "verdict": "PASS",
+   "detail": {
+    "open": true
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: clicking empty sky does not dismiss the message",
+   "verdict": "PASS",
+   "detail": {
+    "open": true,
+    "clicked": {
+     "x": 900,
+     "y": 614,
+     "on": "void-god-galaxy"
+    }
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: glyph expiry keeps the window and every message",
+   "verdict": "PASS",
+   "detail": {
+    "win": true,
+    "open": "m-20261126-a1",
+    "keptWindow": true,
+    "fadedStillInStore": true,
+    "fadedStillListed": true,
+    "msg": 6
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: an expired glyph stays listed in the center",
+   "verdict": "PASS",
+   "detail": {
+    "faded": "m-20261126-a5",
+    "listed": true
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: step 6 the close control closes it",
+   "verdict": "PASS",
+   "detail": {
+    "click": {
+     "ok": true,
+     "pt": {
+      "x": 1216,
+      "y": 536,
+      "top": "signals-reveal__close",
+      "covered": false
+     }
+    },
+    "hidden": true,
+    "apiOpen": null
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: step 6-7 reading did not consume the message",
+   "verdict": "PASS",
+   "detail": {
+    "available": true,
+    "read": true,
+    "count": 6
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: step 7 the star is dim but visible and clickable",
+   "verdict": "PASS",
+   "detail": {
+    "opacity": 0.52,
+    "pointerEvents": "auto",
+    "classes": "sig sig--ambient is-in is-read"
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: dim state is not pure black (opacity above 0.2)",
+   "verdict": "PASS",
+   "detail": {
+    "opacity": 0.52
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: step 8 clicking the dim star reopens the original message",
+   "verdict": "PASS",
+   "detail": {
+    "title": "A quiet star joined the field",
+    "same": true,
+    "at": [
+     1302.9912127122677,
+     690.2161519252655
+    ]
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: step 9 reopened window states it was read this session",
+   "verdict": "PASS",
+   "detail": {
+    "flag": "re-read · read this session"
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: step 9 reopening restores reading brightness",
+   "verdict": "PASS",
+   "detail": {
+    "awake": 1,
+    "dim": 0.52
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: Escape is an explicit close",
+   "verdict": "PASS",
+   "detail": {
+    "keys": [
+     "Escape"
+    ],
+    "shape": "rawKeyDown",
+    "hidden": true,
+    "apiOpen": null,
+    "focus": {
+     "hasFocus": true,
+     "active": "DIV/sig sig--ambient is-in",
+     "vis": "visible"
+    },
+    "tried": {
+     "rawKeyDown": {
+      "keys": [
+       "Escape"
+      ],
+      "open": null
+     }
+    }
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: closing with Escape does not also leave Music Mode",
+   "verdict": "PASS",
+   "detail": {
+    "rootHidden": false,
+    "rootW": 1440,
+    "body": "void-music-on"
+   }
+  },
+  {
+   "area": "§4",
+   "name": "desktop: the center lists exactly the store messages, no copies",
+   "verdict": "PASS",
+   "detail": {
+    "rows": 6,
+    "store": 6,
+    "missing": [],
+    "extra": []
+   }
+  },
+  {
+   "area": "§4",
+   "name": "desktop: the center shows the same read state as the galaxy",
+   "verdict": "PASS",
+   "detail": {
+    "found": true,
+    "read": true,
+    "badge": "dim"
+   }
+  },
+  {
+   "area": "§4",
+   "name": "desktop: un-reading a message repaints the center without a manual refresh",
+   "verdict": "PASS",
+   "detail": {
+    "row": {
+     "read": false,
+     "badge": null
+    }
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: marking a message unread restores initial brightness",
+   "verdict": "PASS",
+   "detail": {
+    "opacity": 1
+   }
+  },
+  {
+   "area": "§4",
+   "name": "desktop: the center row is reachable while no window is open",
+   "verdict": "PASS",
+   "detail": {
+    "row": true,
+    "panels": 1,
+    "panelVisible": true,
+    "button": {
+     "w": 40,
+     "h": 30,
+     "x": 93,
+     "y": 455
+    },
+    "chain": [
+     "div.sig-nc__row d:flex v:visible h:0 226x86",
+     "div#signals-nc-list.sig-nc d:block v:visible h:0 238x210",
+     "div.sig-group d:block v:visible h:0 238x332",
+     "div.signals-instrument__scroll d:block v:visible h:0 274x708",
+     "aside.signals-instrument d:flex v:visible h:0 276x820",
+     "div#signals-root.has-panel d:block v:visible h:0 1440x900",
+     "div#void-music-root.vm-root-meta-empty is-on d:flex v:visible h:0 1440x900"
+    ]
+   }
+  },
+  {
+   "area": "§4",
+   "name": "desktop: the center opens the same message identity (no second copy)",
+   "verdict": "PASS",
+   "detail": {
+    "click": {
+     "ok": true,
+     "pt": {
+      "x": 113,
+      "y": 470,
+      "top": "sig-btn sig-btn--mini",
+      "covered": false
+     }
+    },
+    "cross": {
+     "open": "m-20261126-a1",
+     "title": "A quiet star joined the field"
+    }
+   }
+  },
+  {
+   "area": "§4",
+   "name": "desktop: reading in the center dims the Galaxy star consistently",
+   "verdict": "PASS",
+   "detail": {
+    "click": {
+     "ok": true,
+     "pt": {
+      "x": 1216,
+      "y": 536,
+      "top": "signals-reveal__close",
+      "covered": false
+     }
+    },
+    "star": "sig sig--ambient is-in is-read",
+    "row": {
+     "read": true,
+     "badge": "dim"
+    }
+   }
+  },
+  {
+   "area": "§4",
+   "name": "desktop: the message still reopens from its Galaxy star after center reading",
+   "verdict": "PASS",
+   "detail": {
+    "click": {
+     "ok": true,
+     "pt": {
+      "x": 1303,
+      "y": 690,
+      "top": "sig__body",
+      "covered": false
+     }
+    },
+    "open": "m-20261126-a1",
+    "title": "A quiet star joined the field"
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: administrative removal is the only deletion path",
+   "verdict": "PASS",
+   "detail": {
+    "before": 6,
+    "after": 5,
+    "still": false
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: read state is stored as bare IDs, never message content",
+   "verdict": "PASS",
+   "detail": {
+    "ids": 1,
+    "sample": [
+     "m-20261126-a2"
+    ],
+    "raw": "[\"m-20261126-a2\"]",
+    "contentKeys": []
+   }
+  },
+  {
+   "area": "§2",
+   "name": "desktop: remaining messages have no server expiry (until removed)",
+   "verdict": "PASS",
+   "detail": [
+    {
+     "id": "m-20261126-a2",
+     "read": true,
+     "expiresAt": null
+    },
+    {
+     "id": "m-20261126-i2",
+     "read": false,
+     "expiresAt": null
+    },
+    {
+     "id": "m-20261126-i3",
+     "read": false,
+     "expiresAt": null
+    }
+   ]
+  },
+  {
+   "area": "§3",
+   "name": "desktop: a message read this session dims its star",
+   "verdict": "PASS",
+   "detail": {
+    "msgId": "m-20261126-a41",
+    "title": "Aurora Drift played through",
+    "seq": 41,
+    "read": true,
+    "opacity": 0
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: the same site session survives a reload",
+   "verdict": "PASS",
+   "detail": {
+    "same": true
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: the same stable message ID returns dim after reload, unread ones stay bright",
+   "verdict": "PASS",
+   "detail": {
+    "dim": 1,
+    "lit": 3,
+    "target": "sig sig--ambient is-read is-in",
+    "opacity": 0.52,
+    "ids": [
+     "m-20261126-a1",
+     "m-20261126-a41",
+     "m-20261126-a42",
+     "m-20261126-a43"
+    ]
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: a new site session restores initial brightness for all still-valid messages",
+   "verdict": "PASS",
+   "detail": {
+    "dim": 0,
+    "lit": 5,
+    "session": "site-mwxuvcfw-nrz31t",
+    "previous": "site-mwxuubhr-c64lsa",
+    "stored": "[]",
+    "messages": 5
+   }
+  },
+  {
+   "area": "§3",
+   "name": "desktop: resetting the session clears only the read set, never the messages",
+   "verdict": "PASS",
+   "detail": {
+    "readSet": "[]",
+    "messages": 5
+   }
+  },
+  {
+   "area": "§5",
+   "name": "desktop: arrangement + appearance changes reach the live field",
+   "verdict": "PASS",
+   "detail": {
+    "preset": "spiral",
+    "style": "bloom",
+    "color": "ice",
+    "glow": "1.6",
+    "a": "#cfe2ee",
+    "stars": 7,
+    "dy": 10,
+    "offs": "0,0|-13,-17|-29,10|0,38|42,14|30,-39|-30,-44",
+    "read": "spiral"
+   }
+  },
+  {
+   "area": "§6",
+   "name": "desktop: preset geometry actually re-arranged the cluster",
+   "verdict": "PASS",
+   "detail": {
+    "before": "organic",
+    "after": "spiral",
+    "beforeOffs": "0,0|-4,-40|-11,43|23,1|19,22|-19,5",
+    "afterOffs": "0,0|-13,-17|-29,10|0,38|42,14|30,-39|-30,-44"
+   }
+  },
+  {
+   "area": "§7",
+   "name": "desktop: appearance is never stored inside a message record",
+   "verdict": "PASS",
+   "detail": {
+    "keys": "body,createdAt,demo,expiresAt,id,readInSession,title,type",
+    "starKeys": "activeProfile,brightness,color,drift,experimental,glow,glowTransitionMs,motion,motionIntensity,preset,size,softness,style"
+   }
+  },
+  {
+   "area": "§6",
+   "name": "desktop: disabling experimental appearance falls back to the shipped look",
+   "verdict": "PASS",
+   "detail": {
+    "style": "spark",
+    "preset": "organic",
+    "color": "gold",
+    "experimental": "off"
+   }
+  },
+  {
+   "area": "§6",
+   "name": "desktop: reset returns to the documented defaults",
+   "verdict": "PASS",
+   "detail": {
+    "preset": "organic",
+    "style": "spark",
+    "color": "gold",
+    "experimental": "on",
+    "tokens": "7.50s"
+   }
+  },
+  {
+   "area": "§8",
+   "name": "desktop: reduced motion stops breath and drift animations",
+   "verdict": "PASS",
+   "detail": {
+    "body": "none",
+    "halo": "none"
+   }
+  },
+  {
+   "area": "§8",
+   "name": "desktop: OS-level reduced motion is honoured too",
+   "verdict": "PASS",
+   "detail": {
+    "halo": "none",
+    "matches": true
+   }
+  },
+  {
+   "area": "§8",
+   "name": "desktop: no star blocks a visible control or the instrument",
+   "verdict": "PASS",
+   "detail": {
+    "blocked": [],
+    "haloOnly": [],
+    "centreOverlaps": 0,
+    "revealOverSeek": false,
+    "signals": 5,
+    "visibleChrome": [
+     "vm-dock is-empty",
+     "vm-btn vm-open",
+     "signals-instrument"
+    ],
+    "engineChromeCount": 0
+   }
+  },
+  {
+   "area": "§8",
+   "name": "desktop: the engine itself recorded no chrome rejections",
+   "verdict": "PASS",
+   "detail": {
+    "chrome": 0,
+    "visibleChrome": [
+     "vm-dock is-empty",
+     "vm-btn vm-open",
+     "signals-instrument"
+    ]
+   }
+  },
+  {
+   "area": "§8",
+   "name": "desktop: placement stayed clear of the galaxy centre",
+   "verdict": "PASS",
+   "detail": {
+    "centre": 0,
+    "halo": []
+   }
+  },
+  {
+   "area": "§1",
+   "name": "desktop: signals never cover the podcast seek area",
+   "verdict": "PASS",
+   "detail": {
+    "blocked": [],
+    "haloOnly": [],
+    "centreOverlaps": 0,
+    "revealOverSeek": false,
+    "signals": 5,
+    "visibleChrome": [
+     "vm-dock is-empty",
+     "vm-btn vm-open",
+     "signals-instrument"
+    ],
+    "engineChromeCount": 0
+   }
+  },
+  {
+   "area": "§9",
+   "name": "desktop: no request leaves the preview origin",
+   "verdict": "PASS",
+   "detail": []
+  },
+  {
+   "area": "§9",
+   "name": "desktop: no uncaught exceptions or console errors",
+   "verdict": "PASS",
+   "detail": {
+    "exceptions": [],
+    "consoleErrors": []
+   }
+  },
+  {
+   "area": "boot",
+   "name": "phone: layer + store + star config ready",
+   "verdict": "PASS",
+   "detail": null
+  },
+  {
+   "area": "boot",
+   "name": "phone: host mounted inside the exempt player root",
+   "verdict": "PASS",
+   "detail": {
+    "parent": "void-music-root",
+    "swept": false,
+    "display": "block"
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: default lifetime is persistent (0 ms, not a reading rule)",
+   "verdict": "PASS",
+   "detail": {
+    "lifeMs": 0,
+    "importantLifeMs": 0
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: spawned messages carry stable IDs",
+   "verdict": "PASS",
+   "detail": {
+    "count": 3,
+    "msgIds": [
+     "m-20261126-a1",
+     "m-20261126-i2",
+     "m-20261126-a3"
+    ],
+    "titles": [
+     "A quiet star joined the field",
+     "Playback reached the far side",
+     "Someone is listening tonight"
+    ]
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: step 2-3 a real click opens the message window",
+   "verdict": "PASS",
+   "detail": {
+    "open": true,
+    "title": "A quiet star joined the field",
+    "hit": "sig sig--ambient is-in"
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: step 3 the read window is fully visible",
+   "verdict": "PASS",
+   "detail": {
+    "opacity": 1,
+    "settledAfterMs": 0
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: no reading/display timer closes it (9 s)",
+   "verdict": "PASS",
+   "detail": {
+    "open": true
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: a viewport resize does not close it",
+   "verdict": "PASS",
+   "detail": {
+    "open": true
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: unrelated galaxy activity does not close it",
+   "verdict": "PASS",
+   "detail": {
+    "open": true
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: clicking empty sky does not dismiss the message",
+   "verdict": "PASS",
+   "detail": {
+    "open": true,
+    "clicked": {
+     "x": 348,
+     "y": 398,
+     "on": "void-god-galaxy"
+    }
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: glyph expiry keeps the window and every message",
+   "verdict": "PASS",
+   "detail": {
+    "win": true,
+    "open": "m-20261126-a1",
+    "keptWindow": true,
+    "fadedStillInStore": true,
+    "fadedStillListed": true,
+    "msg": 6
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: an expired glyph stays listed in the center",
+   "verdict": "PASS",
+   "detail": {
+    "faded": "m-20261126-a6",
+    "listed": true
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: step 6 the close control closes it",
+   "verdict": "PASS",
+   "detail": {
+    "click": {
+     "ok": true,
+     "pt": {
+      "x": 280,
+      "y": 320,
+      "top": "signals-reveal__close",
+      "covered": false
+     }
+    },
+    "hidden": true,
+    "apiOpen": null
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: step 6-7 reading did not consume the message",
+   "verdict": "PASS",
+   "detail": {
+    "available": true,
+    "read": true,
+    "count": 6
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: step 7 the star is dim but visible and clickable",
+   "verdict": "PASS",
+   "detail": {
+    "opacity": 0.52,
+    "pointerEvents": "auto",
+    "classes": "sig sig--ambient is-in is-read"
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: dim state is not pure black (opacity above 0.2)",
+   "verdict": "PASS",
+   "detail": {
+    "opacity": 0.52
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: step 8 clicking the dim star reopens the original message",
+   "verdict": "PASS",
+   "detail": {
+    "title": "A quiet star joined the field",
+    "same": true,
+    "at": [
+     28.98379799427986,
+     235.85956328938602
+    ]
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: step 9 reopened window states it was read this session",
+   "verdict": "PASS",
+   "detail": {
+    "flag": "re-read · read this session"
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: step 9 reopening restores reading brightness",
+   "verdict": "PASS",
+   "detail": {
+    "awake": 1,
+    "dim": 0.52
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: Escape is an explicit close",
+   "verdict": "PASS",
+   "detail": {
+    "keys": [
+     "Escape"
+    ],
+    "shape": "rawKeyDown",
+    "hidden": true,
+    "apiOpen": null,
+    "focus": {
+     "hasFocus": true,
+     "active": "BODY/void-music-on",
+     "vis": "visible"
+    },
+    "tried": {
+     "rawKeyDown": {
+      "keys": [
+       "Escape"
+      ],
+      "open": null
+     }
+    }
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: closing with Escape does not also leave Music Mode",
+   "verdict": "PASS",
+   "detail": {
+    "rootHidden": false,
+    "rootW": 390,
+    "body": "void-music-on"
+   }
+  },
+  {
+   "area": "§4",
+   "name": "phone: the center lists exactly the store messages, no copies",
+   "verdict": "PASS",
+   "detail": {
+    "rows": 6,
+    "store": 6,
+    "missing": [],
+    "extra": []
+   }
+  },
+  {
+   "area": "§4",
+   "name": "phone: the center shows the same read state as the galaxy",
+   "verdict": "PASS",
+   "detail": {
+    "found": true,
+    "read": true,
+    "badge": "dim"
+   }
+  },
+  {
+   "area": "§4",
+   "name": "phone: un-reading a message repaints the center without a manual refresh",
+   "verdict": "PASS",
+   "detail": {
+    "row": {
+     "read": false,
+     "badge": null
+    }
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: marking a message unread restores initial brightness",
+   "verdict": "PASS",
+   "detail": {
+    "opacity": 1
+   }
+  },
+  {
+   "area": "§4",
+   "name": "phone: the center row is reachable while no window is open",
+   "verdict": "PASS",
+   "detail": {
+    "row": true,
+    "panels": 1,
+    "panelVisible": true,
+    "button": {
+     "w": 44,
+     "h": 30,
+     "x": 191,
+     "y": 277
+    },
+    "chain": [
+     "div.sig-nc__row d:flex v:visible h:0 344x45",
+     "div#signals-nc-list.sig-nc d:block v:visible h:0 346x210",
+     "div.sig-group d:block v:visible h:0 346x318",
+     "div.signals-instrument__scroll d:block v:visible h:0 368x158",
+     "aside.signals-instrument d:flex v:visible h:0 370x255",
+     "div#signals-root.has-panel d:block v:visible h:0 390x844",
+     "div#void-music-root.vm-root-meta-empty is-on d:flex v:visible h:0 390x844"
+    ]
+   }
+  },
+  {
+   "area": "§4",
+   "name": "phone: the center opens the same message identity (no second copy)",
+   "verdict": "PASS",
+   "detail": {
+    "click": {
+     "ok": true,
+     "pt": {
+      "x": 213,
+      "y": 292,
+      "top": "sig-btn sig-btn--mini",
+      "covered": false
+     }
+    },
+    "cross": {
+     "open": "m-20261126-a1",
+     "title": "A quiet star joined the field"
+    }
+   }
+  },
+  {
+   "area": "§4",
+   "name": "phone: reading in the center dims the Galaxy star consistently",
+   "verdict": "PASS",
+   "detail": {
+    "click": {
+     "ok": true,
+     "pt": {
+      "x": 352,
+      "y": 128,
+      "top": "signals-reveal__close",
+      "covered": false
+     }
+    },
+    "star": "sig sig--ambient is-in is-read",
+    "row": {
+     "read": true,
+     "badge": "dim"
+    }
+   }
+  },
+  {
+   "area": "§4",
+   "name": "phone: the message still reopens from its Galaxy star after center reading",
+   "verdict": "PASS",
+   "detail": {
+    "click": {
+     "ok": true,
+     "pt": {
+      "x": 29,
+      "y": 236,
+      "top": "sig__body",
+      "covered": false
+     }
+    },
+    "open": "m-20261126-a1",
+    "title": "A quiet star joined the field"
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: administrative removal is the only deletion path",
+   "verdict": "PASS",
+   "detail": {
+    "before": 6,
+    "after": 5,
+    "still": false
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: read state is stored as bare IDs, never message content",
+   "verdict": "PASS",
+   "detail": {
+    "ids": 1,
+    "sample": [
+     "m-20261126-i2"
+    ],
+    "raw": "[\"m-20261126-i2\"]",
+    "contentKeys": []
+   }
+  },
+  {
+   "area": "§2",
+   "name": "phone: remaining messages have no server expiry (until removed)",
+   "verdict": "PASS",
+   "detail": [
+    {
+     "id": "m-20261126-i2",
+     "read": true,
+     "expiresAt": null
+    },
+    {
+     "id": "m-20261126-a3",
+     "read": false,
+     "expiresAt": null
+    },
+    {
+     "id": "m-20261126-i4",
+     "read": false,
+     "expiresAt": null
+    }
+   ]
+  },
+  {
+   "area": "§3",
+   "name": "phone: a message read this session dims its star",
+   "verdict": "PASS",
+   "detail": {
+    "msgId": "m-20261126-a41",
+    "title": "Aurora Drift played through",
+    "seq": 41,
+    "read": true,
+    "opacity": 0
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: the same site session survives a reload",
+   "verdict": "PASS",
+   "detail": {
+    "same": true
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: the same stable message ID returns dim after reload, unread ones stay bright",
+   "verdict": "PASS",
+   "detail": {
+    "dim": 1,
+    "lit": 3,
+    "target": "sig sig--ambient is-read is-in",
+    "opacity": 0.52,
+    "ids": [
+     "m-20261126-a1",
+     "m-20261126-a41",
+     "m-20261126-a42",
+     "m-20261126-a43"
+    ]
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: a new site session restores initial brightness for all still-valid messages",
+   "verdict": "PASS",
+   "detail": {
+    "dim": 0,
+    "lit": 4,
+    "session": "site-mwxuw77l-qco82l",
+    "previous": "site-mwxuvcfw-nrz31t",
+    "stored": "[]",
+    "messages": 4
+   }
+  },
+  {
+   "area": "§3",
+   "name": "phone: resetting the session clears only the read set, never the messages",
+   "verdict": "PASS",
+   "detail": {
+    "readSet": "[]",
+    "messages": 4
+   }
+  },
+  {
+   "area": "§5",
+   "name": "phone: arrangement + appearance changes reach the live field",
+   "verdict": "PASS",
+   "detail": {
+    "preset": "spiral",
+    "style": "bloom",
+    "color": "ice",
+    "glow": "1.6",
+    "a": "#cfe2ee",
+    "stars": 7,
+    "dy": 8,
+    "offs": "0,0|-11,-15|-25,8|0,32|35,12|25,-33|-25,-37",
+    "read": "spiral"
+   }
+  },
+  {
+   "area": "§6",
+   "name": "phone: preset geometry actually re-arranged the cluster",
+   "verdict": "PASS",
+   "detail": {
+    "before": "organic",
+    "after": "spiral",
+    "beforeOffs": "0,0|-4,-33|-9,36|20,1|16,18|-16,4",
+    "afterOffs": "0,0|-11,-15|-25,8|0,32|35,12|25,-33|-25,-37"
+   }
+  },
+  {
+   "area": "§7",
+   "name": "phone: appearance is never stored inside a message record",
+   "verdict": "PASS",
+   "detail": {
+    "keys": "body,createdAt,demo,expiresAt,id,readInSession,title,type",
+    "starKeys": "activeProfile,brightness,color,drift,experimental,glow,glowTransitionMs,motion,motionIntensity,preset,size,softness,style"
+   }
+  },
+  {
+   "area": "§6",
+   "name": "phone: disabling experimental appearance falls back to the shipped look",
+   "verdict": "PASS",
+   "detail": {
+    "style": "spark",
+    "preset": "organic",
+    "color": "gold",
+    "experimental": "off"
+   }
+  },
+  {
+   "area": "§6",
+   "name": "phone: reset returns to the documented defaults",
+   "verdict": "PASS",
+   "detail": {
+    "preset": "organic",
+    "style": "spark",
+    "color": "gold",
+    "experimental": "on",
+    "tokens": "7.50s"
+   }
+  },
+  {
+   "area": "§8",
+   "name": "phone: reduced motion stops breath and drift animations",
+   "verdict": "PASS",
+   "detail": {
+    "body": "none",
+    "halo": "none"
+   }
+  },
+  {
+   "area": "§8",
+   "name": "phone: OS-level reduced motion is honoured too",
+   "verdict": "PASS",
+   "detail": {
+    "halo": "none",
+    "matches": true
+   }
+  },
+  {
+   "area": "§8",
+   "name": "phone: no star blocks a visible control or the instrument",
+   "verdict": "PASS",
+   "detail": {
+    "blocked": [],
+    "haloOnly": [],
+    "centreOverlaps": 0,
+    "revealOverSeek": false,
+    "signals": 5,
+    "visibleChrome": [
+     "vm-dock is-empty",
+     "vm-btn vm-open"
+    ],
+    "engineChromeCount": 0
+   }
+  },
+  {
+   "area": "§8",
+   "name": "phone: the engine itself recorded no chrome rejections",
+   "verdict": "PASS",
+   "detail": {
+    "chrome": 0,
+    "visibleChrome": [
+     "vm-dock is-empty",
+     "vm-btn vm-open"
+    ]
+   }
+  },
+  {
+   "area": "§8",
+   "name": "phone: placement stayed clear of the galaxy centre",
+   "verdict": "PASS",
+   "detail": {
+    "centre": 0,
+    "halo": []
+   }
+  },
+  {
+   "area": "§1",
+   "name": "phone: signals never cover the podcast seek area",
+   "verdict": "PASS",
+   "detail": {
+    "blocked": [],
+    "haloOnly": [],
+    "centreOverlaps": 0,
+    "revealOverSeek": false,
+    "signals": 5,
+    "visibleChrome": [
+     "vm-dock is-empty",
+     "vm-btn vm-open"
+    ],
+    "engineChromeCount": 0
+   }
+  },
+  {
+   "area": "§9",
+   "name": "phone: no request leaves the preview origin",
+   "verdict": "PASS",
+   "detail": []
+  },
+  {
+   "area": "§9",
+   "name": "phone: no uncaught exceptions or console errors",
+   "verdict": "PASS",
+   "detail": {
+    "exceptions": [],
+    "consoleErrors": []
+   }
+  },
+  {
+   "area": "§5",
+   "name": "admin: control room reached through the simulated sandbox session",
+   "verdict": "PASS",
+   "detail": null
+  },
+  {
+   "area": "§9",
+   "name": "admin: the galaxy instrument and signals layer stay out of the control room",
+   "verdict": "PASS",
+   "detail": {
+    "host": false,
+    "instrument": false,
+    "layer": false,
+    "reveal": false,
+    "starConfig": true
+   }
+  },
+  {
+   "area": "§5",
+   "name": "admin: Void Star Studio appears as a tab in the existing interface",
+   "verdict": "PASS",
+   "detail": {
+    "filled": {
+     "ok": true
+    },
+    "app": {
+     "appVisible": true,
+     "studioTab": true
+    }
+   }
+  },
+  {
+   "area": "§5",
+   "name": "studio: appearance, motion and arrangement controls are all present",
+   "verdict": "PASS",
+   "detail": {
+    "present": true,
+    "visible": true,
+    "badges": [
+     "Preview only",
+     "sessionStorage · cleared when the tab closes",
+     "no Worker, no D1, no R2, no production config"
+    ],
+    "styles": 4,
+    "motions": 2,
+    "swatches": 5,
+    "presets": 8,
+    "sliders": 7,
+    "stageStars": 5,
+    "stageDots": 25,
+    "json": 195
+   }
+  },
+  {
+   "area": "§6",
+   "name": "studio: a live preview stage renders the current arrangement",
+   "verdict": "PASS",
+   "detail": {
+    "stageStars": 5,
+    "stageDots": 25
+   }
+  },
+  {
+   "area": "§6",
+   "name": "studio: preview-only is stated up front",
+   "verdict": "PASS",
+   "detail": [
+    "Preview only",
+    "sessionStorage · cleared when the tab closes",
+    "no Worker, no D1, no R2, no production config"
+   ]
+  },
+  {
+   "area": "§6",
+   "name": "studio: the preview updates immediately on colour, arrangement and size",
+   "verdict": "PASS",
+   "detail": {
+    "picked": {
+     "ok": true,
+     "label": "Ember"
+    },
+    "before": {
+     "a": "#f6c86a",
+     "preset": "organic",
+     "color": "gold"
+    },
+    "after": {
+     "a": "#f0b072",
+     "preset": "spiral",
+     "color": "ember",
+     "size": 1.8,
+     "json": 253
+    }
+   }
+  },
+  {
+   "area": "§6",
+   "name": "studio: arrangements can be compared side by side",
+   "verdict": "PASS",
+   "detail": {
+    "hidden": false,
+    "tiles": 8,
+    "disabled": 1,
+    "dots": 54
+   }
+  },
+  {
+   "area": "§5",
+   "name": "studio: the layered model is stored locally (global + per type + reserved profiles)",
+   "verdict": "PASS",
+   "detail": {
+    "present": true,
+    "global": {
+     "color": "ember",
+     "preset": "spiral",
+     "size": 1.8
+    },
+    "profiles": [
+     "byType",
+     "occasion",
+     "timeBased"
+    ],
+    "occasion": []
+   }
+  },
+  {
+   "area": "§7",
+   "name": "studio: per-event-type profiles layer over the global default",
+   "verdict": "PASS",
+   "detail": {
+    "scopes": 3,
+    "ambientGlow": 0.4,
+    "globalColor": "ember"
+   }
+  },
+  {
+   "area": "§6",
+   "name": "studio: choices survive a reload inside the same site session",
+   "verdict": "PASS",
+   "detail": {
+    "tab": true,
+    "color": "ember",
+    "ambient": 0.4,
+    "stageColor": "ember"
+   }
+  },
+  {
+   "area": "§6",
+   "name": "studio: reset to default clears every override",
+   "verdict": "PASS",
+   "detail": {
+    "global": {},
+    "byType": {
+     "ambient": {},
+     "important": {}
+    },
+    "experimental": true,
+    "stageColor": "gold",
+    "stagePreset": "organic",
+    "clicked": true
+   }
+  },
+  {
+   "area": "§9",
+   "name": "studio: nothing is sent anywhere except the local simulated origin",
+   "verdict": "PASS",
+   "detail": []
+  },
+  {
+   "area": "§9",
+   "name": "admin: no uncaught exceptions in the control room",
+   "verdict": "PASS",
+   "detail": []
+  }
+ ]
+}

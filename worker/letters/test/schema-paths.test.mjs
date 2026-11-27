@@ -17,7 +17,8 @@ const migrationNames = [
   "2026-11-01-vote-retract.sql",
   "2026-11-05-reconcile-golden-folder.sql",
   "2026-11-05-secret-ink.sql",
-  "2026-11-12-music-domains.sql"
+  "2026-11-12-music-domains.sql",
+  "2026-11-26-void-signals.sql"
 ];
 const requiredColumns = {
   letters: ["seq", "id", "body", "lang", "created_at", "expires_at", "secret_ink", "base_expires_at", "base_votes_net", "presence"],
@@ -35,7 +36,12 @@ const requiredColumns = {
   domain_audit_changes: ["batch_id", "track_id", "track_ref", "title_snapshot", "domain", "previous_assigned", "new_assigned", "changed_at"],
   domain_track_deletions: ["batch_id", "track_id", "title_snapshot", "artist_snapshot", "created_at_snapshot", "deleted_at"],
   domain_acceptance: ["singleton_id", "accepted_at", "state_version", "accepted_count"],
-  domain_accepted_tracks: ["track_id", "title_snapshot", "accepted_at"]
+  domain_accepted_tracks: ["track_id", "title_snapshot", "accepted_at"],
+  signal_messages: ["id", "title", "body", "category", "importance", "status", "state_version", "created_at", "updated_at", "published_at", "scheduled_at", "expires_at", "profile_id", "created_by", "metadata"],
+  star_profiles: ["id", "name", "current_version", "active_version", "created_at", "updated_at"],
+  star_profile_versions: ["profile_id", "version", "settings", "created_at", "created_by"],
+  star_profile_assignments: ["scope", "profile_id", "updated_at"],
+  signal_state: ["singleton_id", "version"]
 };
 
 function database() { return new DatabaseSync(":memory:"); }
@@ -75,6 +81,13 @@ function assertWorkerSchema(db) {
   assert.ok(!triggers.includes("letter_votes_apply_lifespan"), "obsolete lifespan trigger must be absent");
   for (const name of ["domain_tracks_insert", "domain_tracks_delete", "domain_membership_insert", "domain_membership_delete", "domain_audit_target_validate", "domain_acceptance_version_guard"]) {
     assert.ok(triggers.includes(name), "missing Music Domains trigger " + name);
+  }
+  for (const name of ["signal_messages_insert", "signal_messages_update", "signal_messages_delete", "star_profile_versions_insert", "star_profiles_update", "star_profile_assignments_insert", "star_profile_assignments_update", "star_profile_assignments_delete"]) {
+    assert.ok(triggers.includes(name), "missing Void Signals change-counter trigger " + name);
+  }
+  const statusCheck = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='signal_messages'").get().sql.match(/CHECK\s*\(status[^)]*\)/i) || [""])[0].replace(/\s+/g, " ").toLowerCase();
+  for (const state of ["draft", "scheduled", "active", "hidden", "revoked", "expired"]) {
+    assert.ok(statusCheck.includes("'" + state + "'"), "signal_messages status CHECK must allow " + state);
   }
 }
 test("Path A: fresh current schema.sql satisfies Worker requirements", () => {

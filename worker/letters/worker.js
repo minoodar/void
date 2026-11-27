@@ -136,6 +136,11 @@ export default {
       if (url.pathname === '/site/updates' && request.method === 'GET') {
         return await siteUpdates(url, env, cors);
       }
+      // Void Signals public reads: eligible messages and active presentation only.
+      // Must stay above the admin block; /signals never overlaps an admin path.
+      if (url.pathname === '/signals' || url.pathname.indexOf('/signals/') === 0) {
+        return await signalsPublic(request, url, env, cors);
+      }
 
       // One guard for every management route: no handler below can forget auth.
       if (url.pathname.startsWith('/admin/')) {
@@ -180,6 +185,11 @@ export default {
         }
         if (url.pathname.startsWith('/admin/tracks/') && (request.method === 'PUT' || request.method === 'DELETE')) {
           return await mutateTrack(url.pathname.slice('/admin/tracks/'.length), request, env, cors);
+        }
+        // Every signals management route dispatches through one entry point, so none
+        // of them can exist outside the adminAuthorized guard above.
+        if (url.pathname === '/admin/signals' || url.pathname.indexOf('/admin/signals/') === 0) {
+          return await adminSignals(request, url, env, cors);
         }
         return json({ ok: false, error: 'not_found' }, 404, headers);
       }
@@ -1807,4 +1817,1237 @@ async function reorderTracks(request, env, cors) {
     }
     throw e;
   }
+}
+
+/* ---------------------------------------------------------------- */
+/* Void Signals: persistent notification messages + Star Profiles     */
+/* ---------------------------------------------------------------- */
+/* Layer boundaries (iteration-3 brief section 2):                       */
+/*   * signal_messages carries content and lifecycle only. Read state is */
+/*     browser session scope and never reaches D1, so opening a message  */
+/*     cannot consume, expire or re-rank it.                             */
+/*   * star_profiles / star_profile_versions carry presentation only. A  */
+/*     message points at a profile by stable id, so no visual setting    */
+/*     is ever stored inside message content or metadata.                */
+/*   * signal_state.version is the single change counter a public client */
+/*     compares before it refetches anything.                            */
+/* Every GET here is strictly read-only: lifecycle is materialised only  */
+/* inside mutation routes, and public retrieval independently enforces   */
+/* eligibility through SIGNAL_ELIGIBLE_WHERE.                            */
+
+const SIGNAL_ID_REGEX = /^[0-9a-f]{32}$/;
+const MAX_SIGNAL_BODY_BYTES = 8192;
+const SIGNAL_LIMITS = Object.freeze({ title: 120, body: 500, name: 64, actor: 32 });
+const SIGNAL_IMPORTANCES = Object.freeze({ ambient: 1, important: 1 });
+const SIGNAL_CATEGORIES = Object.freeze({
+  general: 1, release: 1, event: 1, milestone: 1, maintenance: 1
+});
+const SIGNAL_ACTIONS = Object.freeze({ publish: 1, schedule: 1, hide: 1, revoke: 1, reopen: 1 });
+const SIGNAL_TARGETS = Object.freeze({
+  publish: 'active', schedule: 'scheduled', hide: 'hidden', revoke: 'revoked', reopen: 'draft'
+});
+// draft -> active | scheduled, scheduled -> active | draft, active -> hidden |
+// revoked | expired, hidden -> active (only while eligible), expired -> draft.
+// revoked is terminal. Anything not listed here is rejected.
+const SIGNAL_TRANSITIONS = Object.freeze({
+  draft: ['scheduled', 'active', 'revoked'],
+  scheduled: ['active', 'draft', 'revoked'],
+  active: ['hidden', 'revoked', 'expired'],
+  hidden: ['active', 'revoked'],
+  revoked: [],
+  expired: ['draft']
+});
+const SIGNAL_DELETE_CONFIRM = 'DELETE SIGNAL';
+const SIGNAL_PROFILE_DELETE_CONFIRM = 'DELETE PROFILE';
+const SIGNAL_PUBLIC_MAX = 60;
+const SIGNAL_ADMIN_MAX = 200;
+const SIGNAL_MAX_ACTIVE = 60;
+const SIGNAL_MIN_LEAD_SEC = 30;
+const SIGNAL_MAX_LIFETIME_SEC = 31536000;
+// metadata is renderer hints only. Every presentation key is refused outright, so
+// the content/profile boundary is enforced in code rather than by convention.
+const SIGNAL_METADATA_KEYS = Object.freeze({ lang: 1, icon: 1, tone: 1, occasion: 1 });
+const SIGNAL_PRESENTATION_KEYS = Object.freeze({
+  preset: 1, style: 1, color: 1, colour: 1, size: 1, brightness: 1, glow: 1, softness: 1,
+  motion: 1, motionIntensity: 1, glowTransitionMs: 1, drift: 1, experimental: 1, activeProfile: 1
+});
+const SIGNAL_SETTINGS_SCHEMA = 1;
+const SIGNAL_PROFILE_ENUMS = Object.freeze({
+  preset: ['organic', 'constellation', 'circular', 'spiral', 'geometric', 'heart', 'star'],
+  style: ['spark', 'point', 'bloom', 'hairline'],
+  color: ['gold', 'silver', 'white', 'ember', 'ice'],
+  motion: ['animated', 'static']
+});
+// Bounds match the Star Studio controls exactly, so a hand-made request cannot push
+// the renderer outside the range the admin UI is able to produce.
+const SIGNAL_PROFILE_RANGES = Object.freeze({
+  size: [0.5, 2.2, 1], brightness: [0.3, 1.6, 1], glow: [0, 2, 1], softness: [0, 1, 0],
+  motionIntensity: [0, 1.6, 1], glowTransitionMs: [120, 2600, 900], drift: [0, 1.2, 0.35]
+});
+const SIGNAL_SETTINGS_KEYS = Object.freeze(
+  ['preset', 'style', 'color', 'motion'].concat(Object.keys(SIGNAL_PROFILE_RANGES))
+);
+const SIGNAL_ELIGIBLE_WHERE =
+  "(status = 'active' OR (status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ?))" +
+  ' AND (expires_at IS NULL OR expires_at > ?)';
+const SIGNAL_COLUMNS =
+  'id, title, body, category, importance, status, state_version, created_at, updated_at, ' +
+  'published_at, scheduled_at, expires_at, profile_id, created_by, metadata';
+const SIGNAL_INSERT_COLUMNS = SIGNAL_COLUMNS;
+
+function isMissingSignalsTable(error) {
+  return /no such table:\s*(signal_messages|star_profiles|star_profile_versions|star_profile_assignments|signal_state)\b/i
+    .test(String((error && error.message) || error || ''));
+}
+
+function signalNowSec() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function signalInt(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.floor(n) : null;
+}
+
+// Admin-authored content is plain text: control and bidi characters are rejected,
+// storage zero-widths are dropped, text is stored NFC, and angle brackets never
+// enter the corpus so no renderer can be tricked into treating text as structure.
+function signalText(value, field, min, max) {
+  if (typeof value !== 'string') return { error: field + '_must_be_string' };
+  if (LONE_SURROGATE_REGEX.test(value)) return { error: 'invalid_unicode' };
+  if (CONTROL_OR_BIDI_REGEX.test(value)) return { error: 'control_characters_prohibited' };
+  if (/[<>]/.test(value)) return { error: 'markup_prohibited' };
+  const normalized = value.normalize('NFC').replace(STORAGE_ZERO_WIDTH_REGEX, '')
+    .replace(/\s+/g, ' ').trim();
+  const count = Array.from(normalized).length;
+  if (count < min) return { error: field + '_too_short' };
+  if (count > max) return { error: field + '_too_long' };
+  return { value: normalized };
+}
+
+function signalName(value) {
+  if (typeof value !== 'string') return { error: 'name_must_be_string' };
+  const clean = value.normalize('NFC').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
+  if (Array.from(clean).length < 2) return { error: 'name_too_short' };
+  if (Array.from(clean).length > SIGNAL_LIMITS.name) return { error: 'name_too_long' };
+  return { value: clean };
+}
+
+// Attribution is a self-declared label, not an authenticated identity: the admin
+// credential is one shared secret, so there is no per-actor identity to derive it
+// from. Recorded for the audit trail only and never used for authorization.
+function signalActor(value) {
+  if (value === undefined || value === null || value === '') return { value: null };
+  if (typeof value !== 'string') return { error: 'created_by_must_be_string' };
+  const clean = value.normalize('NFC').replace(/[<>"']/g, '').replace(/\s+/g, ' ').trim()
+    .slice(0, SIGNAL_LIMITS.actor);
+  return { value: clean || null };
+}
+
+function parseSignalMetadata(raw) {
+  let value;
+  try {
+    value = JSON.parse(raw || '{}');
+  } catch (e) {
+    return {};
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out = {};
+  for (const key of Object.keys(SIGNAL_METADATA_KEYS)) {
+    const v = value[key];
+    if (typeof v === 'string' && v.length <= 40) out[key] = v;
+  }
+  return out;
+}
+
+function signalMetadataOf(input) {
+  if (input === undefined || input === null) return { value: {} };
+  if (typeof input !== 'object' || Array.isArray(input)) return { error: 'metadata_must_be_object' };
+  const keys = Object.keys(input);
+  if (keys.length > 8) return { error: 'metadata_too_large' };
+  const out = {};
+  for (const key of keys) {
+    if (SIGNAL_PRESENTATION_KEYS[key] === 1) return { error: 'presentation_belongs_in_a_profile' };
+    if (SIGNAL_METADATA_KEYS[key] !== 1) return { error: 'metadata_key_not_allowed' };
+    const v = input[key];
+    if (typeof v !== 'string' || v.length > 40) return { error: 'metadata_value_invalid' };
+    if (key === 'lang') {
+      const lang = v.trim().toLowerCase();
+      if (!/^[a-z]{2,3}(-[a-z0-9]{2,4})?$/.test(lang)) return { error: 'metadata_lang_invalid' };
+      out.lang = lang;
+    } else {
+      out[key] = v.normalize('NFC');
+    }
+  }
+  return { value: out };
+}
+
+// Key-ordered JSON so stored settings are byte-stable across versions and cheap to diff.
+function signalSettingsJson(settings) {
+  const parts = [];
+  for (const key of SIGNAL_SETTINGS_KEYS) {
+    if (settings[key] !== undefined) parts.push(JSON.stringify(key) + ':' + JSON.stringify(settings[key]));
+  }
+  return '{' + parts.join(',') + '}';
+}
+
+function normalizeSignalSettings(input) {
+  let value = input;
+  if (value === undefined || value === null) value = {};
+  if (typeof value !== 'object' || Array.isArray(value)) return { error: 'settings_must_be_object' };
+  const keys = Object.keys(value);
+  if (keys.length > SIGNAL_SETTINGS_KEYS.length) return { error: 'settings_too_large' };
+  const out = { schema: SIGNAL_SETTINGS_SCHEMA };
+  for (const key of keys) {
+    if (SIGNAL_SETTINGS_KEYS.indexOf(key) === -1) return { error: 'setting_not_allowed' };
+    const enumList = SIGNAL_PROFILE_ENUMS[key];
+    if (enumList) {
+      const v = typeof value[key] === 'string' ? value[key].trim().toLowerCase() : '';
+      if (enumList.indexOf(v) === -1) return { error: key + '_invalid' };
+      out[key] = v;
+      continue;
+    }
+    const range = SIGNAL_PROFILE_RANGES[key];
+    const n = Number(value[key]);
+    if (!Number.isFinite(n)) return { error: key + '_must_be_number' };
+    out[key] = key === 'glowTransitionMs'
+      ? Math.min(range[1], Math.max(range[0], Math.round(n)))
+      : Math.min(range[1], Math.max(range[0], Math.round(n * 1000) / 1000));
+  }
+  return { value: out };
+}
+
+function parseSignalSettings(raw) {
+  let value;
+  try {
+    value = JSON.parse(raw || '{}');
+  } catch (e) {
+    return { schema: SIGNAL_SETTINGS_SCHEMA };
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { schema: SIGNAL_SETTINGS_SCHEMA };
+  const valid = normalizeSignalSettings(value);
+  return valid.error ? { schema: SIGNAL_SETTINGS_SCHEMA } : valid.value;
+}
+
+// Narrowest match wins at render time: message profile, then category, then
+// importance, then global, then the renderer defaults.
+function signalScopeParts(scope) {
+  if (typeof scope !== 'string') return { error: 'scope_invalid' };
+  const clean = scope.trim().toLowerCase();
+  if (clean === 'global') return { value: 'global' };
+  const cat = /^category:([a-z][a-z0-9_-]{0,31})$/.exec(clean);
+  if (cat) return SIGNAL_CATEGORIES[cat[1]] === 1 ? { value: clean } : { error: 'category_unknown' };
+  const imp = /^importance:([a-z][a-z0-9_-]{0,31})$/.exec(clean);
+  if (imp) return SIGNAL_IMPORTANCES[imp[1]] === 1 ? { value: clean } : { error: 'importance_unknown' };
+  return { error: 'scope_invalid' };
+}
+
+function signalPublicRow(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    category: row.category,
+    importance: row.importance,
+    // Iteration-2 renderer compatibility: type is the delivery model.
+    type: row.importance,
+    published_at: signalInt(row.published_at),
+    expires_at: signalInt(row.expires_at),
+    profile_id: row.profile_id || null,
+    metadata: parseSignalMetadata(row.metadata)
+  };
+}
+
+function signalAdminRow(row, now) {
+  const out = signalPublicRow(row);
+  out.status = row.status;
+  out.state_version = Number(row.state_version) || 0;
+  out.created_at = Number(row.created_at) || 0;
+  out.updated_at = Number(row.updated_at) || 0;
+  out.scheduled_at = signalInt(row.scheduled_at);
+  out.created_by = row.created_by || null;
+  out.expired = out.expires_at !== null && out.expires_at <= now;
+  out.eligible = (row.status === 'active' ||
+    (row.status === 'scheduled' && out.scheduled_at !== null && out.scheduled_at <= now)) && !out.expired;
+  out.next_transition = (SIGNAL_TRANSITIONS[row.status] || []).filter(state => state !== 'expired');
+  return out;
+}
+
+async function signalVersionOf(env) {
+  const row = await env.DB.prepare('SELECT version FROM signal_state WHERE singleton_id = 1').first();
+  return row ? Number(row.version) || 0 : 0;
+}
+
+// Only activated profile versions are ever described, so a saved-but-unactivated
+// profile cannot reach a public client even by reference.
+async function signalProfileConfig(env) {
+  const profiles = {};
+  const rows = await env.DB.prepare(
+    'SELECT p.id, p.name, p.active_version, v.settings FROM star_profiles p ' +
+    'JOIN star_profile_versions v ON v.profile_id = p.id AND v.version = p.active_version ' +
+    'WHERE p.active_version > 0'
+  ).all();
+  for (const row of (rows && rows.results) || []) {
+    profiles[row.id] = {
+      id: row.id,
+      name: row.name,
+      version: Number(row.active_version) || 0,
+      settings: parseSignalSettings(row.settings)
+    };
+  }
+  const assignments = { global: null, byCategory: {}, byImportance: {} };
+  const aRows = await env.DB.prepare('SELECT scope, profile_id FROM star_profile_assignments').all();
+  for (const row of (aRows && aRows.results) || []) {
+    if (!profiles[row.profile_id]) continue;
+    if (row.scope === 'global') assignments.global = row.profile_id;
+    else if (row.scope.indexOf('category:') === 0) assignments.byCategory[row.scope.slice(9)] = row.profile_id;
+    else if (row.scope.indexOf('importance:') === 0) assignments.byImportance[row.scope.slice(11)] = row.profile_id;
+  }
+  return { profiles, assignments };
+}
+
+async function signalEligibleMessages(env, now, limit) {
+  const page = Math.min(SIGNAL_PUBLIC_MAX, Math.max(1, Number(limit) || SIGNAL_PUBLIC_MAX));
+  const result = await env.DB.prepare(
+    'SELECT ' + SIGNAL_COLUMNS + ' FROM signal_messages WHERE ' + SIGNAL_ELIGIBLE_WHERE +
+    ' ORDER BY COALESCE(published_at, created_at) DESC, id ASC LIMIT ' + page
+  ).bind(now, now).all();
+  return ((result && result.results) || []).map(signalPublicRow);
+}
+
+// no-store is deliberate: eligibility depends on server time, so a cached body could
+// keep serving a message that has just expired or been revoked.
+function signalsJson(payload, status, cors) {
+  const headers = {};
+  const source = (cors && cors.headers) || {};
+  for (const key of Object.keys(source)) headers[key] = source[key];
+  headers['Cache-Control'] = 'no-store';
+  return json(payload, status, headers);
+}
+
+async function signalsPublic(request, url, env, cors) {
+  if (!env || !env.DB) return signalsJson({ ok: false, error: 'signals_unavailable' }, 503, cors);
+  const path = url.pathname;
+  if (request.method !== 'GET') return signalsJson({ ok: false, error: 'method_not_allowed' }, 405, cors);
+  const now = signalNowSec();
+  try {
+    if (path === '/signals/version') {
+      return signalsJson({ ok: true, version: await signalVersionOf(env) }, 200, cors);
+    }
+    if (path === '/signals/messages') {
+      return signalsJson({
+        ok: true, version: await signalVersionOf(env),
+        messages: await signalEligibleMessages(env, now, url.searchParams.get('limit'))
+      }, 200, cors);
+    }
+    if (path.indexOf('/signals/messages/') === 0) {
+      const id = decodeURIComponent(path.slice('/signals/messages/'.length));
+      if (!SIGNAL_ID_REGEX.test(id)) return signalsJson({ ok: false, error: 'invalid_id' }, 400, cors);
+      const row = await env.DB.prepare(
+        'SELECT ' + SIGNAL_COLUMNS + ' FROM signal_messages WHERE id = ? AND ' + SIGNAL_ELIGIBLE_WHERE
+      ).bind(id, now, now).first();
+      // One code for "not visible to you": hidden, revoked, expired and unknown
+      // must not be distinguishable, or the feed leaks admin state.
+      if (!row) return signalsJson({ ok: false, error: 'message_not_available' }, 404, cors);
+      return signalsJson({ ok: true, version: await signalVersionOf(env), message: signalPublicRow(row) }, 200, cors);
+    }
+    if (path === '/signals/profile' || path === '/signals/state') {
+      const config = await signalProfileConfig(env);
+      const body = { ok: true, version: await signalVersionOf(env), server_time: now };
+      Object.assign(body, config);
+      if (path === '/signals/state') body.messages = await signalEligibleMessages(env, now, url.searchParams.get('limit'));
+      return signalsJson(body, 200, cors);
+    }
+    return signalsJson({ ok: false, error: 'not_found' }, 404, cors);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) {
+      return signalsJson({ ok: false, error: 'signals_unavailable' }, 503, cors);
+    }
+    throw e;
+  }
+}
+
+/* ---------------------------- admin: messages ---------------------------- */
+
+function signalTimestamps(value, now) {
+  const scheduledAt = signalInt(value.scheduled_at);
+  const expiresAt = signalInt(value.expires_at);
+  const out = { scheduledAt: null, expiresAt: null };
+  if (value.scheduled_at !== undefined && value.scheduled_at !== null && value.scheduled_at !== '') {
+    if (scheduledAt === null) return { error: 'scheduled_at_must_be_integer' };
+    if (scheduledAt < now + SIGNAL_MIN_LEAD_SEC) return { error: 'scheduled_at_in_past' };
+    if (scheduledAt > now + 5 * SIGNAL_MAX_LIFETIME_SEC) return { error: 'scheduled_at_too_far' };
+    out.scheduledAt = scheduledAt;
+  }
+  const expiresIn = signalInt(value.expires_in);
+  if (value.expires_in !== undefined && value.expires_in !== null && value.expires_in !== '') {
+    if (expiresIn === null || expiresIn < 60 || expiresIn > SIGNAL_MAX_LIFETIME_SEC) {
+      return { error: 'expires_in_invalid' };
+    }
+    out.expiresAt = now + expiresIn;
+  }
+  if (value.expires_at !== undefined && value.expires_at !== null && value.expires_at !== '') {
+    if (expiresAt === null) return { error: 'expires_at_must_be_integer' };
+    if (expiresAt <= now) return { error: 'expires_in_past' };
+    if (expiresAt > now + SIGNAL_MAX_LIFETIME_SEC) return { error: 'expires_at_too_far' };
+    out.expiresAt = expiresAt;
+  }
+  if (out.scheduledAt !== null && out.expiresAt !== null && out.expiresAt <= out.scheduledAt) {
+    return { error: 'expires_before_scheduled' };
+  }
+  return out;
+}
+
+async function adminSignalsList(url, env, cors) {
+  const headers = adminHeaders(cors);
+  const now = signalNowSec();
+  const where = [];
+  const params = [];
+  const status = (url.searchParams.get('status') || '').trim().toLowerCase();
+  if (status && status !== 'all') {
+    if (Object.prototype.hasOwnProperty.call(SIGNAL_TRANSITIONS, status)) {
+      where.push('status = ?');
+      params.push(status);
+    } else {
+      return json({ ok: false, error: 'status_invalid' }, 400, headers);
+    }
+  }
+  const category = (url.searchParams.get('category') || '').trim().toLowerCase();
+  if (category && category !== 'all') {
+    if (SIGNAL_CATEGORIES[category] !== 1) return json({ ok: false, error: 'category_unknown' }, 400, headers);
+    where.push('category = ?');
+    params.push(category);
+  }
+  const importance = (url.searchParams.get('importance') || '').trim().toLowerCase();
+  if (importance && importance !== 'all') {
+    if (SIGNAL_IMPORTANCES[importance] !== 1) return json({ ok: false, error: 'importance_unknown' }, 400, headers);
+    where.push('importance = ?');
+    params.push(importance);
+  }
+  const limit = Math.min(SIGNAL_ADMIN_MAX, Math.max(1, Number(url.searchParams.get('limit')) || SIGNAL_ADMIN_MAX));
+  const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+  const clause = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  try {
+    const rows = await env.DB.prepare(
+      'SELECT ' + SIGNAL_COLUMNS + ' FROM signal_messages' + clause +
+      ' ORDER BY updated_at DESC, id ASC LIMIT ' + limit + ' OFFSET ' + offset
+    ).bind(...params).all();
+    const counts = await env.DB.prepare(
+      'SELECT status, COUNT(*) AS n FROM signal_messages GROUP BY status'
+    ).all();
+    const byStatus = { draft: 0, scheduled: 0, active: 0, hidden: 0, revoked: 0, expired: 0 };
+    for (const row of (counts && counts.results) || []) {
+      if (byStatus[row.status] !== undefined) byStatus[row.status] = Number(row.n) || 0;
+    }
+    const items = ((rows && rows.results) || []).map(row => signalAdminRow(row, now));
+    return json({
+      ok: true, items, total: byStatus, limit, offset,
+      version: await signalVersionOf(env), server_time: now
+    }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+async function adminSignalsCreate(request, env, cors) {
+  const headers = adminHeaders(cors);
+  const body = await readJsonBody(request, MAX_SIGNAL_BODY_BYTES);
+  if (!body.ok) return json({ ok: false, error: body.error }, body.status, headers);
+  const value = body.value;
+  const title = signalText(value.title, 'title', 1, SIGNAL_LIMITS.title);
+  if (title.error) return json({ ok: false, error: title.error }, 400, headers);
+  const text = signalText(value.body, 'body', 3, SIGNAL_LIMITS.body);
+  if (text.error) return json({ ok: false, error: text.error }, 400, headers);
+  const category = value.category === undefined || value.category === null
+    ? 'general' : String(value.category).trim().toLowerCase();
+  if (SIGNAL_CATEGORIES[category] !== 1) return json({ ok: false, error: 'category_unknown' }, 400, headers);
+  const rawImportance = value.importance !== undefined && value.importance !== null
+    ? value.importance
+    : (value.type !== undefined && value.type !== null ? value.type : 'ambient');
+  const importance = String(rawImportance).trim().toLowerCase();
+  if (SIGNAL_IMPORTANCES[importance] !== 1) return json({ ok: false, error: 'importance_unknown' }, 400, headers);
+  const metadata = signalMetadataOf(value.metadata);
+  if (metadata.error) return json({ ok: false, error: metadata.error }, 400, headers);
+  const actor = signalActor(value.created_by);
+  if (actor.error) return json({ ok: false, error: actor.error }, 400, headers);
+  const requested = value.status === undefined ? 'draft' : String(value.status).trim().toLowerCase();
+  if (requested === 'expired') return json({ ok: false, error: 'status_invalid' }, 400, headers);
+  if (['draft', 'scheduled', 'active'].indexOf(requested) === -1) {
+    return json({ ok: false, error: 'status_invalid' }, 400, headers);
+  }
+  const when = signalTimestamps(value, signalNowSec());
+  if (when.error) return json({ ok: false, error: when.error }, 400, headers);
+  if (requested === 'scheduled' && when.scheduledAt === null) {
+    return json({ ok: false, error: 'scheduled_at_required' }, 400, headers);
+  }
+  const profileId = value.profile_id === undefined || value.profile_id === null || value.profile_id === ''
+    ? null : String(value.profile_id);
+  if (profileId !== null && !SIGNAL_ID_REGEX.test(profileId)) {
+    return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+  }
+  const now = signalNowSec();
+  const id = randomId();
+  try {
+    if (profileId) {
+      const known = await env.DB.prepare('SELECT id FROM star_profiles WHERE id = ?').bind(profileId).first();
+      if (!known) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    }
+    const values = [id, title.value, text.value, category, importance, requested, 1, now, now,
+      requested === 'active' ? now : null, when.scheduledAt, when.expiresAt,
+      profileId, actor.value, JSON.stringify(metadata.value)];
+    let sql = 'INSERT INTO signal_messages (' + SIGNAL_INSERT_COLUMNS + ') SELECT ' +
+      values.map(() => '?').join(',');
+    // The ceiling lives inside the statement, so two concurrent admins cannot both
+    // slip past a count-then-insert pair.
+    if (requested === 'active') {
+      sql += " WHERE (SELECT COUNT(*) FROM signal_messages WHERE status = 'active') < " + SIGNAL_MAX_ACTIVE;
+    }
+    const inserted = await env.DB.prepare(sql).bind(...values).run();
+    if (changesOf(inserted) === 0) {
+      return json({ ok: false, error: 'active_limit_reached' }, 409, headers);
+    }
+    const row = await env.DB.prepare(
+      'SELECT ' + SIGNAL_COLUMNS + ' FROM signal_messages WHERE id = ?'
+    ).bind(id).first();
+    return json({ ok: true, message: signalAdminRow(row, now), version: await signalVersionOf(env) }, 201, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+async function adminSignalsDetail(id, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'invalid_id' }, 400, headers);
+  const now = signalNowSec();
+  try {
+    const row = await env.DB.prepare(
+      'SELECT ' + SIGNAL_COLUMNS + ' FROM signal_messages WHERE id = ?'
+    ).bind(id).first();
+    if (!row) return json({ ok: false, error: 'signal_not_found' }, 404, headers);
+    let profile = null;
+    if (row.profile_id) {
+      const p = await env.DB.prepare(
+        'SELECT id, name, current_version, active_version FROM star_profiles WHERE id = ?'
+      ).bind(row.profile_id).first();
+      if (p) {
+        profile = {
+          id: p.id, name: p.name, current_version: Number(p.current_version) || 0,
+          active_version: Number(p.active_version) || 0,
+          published: Number(p.active_version) > 0
+        };
+      }
+    }
+    return json({
+      ok: true, message: signalAdminRow(row, now), profile,
+      allowed_transitions: (SIGNAL_TRANSITIONS[row.status] || []).filter(s => s !== 'expired'),
+      version: await signalVersionOf(env), server_time: now
+    }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+// Content edit only: status never changes here, so publishing stays an explicit
+// action and editing a draft can never take it live by accident.
+async function adminSignalsUpdate(id, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'invalid_id' }, 400, headers);
+  const body = await readJsonBody(request, MAX_SIGNAL_BODY_BYTES);
+  if (!body.ok) return json({ ok: false, error: body.error }, body.status, headers);
+  const value = body.value;
+  if (value.status !== undefined) return json({ ok: false, error: 'status_requires_transition' }, 400, headers);
+  const fields = [];
+  const params = [];
+  if (value.title !== undefined) {
+    const title = signalText(value.title, 'title', 1, SIGNAL_LIMITS.title);
+    if (title.error) return json({ ok: false, error: title.error }, 400, headers);
+    fields.push('title = ?');
+    params.push(title.value);
+  }
+  if (value.body !== undefined) {
+    const text = signalText(value.body, 'body', 3, SIGNAL_LIMITS.body);
+    if (text.error) return json({ ok: false, error: text.error }, 400, headers);
+    fields.push('body = ?');
+    params.push(text.value);
+  }
+  if (value.category !== undefined) {
+    const category = String(value.category).trim().toLowerCase();
+    if (SIGNAL_CATEGORIES[category] !== 1) return json({ ok: false, error: 'category_unknown' }, 400, headers);
+    fields.push('category = ?');
+    params.push(category);
+  }
+  if (value.importance !== undefined || value.type !== undefined) {
+    const importance = String(value.importance !== undefined ? value.importance : value.type).trim().toLowerCase();
+    if (SIGNAL_IMPORTANCES[importance] !== 1) return json({ ok: false, error: 'importance_unknown' }, 400, headers);
+    fields.push('importance = ?');
+    params.push(importance);
+  }
+  if (value.metadata !== undefined) {
+    const metadata = signalMetadataOf(value.metadata);
+    if (metadata.error) return json({ ok: false, error: metadata.error }, 400, headers);
+    fields.push('metadata = ?');
+    params.push(JSON.stringify(metadata.value));
+  }
+  if (value.profile_id !== undefined) {
+    const profileId = value.profile_id === null || value.profile_id === '' ? null : String(value.profile_id);
+    if (profileId !== null && !SIGNAL_ID_REGEX.test(profileId)) {
+      return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+    }
+    if (profileId) {
+      const known = await env.DB.prepare('SELECT id FROM star_profiles WHERE id = ?').bind(profileId).first();
+      if (!known) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    }
+    fields.push('profile_id = ?');
+    params.push(profileId);
+  }
+  const now = signalNowSec();
+  if (value.scheduled_at !== undefined || value.expires_at !== undefined || value.expires_in !== undefined) {
+    const current = await env.DB.prepare(
+      'SELECT scheduled_at, expires_at FROM signal_messages WHERE id = ?'
+    ).bind(id).first();
+    if (!current) return json({ ok: false, error: 'signal_not_found' }, 404, headers);
+    const probe = {};
+    if (value.scheduled_at !== undefined) probe.scheduled_at = value.scheduled_at;
+    else if (current.scheduled_at !== null) probe.scheduled_at = current.scheduled_at;
+    if (value.expires_at !== undefined) probe.expires_at = value.expires_at;
+    else if (value.expires_in !== undefined) probe.expires_in = value.expires_in;
+    else if (current.expires_at !== null) probe.expires_at = current.expires_at;
+    if (value.expires_at === null || value.expires_in === null) delete probe.expires_at;
+    const when = signalTimestamps(probe, now);
+    if (when.error) return json({ ok: false, error: when.error }, 400, headers);
+    fields.push('scheduled_at = ?', 'expires_at = ?');
+    params.push(when.scheduledAt, when.expiresAt);
+  }
+  if (!fields.length) return json({ ok: false, error: 'nothing_to_update' }, 400, headers);
+  const expected = signalInt(value.expected_version);
+  fields.push('updated_at = ?');
+  params.push(now);
+  fields.push('state_version = state_version + 1');
+  let guard = 'id = ?';
+  const guardParams = [id];
+  if (expected !== null) {
+    guard += ' AND state_version = ?';
+    guardParams.push(expected);
+  }
+  try {
+    const result = await env.DB.prepare(
+      'UPDATE signal_messages SET ' + fields.join(', ') + ' WHERE ' + guard
+    ).bind(...params.concat(guardParams)).run();
+    if (changesOf(result) === 0) {
+      const conflict = await env.DB.prepare(
+        'SELECT state_version FROM signal_messages WHERE id = ?'
+      ).bind(id).first();
+      if (!conflict) return json({ ok: false, error: 'signal_not_found' }, 404, headers);
+      return json({
+        ok: false, error: 'stale_snapshot', current_version: Number(conflict.state_version) || 0
+      }, 409, headers);
+    }
+    const row = await env.DB.prepare(
+      'SELECT ' + SIGNAL_COLUMNS + ' FROM signal_messages WHERE id = ?'
+    ).bind(id).first();
+    return json({ ok: true, message: signalAdminRow(row, signalNowSec()), version: await signalVersionOf(env) }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+function signalSourceStates(target) {
+  return Object.keys(SIGNAL_TRANSITIONS).filter(status =>
+    status !== 'expired' && SIGNAL_TRANSITIONS[status].indexOf(target) !== -1
+  );
+}
+
+async function adminSignalsTransition(id, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'invalid_id' }, 400, headers);
+  const body = await readJsonBody(request, MAX_SIGNAL_BODY_BYTES);
+  if (!body.ok) return json({ ok: false, error: body.error }, body.status, headers);
+  const value = body.value;
+  const action = typeof value.action === 'string' ? value.action.trim().toLowerCase() : '';
+  if (SIGNAL_ACTIONS[action] !== 1) return json({ ok: false, error: 'action_invalid' }, 400, headers);
+  const target = SIGNAL_TARGETS[action];
+  const now = signalNowSec();
+  let scheduledAt = null;
+  if (action === 'schedule') {
+    const when = signalTimestamps({ scheduled_at: value.scheduled_at }, now);
+    if (when.error) return json({ ok: false, error: when.error }, 400, headers);
+    if (when.scheduledAt === null) return json({ ok: false, error: 'scheduled_at_required' }, 400, headers);
+    scheduledAt = when.scheduledAt;
+  }
+  const sources = signalSourceStates(target);
+  const expected = signalInt(value.expected_version);
+  // One guarded statement: target status, source-status list, row version and the
+  // expiry window all live in the SQL, so two concurrent admins cannot both win.
+  const set = ['status = ?', 'updated_at = ?', 'state_version = state_version + 1'];
+  const params = [target, now];
+  if (target === 'active') {
+    // First publication wins: restoring a hidden message keeps its original date.
+    set.push('published_at = COALESCE(published_at, ?)');
+    params.push(now);
+    set.push('scheduled_at = NULL');
+  } else if (action === 'schedule') {
+    set.push('scheduled_at = ?');
+    params.push(scheduledAt);
+  }
+  let sql = 'UPDATE signal_messages SET ' + set.join(', ') +
+    ' WHERE id = ? AND status IN (' + sources.map(() => '?').join(',') + ')';
+  params.push(id);
+  params.push(...sources);
+  if (target === 'active') {
+    sql += ' AND (expires_at IS NULL OR expires_at > ?)';
+    params.push(now);
+  }
+  if (expected !== null) {
+    sql += ' AND state_version = ?';
+    params.push(expected);
+  }
+  try {
+    // Materialise due rows first, so a stored status never contradicts server time.
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE signal_messages SET status = 'active', published_at = COALESCE(published_at, ?), " +
+        'updated_at = ?, state_version = state_version + 1 ' +
+        "WHERE status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ?"
+      ).bind(now, now, now),
+      env.DB.prepare(
+        "UPDATE signal_messages SET status = 'expired', updated_at = ?, state_version = state_version + 1 " +
+        "WHERE status IN ('active','scheduled','hidden') AND expires_at IS NOT NULL AND expires_at <= ?"
+      ).bind(now, now)
+    ]);
+    const result = await env.DB.prepare(sql).bind(...params).run();
+    if (changesOf(result) === 0) {
+      const row = await env.DB.prepare(
+        'SELECT status, state_version, expires_at FROM signal_messages WHERE id = ?'
+      ).bind(id).first();
+      if (!row) return json({ ok: false, error: 'signal_not_found' }, 404, headers);
+      if (expected !== null && Number(row.state_version) !== expected) {
+        return json({ ok: false, error: 'stale_snapshot', current_version: Number(row.state_version) || 0 }, 409, headers);
+      }
+      if (row.expires_at !== null && Number(row.expires_at) <= now) {
+        return json({ ok: false, error: 'already_expired', current_status: row.status }, 409, headers);
+      }
+      return json({
+        ok: false, error: 'invalid_transition', from: row.status, to: target,
+        allowed: (SIGNAL_TRANSITIONS[row.status] || []).filter(s => s !== 'expired')
+      }, 409, headers);
+    }
+    const row = await env.DB.prepare(
+      'SELECT ' + SIGNAL_COLUMNS + ' FROM signal_messages WHERE id = ?'
+    ).bind(id).first();
+    return json({
+      ok: true, message: signalAdminRow(row, now), action,
+      version: await signalVersionOf(env), server_time: now
+    }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+// Hard deletion is separate from deactivation on purpose: revoke and hide stay the
+// recoverable options, this needs an explicit confirmation phrase and a matching
+// expected_version so a stale dashboard row cannot delete the wrong message.
+async function adminSignalsDelete(id, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'invalid_id' }, 400, headers);
+  const body = await readJsonBody(request, MAX_SIGNAL_BODY_BYTES);
+  if (!body.ok) return json({ ok: false, error: body.error }, body.status, headers);
+  const value = body.value || {};
+  if (value.confirm !== SIGNAL_DELETE_CONFIRM) {
+    return json({ ok: false, error: 'confirmation_required' }, 400, headers);
+  }
+  const expected = signalInt(value.expected_version);
+  try {
+    let sql = 'DELETE FROM signal_messages WHERE id = ?';
+    const params = [id];
+    if (expected !== null) {
+      sql += ' AND state_version = ?';
+      params.push(expected);
+    }
+    const result = await env.DB.prepare(sql).bind(...params).run();
+    if (changesOf(result) === 0) {
+      const row = await env.DB.prepare('SELECT state_version FROM signal_messages WHERE id = ?').bind(id).first();
+      if (!row) return json({ ok: false, error: 'signal_not_found' }, 404, headers);
+      return json({ ok: false, error: 'stale_snapshot', current_version: Number(row.state_version) || 0 }, 409, headers);
+    }
+    return json({ ok: true, deleted: id, version: await signalVersionOf(env) }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+/* ---------------------------- admin: profiles ---------------------------- */
+
+function signalProfileRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    current_version: Number(row.current_version) || 0,
+    active_version: Number(row.active_version) || 0,
+    published: (Number(row.active_version) || 0) > 0,
+    created_at: Number(row.created_at) || 0,
+    updated_at: Number(row.updated_at) || 0,
+    message_count: Number(row.message_count) || 0,
+    scopes: row.scopes ? String(row.scopes).split(',') : []
+  };
+}
+
+const SIGNAL_PROFILE_SELECT =
+  'SELECT p.id, p.name, p.current_version, p.active_version, p.created_at, p.updated_at, ' +
+  '(SELECT COUNT(*) FROM signal_messages m WHERE m.profile_id = p.id) AS message_count, ' +
+  '(SELECT GROUP_CONCAT(a.scope) FROM star_profile_assignments a WHERE a.profile_id = p.id) AS scopes ' +
+  'FROM star_profiles p ';
+
+async function readSignalBody(request, headers) {
+  const body = await readJsonBody(request, MAX_SIGNAL_BODY_BYTES);
+  if (!body.ok) return { error: body.error, status: body.status, headers };
+  const value = body.value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { error: 'invalid_json_body', status: 400, headers };
+  }
+  return { value };
+}
+
+async function adminSignalProfiles(env, cors) {
+  const headers = adminHeaders(cors);
+  try {
+    const rows = await env.DB.prepare(SIGNAL_PROFILE_SELECT + 'ORDER BY p.name LIMIT 100').all();
+    const items = ((rows && rows.results) || []).map(signalProfileRow);
+    return json({ ok: true, items, version: await signalVersionOf(env) }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+async function adminSignalProfileCreate(request, env, cors) {
+  const headers = adminHeaders(cors);
+  const body = await readSignalBody(request, headers);
+  if (body.error) return json({ ok: false, error: body.error }, body.status, headers);
+  const name = signalName(body.value.name);
+  if (name.error) return json({ ok: false, error: name.error }, 400, headers);
+  const settings = normalizeSignalSettings(body.value.settings);
+  if (settings.error) return json({ ok: false, error: settings.error }, 400, headers);
+  const actor = signalActor(body.value.created_by);
+  if (actor.error) return json({ ok: false, error: actor.error }, 400, headers);
+  let settingsJson = signalSettingsJson(settings.value);
+  // Copying an existing profile is the "start from this" path; the copy is always
+  // created unpublished so duplication can never take a look live by accident.
+  const source = body.value.from_profile_id;
+  if (source !== undefined && source !== null && source !== '') {
+    if (!SIGNAL_ID_REGEX.test(String(source))) return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+    const src = await env.DB.prepare(
+      'SELECT p.id, v.settings FROM star_profiles p ' +
+      'JOIN star_profile_versions v ON v.profile_id = p.id AND v.version = p.current_version WHERE p.id = ?'
+    ).bind(String(source)).first();
+    if (!src) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    settingsJson = src.settings;
+  }
+  const now = signalNowSec();
+  const id = randomId();
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO star_profiles (id, name, current_version, active_version, created_at, updated_at) ' +
+        "VALUES (?, ?, 1, 0, ?, ?)"
+      ).bind(id, name.value, now, now),
+      env.DB.prepare(
+        'INSERT INTO star_profile_versions (profile_id, version, settings, created_at, created_by) ' +
+        'VALUES (?, 1, ?, ?, ?)'
+      ).bind(id, settingsJson, now, actor.value)
+    ]);
+    const row = await env.DB.prepare(SIGNAL_PROFILE_SELECT + 'WHERE p.id = ?').bind(id).first();
+    return json({ ok: true, profile: signalProfileRow(row), settings: parseSignalSettings(settingsJson) }, 201, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+async function adminSignalProfileDetail(id, env, cors, wantVersions) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+  try {
+    const row = await env.DB.prepare(SIGNAL_PROFILE_SELECT + 'WHERE p.id = ?').bind(id).first();
+    if (!row) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    const out = { ok: true, profile: signalProfileRow(row), version: await signalVersionOf(env) };
+    if (row.active_version > 0) {
+      const active = await env.DB.prepare(
+        'SELECT settings FROM star_profile_versions WHERE profile_id = ? AND version = ?'
+      ).bind(id, Number(row.active_version)).first();
+      out.active_settings = active ? parseSignalSettings(active.settings) : null;
+    } else {
+      out.active_settings = null;
+    }
+    const current = await env.DB.prepare(
+      'SELECT settings FROM star_profile_versions WHERE profile_id = ? AND version = ?'
+    ).bind(id, Number(row.current_version)).first();
+    out.draft_settings = current ? parseSignalSettings(current.settings) : null;
+    if (wantVersions) {
+      const versions = await env.DB.prepare(
+        'SELECT version, settings, created_at, created_by FROM star_profile_versions ' +
+        'WHERE profile_id = ? ORDER BY version DESC LIMIT 50'
+      ).bind(id).all();
+      out.versions = ((versions && versions.results) || []).map(v => ({
+        version: Number(v.version),
+        settings: parseSignalSettings(v.settings),
+        created_at: Number(v.created_at) || 0,
+        created_by: v.created_by || null,
+        active: Number(v.version) === Number(row.active_version)
+      }));
+    }
+    return json(out, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+// Saving creates a new version and leaves active_version untouched: the public keeps
+// the previously activated configuration until an explicit activate call.
+async function adminSignalProfileSave(id, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+  const body = await readSignalBody(request, headers);
+  if (body.error) return json({ ok: false, error: body.error }, body.status, headers);
+  const value = body.value;
+  if (value.settings === undefined) return json({ ok: false, error: 'settings_required' }, 400, headers);
+  const settings = normalizeSignalSettings(value.settings);
+  if (settings.error) return json({ ok: false, error: settings.error }, 400, headers);
+  let name = null;
+  if (value.name !== undefined) {
+    const parsed = signalName(value.name);
+    if (parsed.error) return json({ ok: false, error: parsed.error }, 400, headers);
+    name = parsed.value;
+  }
+  const actor = signalActor(value.created_by);
+  if (actor.error) return json({ ok: false, error: actor.error }, 400, headers);
+  const now = signalNowSec();
+  const expected = signalInt(value.expected_version);
+  const settingsJson = signalSettingsJson(settings.value);
+  try {
+    let guard = 'WHERE id = ?';
+    const params = [now, name, id];
+    if (expected !== null) {
+      guard += ' AND current_version = ?';
+      params.push(expected);
+    }
+    // The new version number is read inside the insert statement, so two saves in
+    // flight cannot be handed the same number by a stale read.
+    const batch = await env.DB.batch([
+      env.DB.prepare(
+        'UPDATE star_profiles SET current_version = current_version + 1, updated_at = ?, ' +
+        'name = COALESCE(?, name) ' + guard
+      ).bind(...params),
+      env.DB.prepare(
+        'INSERT INTO star_profile_versions (profile_id, version, settings, created_at, created_by) ' +
+        'SELECT id, current_version, ?, ?, ? FROM star_profiles WHERE id = ?'
+      ).bind(settingsJson, now, actor.value, id),
+      env.DB.prepare(SIGNAL_PROFILE_SELECT + 'WHERE p.id = ?').bind(id)
+    ]);
+    const row = ((batch[2] && batch[2].results) || [])[0];
+    if (!row) {
+      return json({ ok: false, error: changesOf(batch[0]) === 0 ? 'stale_or_missing_profile' : 'profile_not_found' },
+        changesOf(batch[0]) === 0 ? 409 : 404, headers);
+    }
+    const profile = signalProfileRow(row);
+    return json({
+      ok: true, profile, saved_version: profile.current_version,
+      active_version: profile.active_version, published: profile.published,
+      settings: parseSignalSettings(settingsJson), version: await signalVersionOf(env)
+    }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    if (/UNIQUE constraint failed:\s*star_profile_versions/i.test(String((e && e.message) || ''))) {
+      return json({ ok: false, error: 'stale_snapshot' }, 409, headers);
+    }
+    throw e;
+  }
+}
+
+// Activate publishes an already-saved version. The previously active version stays in
+// star_profile_versions, which is what makes restoration possible later.
+async function adminSignalProfileActivate(id, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+  const body = await readSignalBody(request, headers);
+  if (body.error) return json({ ok: false, error: body.error }, body.status, headers);
+  const wanted = signalInt(body.value.version);
+  const expected = signalInt(body.value.expected_version);
+  const now = signalNowSec();
+  try {
+    const before = await env.DB.prepare(
+      'SELECT id, current_version, active_version FROM star_profiles WHERE id = ?'
+    ).bind(id).first();
+    if (!before) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    const targetVersion = wanted === null ? Number(before.current_version) : wanted;
+    if (targetVersion < 1 || targetVersion > Number(before.current_version)) {
+      return json({ ok: false, error: 'version_not_found', current_version: Number(before.current_version) }, 409, headers);
+    }
+    let sql = 'UPDATE star_profiles SET active_version = ?, updated_at = ? WHERE id = ? ' +
+      'AND EXISTS (SELECT 1 FROM star_profile_versions v WHERE v.profile_id = star_profiles.id AND v.version = ?)';
+    const params = [targetVersion, now, id, targetVersion];
+    if (expected !== null) {
+      sql += ' AND current_version = ?';
+      params.push(expected);
+    }
+    const result = await env.DB.prepare(sql).bind(...params).run();
+    if (changesOf(result) === 0) {
+      return json({ ok: false, error: 'stale_snapshot' }, 409, headers);
+    }
+    const stored = await env.DB.prepare(
+      'SELECT settings FROM star_profile_versions WHERE profile_id = ? AND version = ?'
+    ).bind(id, targetVersion).first();
+    return json({
+      ok: true, profile_id: id, active_version: targetVersion,
+      previous_active_version: Number(before.active_version) || 0,
+      settings: parseSignalSettings(stored ? stored.settings : '{}'),
+      version: await signalVersionOf(env), server_time: now
+    }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+// Restore copies an older version forward as a new current version instead of
+// rewinding history, so the version that was active a moment ago is still there.
+async function adminSignalProfileRestore(id, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+  const body = await readSignalBody(request, headers);
+  if (body.error) return json({ ok: false, error: body.error }, body.status, headers);
+  const from = signalInt(body.value.version);
+  if (from === null || from < 1) return json({ ok: false, error: 'version_required' }, 400, headers);
+  const activate = body.value.activate === true;
+  const actor = signalActor(body.value.created_by);
+  if (actor.error) return json({ ok: false, error: actor.error }, 400, headers);
+  const now = signalNowSec();
+  try {
+    const exists = await env.DB.prepare(
+      'SELECT version FROM star_profile_versions WHERE profile_id = ? AND version = ?'
+    ).bind(id, from).first();
+    if (!exists) return json({ ok: false, error: 'version_not_found' }, 404, headers);
+    const batch = await env.DB.batch([
+      env.DB.prepare('UPDATE star_profiles SET current_version = current_version + 1, updated_at = ? WHERE id = ?')
+        .bind(now, id),
+      env.DB.prepare(
+        'INSERT INTO star_profile_versions (profile_id, version, settings, created_at, created_by) ' +
+        'SELECT p.id, p.current_version, v.settings, ?, ? FROM star_profiles p ' +
+        'JOIN star_profile_versions v ON v.profile_id = p.id AND v.version = ? WHERE p.id = ?'
+      ).bind(now, actor.value, from, id),
+      env.DB.prepare(SIGNAL_PROFILE_SELECT + 'WHERE p.id = ?').bind(id)
+    ]);
+    if (changesOf(batch[1]) === 0) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    const row = ((batch[2] && batch[2].results) || [])[0];
+    const profile = signalProfileRow(row);
+    let active = profile.active_version;
+    if (activate) {
+      await env.DB.prepare('UPDATE star_profiles SET active_version = ?, updated_at = ? WHERE id = ?')
+        .bind(profile.current_version, now, id).run();
+      active = profile.current_version;
+      profile.active_version = active;
+      profile.published = true;
+    }
+    const stored = await env.DB.prepare(
+      'SELECT settings FROM star_profile_versions WHERE profile_id = ? AND version = ?'
+    ).bind(id, profile.current_version).first();
+    return json({
+      ok: true, profile, restored_from: from, active_version: active,
+      settings: parseSignalSettings(stored ? stored.settings : '{}'),
+      version: await signalVersionOf(env)
+    }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+async function adminSignalProfileDuplicate(id, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+  const body = await readSignalBody(request, headers);
+  if (body.error) return json({ ok: false, error: body.error }, body.status, headers);
+  const actor = signalActor(body.value.created_by);
+  if (actor.error) return json({ ok: false, error: actor.error }, 400, headers);
+  const now = signalNowSec();
+  try {
+    const src = await env.DB.prepare(
+      'SELECT p.name, v.settings FROM star_profiles p ' +
+      'JOIN star_profile_versions v ON v.profile_id = p.id AND v.version = p.current_version WHERE p.id = ?'
+    ).bind(id).first();
+    if (!src) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    let label = src.name;
+    if (body.value.name !== undefined) {
+      const parsed = signalName(body.value.name);
+      if (parsed.error) return json({ ok: false, error: parsed.error }, 400, headers);
+      label = parsed.value;
+    } else {
+      label = signalName(src.name + ' copy').value || 'Copied profile';
+    }
+    const newId = randomId();
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO star_profiles (id, name, current_version, active_version, created_at, updated_at) ' +
+        'VALUES (?, ?, 1, 0, ?, ?)'
+      ).bind(newId, label, now, now),
+      env.DB.prepare(
+        'INSERT INTO star_profile_versions (profile_id, version, settings, created_at, created_by) VALUES (?, 1, ?, ?, ?)'
+      ).bind(newId, src.settings, now, actor.value)
+    ]);
+    const row = await env.DB.prepare(SIGNAL_PROFILE_SELECT + 'WHERE p.id = ?').bind(newId).first();
+    return json({ ok: true, profile: signalProfileRow(row), copied_from: id }, 201, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+async function adminSignalProfileDelete(id, request, env, cors) {
+  const headers = adminHeaders(cors);
+  if (!SIGNAL_ID_REGEX.test(id)) return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+  const body = await readSignalBody(request, headers);
+  if (body.error) return json({ ok: false, error: body.error }, body.status, headers);
+  if (body.value.confirm !== SIGNAL_PROFILE_DELETE_CONFIRM) {
+    return json({ ok: false, error: 'confirmation_required' }, 400, headers);
+  }
+  try {
+    const usage = await env.DB.prepare(
+      'SELECT (SELECT COUNT(*) FROM star_profile_assignments WHERE profile_id = ?) AS scopes, ' +
+      '(SELECT COUNT(*) FROM signal_messages WHERE profile_id = ?) AS messages'
+    ).bind(id, id).first();
+    if (usage && ((Number(usage.scopes) || 0) > 0 || (Number(usage.messages) || 0) > 0)) {
+      return json({
+        ok: false, error: 'profile_in_use', assignment_count: Number(usage.scopes) || 0,
+        message_count: Number(usage.messages) || 0
+      }, 409, headers);
+    }
+    const known = await env.DB.prepare('SELECT id FROM star_profiles WHERE id = ?').bind(id).first();
+    if (!known) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM star_profile_versions WHERE profile_id = ?').bind(id),
+      env.DB.prepare('DELETE FROM star_profiles WHERE id = ?').bind(id)
+    ]);
+    return json({ ok: true, deleted: id, version: await signalVersionOf(env) }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+/* --------------------------- admin: assignments --------------------------- */
+
+async function adminSignalAssignments(env, cors) {
+  const headers = adminHeaders(cors);
+  try {
+    const rows = await env.DB.prepare(
+      'SELECT a.scope, a.profile_id, a.updated_at, p.name FROM star_profile_assignments a ' +
+      'LEFT JOIN star_profiles p ON p.id = a.profile_id ORDER BY a.scope'
+    ).all();
+    const items = ((rows && rows.results) || []).map(row => ({
+      scope: row.scope, profile_id: row.profile_id,
+      name: row.name || null, updated_at: Number(row.updated_at) || 0
+    }));
+    return json({ ok: true, items, version: await signalVersionOf(env) }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+async function adminSignalAssign(request, env, cors) {
+  const headers = adminHeaders(cors);
+  const body = await readSignalBody(request, headers);
+  if (body.error) return json({ ok: false, error: body.error }, body.status, headers);
+  const scope = signalScopeParts(body.value.scope);
+  if (scope.error) return json({ ok: false, error: scope.error }, 400, headers);
+  const now = signalNowSec();
+  const profileId = body.value.profile_id === undefined || body.value.profile_id === null || body.value.profile_id === ''
+    ? null : String(body.value.profile_id);
+  try {
+    if (profileId === null) {
+      const result = await env.DB.prepare('DELETE FROM star_profile_assignments WHERE scope = ?')
+        .bind(scope.value).run();
+      return json({ ok: true, scope: scope.value, profile_id: null, cleared: changesOf(result) }, 200, headers);
+    }
+    if (!SIGNAL_ID_REGEX.test(profileId)) return json({ ok: false, error: 'profile_id_invalid' }, 400, headers);
+    const target = await env.DB.prepare(
+      'SELECT id, active_version, current_version FROM star_profiles WHERE id = ?'
+    ).bind(profileId).first();
+    if (!target) return json({ ok: false, error: 'profile_not_found' }, 404, headers);
+    // An unactivated profile has nothing public to serve, so pointing a scope at one
+    // would silently fall back at render time. Refuse instead.
+    if ((Number(target.active_version) || 0) < 1) {
+      return json({ ok: false, error: 'profile_not_active' }, 409, headers);
+    }
+    await env.DB.prepare(
+      'INSERT INTO star_profile_assignments (scope, profile_id, updated_at) VALUES (?, ?, ?) ' +
+      'ON CONFLICT(scope) DO UPDATE SET profile_id = excluded.profile_id, updated_at = excluded.updated_at'
+    ).bind(scope.value, profileId, now).run();
+    return json({ ok: true, scope: scope.value, profile_id: profileId, version: await signalVersionOf(env) }, 200, headers);
+  } catch (e) {
+    if (isMissingSignalsTable(e)) return json({ ok: false, error: 'signals_unavailable' }, 503, headers);
+    throw e;
+  }
+}
+
+/* ------------------------------ dispatching ------------------------------ */
+
+// One entry point keeps every signals route inside the single adminAuthorized guard.
+async function adminSignals(request, url, env, cors) {
+  if (!env || !env.DB) return json({ ok: false, error: 'signals_unavailable' }, 503, adminHeaders(cors));
+  const rest = url.pathname.slice('/admin/signals'.length);
+  const method = request.method;
+  const msgCol = /^\/messages(?:\/([^/]+))?(\/transition)?$/.exec(rest);
+  if (msgCol) {
+    const id = msgCol[1] ? decodeURIComponent(msgCol[1]) : '';
+    if (msgCol[2] === '/transition') {
+      if (method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405, adminHeaders(cors));
+      return await adminSignalsTransition(id, request, env, cors);
+    }
+    if (!id) {
+      if (method === 'GET') return await adminSignalsList(url, env, cors);
+      if (method === 'POST') return await adminSignalsCreate(request, env, cors);
+      return json({ ok: false, error: 'method_not_allowed' }, 405, adminHeaders(cors));
+    }
+    if (method === 'GET') return await adminSignalsDetail(id, env, cors);
+    if (method === 'PUT') return await adminSignalsUpdate(id, request, env, cors);
+    if (method === 'DELETE') return await adminSignalsDelete(id, request, env, cors);
+    return json({ ok: false, error: 'method_not_allowed' }, 405, adminHeaders(cors));
+  }
+  const profCol = /^\/profiles(?:\/([^/]+))?(\/activate|\/restore|\/duplicate|\/versions)?$/.exec(rest);
+  if (profCol) {
+    const id = profCol[1] ? decodeURIComponent(profCol[1]) : '';
+    const tail = profCol[2] || '';
+    if (tail) {
+      if (method !== 'POST' && !(tail === '/versions' && method === 'GET')) {
+        return json({ ok: false, error: 'method_not_allowed' }, 405, adminHeaders(cors));
+      }
+      if (tail === '/versions') return await adminSignalProfileDetail(id, env, cors, true);
+      if (tail === '/activate') return await adminSignalProfileActivate(id, request, env, cors);
+      if (tail === '/restore') return await adminSignalProfileRestore(id, request, env, cors);
+      return await adminSignalProfileDuplicate(id, request, env, cors);
+    }
+    if (!id) {
+      if (method === 'GET') return await adminSignalProfiles(env, cors);
+      if (method === 'POST') return await adminSignalProfileCreate(request, env, cors);
+      return json({ ok: false, error: 'method_not_allowed' }, 405, adminHeaders(cors));
+    }
+    if (method === 'GET') return await adminSignalProfileDetail(id, env, cors, false);
+    if (method === 'PUT') return await adminSignalProfileSave(id, request, env, cors);
+    if (method === 'DELETE') return await adminSignalProfileDelete(id, request, env, cors);
+    return json({ ok: false, error: 'method_not_allowed' }, 405, adminHeaders(cors));
+  }
+  if (rest === '/assignments') {
+    if (method === 'GET') return await adminSignalAssignments(env, cors);
+    if (method === 'POST') return await adminSignalAssign(request, env, cors);
+    return json({ ok: false, error: 'method_not_allowed' }, 405, adminHeaders(cors));
+  }
+  return json({ ok: false, error: 'not_found' }, 404, adminHeaders(cors));
 }
