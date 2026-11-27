@@ -1,21 +1,23 @@
 # Unified Admin Control Center — Owner Review Handoff
 
-Prepared 2026-11-27 on `feature/admin-unified-experience`. Local work only: nothing was pushed,
-merged into a remote branch, deployed, or applied to production.
+Prepared 2026-11-27 on `feature/admin-unified-experience`. The review pass below was written while
+the work was local-only; §7 records what has since been released to production.
 
 ## 1. Git state
 
 | Item | Value |
 | --- | --- |
-| Latest `origin/main` at review time | `8dd256a` — *Merge pull request #12 from feature/podcast-homepage-backfill-integration* |
+| Latest `origin/main` at review time | `fbbc3f7` — *fix: stabilize podcast artwork and polish glass menus* |
 | Branch for this review | `feature/admin-unified-experience` |
-| HEAD | merge commit `e68d46e` (*Merge origin/main … into the unified admin branch*) |
+| HEAD | merge commit `d876ea5` (*Merge origin/main (podcast artwork stability + glass menus) into the unified admin release branch*) |
 | Safety reference before reconciling | branch `safety/admin-pre-reconcile-20261127` and tag `audit/admin-pre-reconcile`, both at `c8e2504` |
+| Safety reference before releasing | branch `safety/admin-pre-release-20261127` and tag `release/pre-production-1ae8f53`, both at `1ae8f53` |
 | Working tree | clean except untracked `_tmp/` (scratch probes, never committed) |
 
-The admin branch was based on `404c9b4`; `origin/main` had moved 4 commits ahead. Those 4 commits
-are now integrated by the merge, with **no conflicts** — none of them touched a file the admin work
-touched (`git diff --name-only` overlap between the two sides was empty).
+The admin branch was based on `404c9b4`. `origin/main` had moved ahead twice since; both moves are
+now integrated by merges (`e68d46e` for `8dd256a`, `d876ea5` for `fbbc3f7`), each with **no
+conflicts** — neither side touched a file the admin work touched
+(`git diff --name-only` overlap was empty both times).
 
 Integrated from Podcast work:
 
@@ -25,9 +27,11 @@ Integrated from Podcast work:
 | `0332bc5` | merge of PR #11 (release/podcast-homepage-links-20261126) |
 | `cb69bb2` | backfill of podcast publisher homepage links |
 | `8dd256a` | merge of PR #12, plus `podcast-backfill.test.mjs` |
+| `fbbc3f7` | podcast artwork stability through load/rotate/rerender, and the accepted Podcast glass menus |
 
-Files that moved: `podcast-feed.js`, `podcast-store.js`, `podcast-window.js/.css`, `void-domains.js`,
-`tests/podcast-ux.test.mjs`, `podcast-backfill.test.mjs`, `podcast-feed.test.js`, `podcast-store.test.js`.
+Files that moved: `podcast-feed.js`, `podcast-store.js`, `podcast-window.js/.css`,
+`podcast-emblem.js/.css`, `podcast-layout.js`, `podcast-thread.css`, `podcast-player.js`,
+`void-domains.js/.css`, `void-glass.css`, `index.html`, plus the podcast test suites.
 
 ## 2. Podcast work deliberately left out
 
@@ -42,11 +46,11 @@ Files that moved: `podcast-feed.js`, `podcast-store.js`, `podcast-window.js/.css
   so it can be merged or cherry-picked without conflict whenever the owner accepts it. It also removes
   the artwork-as-link behaviour that `93fc2f5` just shipped, which is a product decision for the
   Podcast owner, not the admin panel.
-* Podcast menu glass styling is **not** in this branch. `podcast-window.js` currently has uncommitted
-  in-flight edits in `E:\google chrome extention\_preview\void-galaxy-music-podcast-ui` (share-popover
-  placement), so that file pair belongs to the Podcast UI agent. The admin panel touches none of it:
-  every admin style is scoped under `#void-admin-root`, so a glass restyle of the podcast menus cannot
-  conflict with this work.
+* Podcast menu glass styling is **integrated, not invented here**. It arrived on `origin/main` via
+  `fbbc3f7` and came with its own tests (`D3: the glass menus preserve placement and sizing with
+  restrained Podcast-only styling`), so the admin branch took it by merge rather than restyling the
+  same files from a second direction. The admin panel still touches none of it: every admin style is
+  scoped under `#void-admin-root`.
 
 ## 3. Admin architecture preserved
 
@@ -104,4 +108,27 @@ but pressing play on a demo track will not produce sound.
 * One shared local secret, no roles, no 2FA — as scoped for this owner-operated version.
 * `created_by` is a self-declared label, not an identity; admin writes are not rate-limited (only
   failed logins are, 10/hour per hashed /64 IP).
-* The artwork-stability fix and the podcast menu glass pass are not in this branch (see §2).
+* The artwork-stability fix and the Podcast glass menus are in this branch by merge from
+  `origin/main` (`fbbc3f7`); `f07023d` from `feature/podcast-artwork-stability` is still separate
+  (see §2).
+
+## 7. Production release (2026-11-27)
+
+* Database: a full production export was taken before any change —
+  `E:\google chrome extention\_backups\void-galaxy-music-20261127-signals-pre-production\void-galaxy-letters-db-559070d9-pre-signals.sql`
+  (101,993 bytes, md5 `79d842997e8a458b3c94369ed8dea0d9`, 21 tables, 461 data rows).
+  `BACKUP-INFO.txt` beside it records the database id and export id.
+* Migration: `worker/letters/migrations/2026-11-26-void-signals.sql` applied to
+  `DB` = `559070d9-afb4-471e-8839-78866e9437a1` (version `production`) only. It is additive:
+  19 objects all guarded by `IF NOT EXISTS`, no `DROP`/`ALTER`/`TRUNCATE`, and the only
+  `UPDATE`/`DELETE` keywords are foreign-key clauses on the new tables and trigger bodies that
+  bump the new `signal_state` singleton. Post-apply check: 5 tables, 6 named indexes, 8 triggers,
+  and the pre-existing counts unchanged (13 letters / 17 tracks / 236 visitors / 29 daily /
+  24 votes). `signal_messages` and `star_profiles` are empty, `signal_state.version` is 0, so the
+  release activates no public notification behaviour by itself.
+* Worker: `void-galaxy-letters` was already at the `fbbc3f7` state. The release version is recorded
+  in the final report; the production `ADMIN_SECRET` and `LETTER_SALT` bindings were left exactly as
+  found (their values were never read or printed).
+* Public scope: the Galaxy notification client wiring stays out of this release, so visitors see no
+  Signals layer. `/signals/*` is live but read-only and returns nothing until the owner publishes a
+  message from the panel.
