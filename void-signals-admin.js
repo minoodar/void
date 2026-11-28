@@ -32,6 +32,7 @@
       serverTime: 0,
       version: null,
       publicIds: [],
+      publicFeedOk: false,
       loaded: {},
       open: {},
       busy: false
@@ -66,6 +67,32 @@
     function busy(host, on) {
       host.classList.toggle('is-busy', !!on);
       st.busy = !!on;
+    }
+
+    /* The public feed is read without a credential, so a dead request must never be
+       mistaken for "the feed is empty". The ids survive until a response that actually
+       looks like a feed replaces them; publicFeedOk says whether the newest read did. */
+    function applyPublicFeed(res) {
+      if (!res || res.ok !== true || !res.data) {
+        st.publicFeedOk = false;
+        return false;
+      }
+      if (res.data.version === undefined || res.data.version === null) {
+        st.publicFeedOk = false;
+        return false;
+      }
+      var msgs = res.data.messages;
+      if (Object.prototype.toString.call(msgs) !== '[object Array]') {
+        st.publicFeedOk = false;
+        return false;
+      }
+      var ids = [];
+      for (var i = 0; i < msgs.length; i++) {
+        if (msgs[i] && msgs[i].id) ids.push(msgs[i].id);
+      }
+      st.publicIds = ids;
+      st.publicFeedOk = true;
+      return true;
     }
 
     function errorNote(host, result) {
@@ -120,17 +147,21 @@
         stat('Revoked', String(t.revoked || 0), 'Terminal.');
 
         feed.textContent = '';
-        if (!st.publicIds.length) {
-          feed.appendChild(el('p', 'vsa-empty', 'The public feed is empty: visitors currently see no signals.'));
+        if (st.publicIds.length) {
+          feed.appendChild(el('p', st.publicFeedOk ? 'vsa-hint' : 'vsa-empty', st.publicFeedOk
+            ? 'Public feed, read without a credential — these are the message ids the public galaxy is showing visitors:'
+            : 'The last public feed read failed, so these ids may be stale. They are the ids the galaxy confirmed last time:'));
+          var list = el('ul', 'vsa-ids');
+          for (var i = 0; i < st.publicIds.length && i < 12; i++) {
+            list.appendChild(el('li', null, st.publicIds[i]));
+          }
+          feed.appendChild(list);
+          if (st.publicIds.length > 12) feed.appendChild(el('p', 'vsa-faint', (st.publicIds.length - 12) + ' more.'));
           return;
         }
-        feed.appendChild(el('p', 'vsa-hint', 'Public feed, read without a credential — the same ids the galaxy and the Notification Center use:'));
-        var list = el('ul', 'vsa-ids');
-        for (var i = 0; i < st.publicIds.length && i < 12; i++) {
-          list.appendChild(el('li', null, st.publicIds[i]));
-        }
-        feed.appendChild(list);
-        if (st.publicIds.length > 12) feed.appendChild(el('p', 'vsa-faint', (st.publicIds.length - 12) + ' more.'));
+        feed.appendChild(el('p', 'vsa-empty', st.publicFeedOk
+          ? 'The public feed is empty: visitors currently see no signals.'
+          : 'The public feed has not been read successfully yet, so what visitors see is unknown.'));
       };
     }
 
@@ -498,8 +529,7 @@
         st.totals = list.data.total;
         st.serverTime = list.data.server_time || Math.round(Date.now() / 1000);
         st.version = list.data.version;
-        var feed = res[1];
-        st.publicIds = feed && feed.ok ? feed.data.messages.map(function (m) { return m.id; }) : [];
+        applyPublicFeed(res[1]);
         st.loaded.messages = true;
         renderRows();
         shell.setCount('signals', (st.totals.active || 0) + (st.totals.scheduled || 0));
@@ -896,6 +926,7 @@
         st.open = {};
         st.totals = null;
         st.publicIds = [];
+        st.publicFeedOk = false;
         st.version = null;
         for (var key in hosts) {
           if (!Object.prototype.hasOwnProperty.call(hosts, key)) continue;
@@ -942,7 +973,7 @@
             st.version = null;
             errorNote(hosts.overview, res[0].error);
           }
-          if (res[1] && res[1].ok) st.publicIds = res[1].data.messages.map(function (m) { return m.id; });
+          applyPublicFeed(res[1]);
           hosts.overview.__render();
           shell.setCount('signals', (st.totals ? (st.totals.active || 0) + (st.totals.scheduled || 0) : 0));
         });

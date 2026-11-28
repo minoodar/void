@@ -861,6 +861,108 @@ export default async function (ctx) {
     adminHits(/void-signals-(api|admin|public)\.js/).map((r) => r.url.split('/').pop()).join(','));
   await ctx.shot('admin-edit-after');
 
+  /* ============ K. admin feed bookkeeping across a public-feed outage ============ */
+
+  /* failMode gates only the public handlers (tests/signals-public-server.mjs:283-288), so
+     this is exactly the reported case: the credential-free feed dies while /admin/signals
+     keeps answering. st.publicIds is module-private, so every claim is read back from the
+     DOM the operator actually sees. */
+  const excAtK = ctx.exceptions.length;
+  const consAtK = ctx.consoleErrors.length;
+  const readPanel = () => evl(`
+    var act = document.getElementById('va-sec-signals-active');
+    var ov = document.getElementById('va-sec-signals-overview');
+    var msg = document.getElementById('va-sec-signals-messages');
+    var block = ov ? ov.querySelector('.vsa-note-block') : null;
+    var note = block ? (block.querySelector('.vsa-hint') || block.querySelector('.vsa-empty')) : null;
+    var err = msg ? msg.querySelector('[data-role="error"]') : null;
+    var texts = act ? [].slice.call(act.querySelectorAll('.vsa-pill')).map(function (p) { return p.textContent; }) : [];
+    var n = function (t) { return texts.filter(function (x) { return x === t; }).length; };
+    return { inFeed: n('in public feed'), outFeed: n('not in feed'), rows: texts.length,
+      ids: block ? block.querySelectorAll('.vsa-ids li').length : -1,
+      note: note ? note.textContent : '', banner: (err && !err.hidden) ? err.textContent : '' };`);
+  const pressRefresh = () => evl(`
+    var b = [].slice.call(document.querySelectorAll('#va-sec-signals-messages .va-toolbar button'));
+    for (var i = 0; i < b.length; i++) { if (b[i].textContent === 'Refresh') { b[i].click(); return true; } }
+    return false;`);
+  /* The visibility pills are drawn by the Active signals section, which re-renders from
+     st.publicIds on entry (ensureData → renderSubsections) without a request of its own:
+     entering it therefore shows exactly what the last feed read left behind. */
+  const reloadAndRead = async () => {
+    await tap('#va-sectab-signals-messages');
+    await ctx.sleep(400);
+    await pressRefresh();
+    await ctx.sleep(1100);
+    await tap('#va-sectab-signals-active');
+    await ctx.sleep(800);
+    return readPanel();
+  };
+
+  const healthy = await reloadAndRead();
+  say('K1 a healthy feed is reflected in the rows and the overview',
+    healthy.inFeed === 3 && healthy.outFeed === 1 && healthy.rows === 4 && healthy.ids === 3 &&
+    /public galaxy is showing visitors/.test(healthy.note) && healthy.banner === '',
+    JSON.stringify(healthy));
+
+  await mock('/__fail?mode=500');
+  const outage = await reloadAndRead();
+  say('K2 an HTTP outage keeps the last known ids on the rows',
+    outage.inFeed === 3 && outage.outFeed === 1 && outage.rows === 4, JSON.stringify(outage));
+  say('K3 the overview keeps those ids and calls them unconfirmed, never empty',
+    outage.ids === 3 && /last public feed read failed/.test(outage.note) &&
+    outage.note.indexOf('The public feed is empty') === -1, JSON.stringify(outage.note));
+  say('K4 a feed outage is not mis-reported as an admin list failure',
+    outage.banner === '', outage.banner);
+
+  await mock('/__fail?mode=malformed');
+  const unparsed = await reloadAndRead();
+  say('K5 unparseable JSON is not read as an empty feed',
+    unparsed.inFeed === 3 && unparsed.ids === 3 && /read failed/.test(unparsed.note),
+    JSON.stringify(unparsed));
+
+  await mock('/__fail?mode=empty');
+  const empt = await reloadAndRead();
+  say('K6 a confirmed empty feed does clear the ids and says so',
+    empt.inFeed === 0 && empt.outFeed === 4 && empt.ids === 0 &&
+    empt.note.indexOf('The public feed is empty') === 0, JSON.stringify(empt));
+
+  await mock('/__fail?mode=off');
+  const back = await reloadAndRead();
+  say('K7 recovery refreshes the set',
+    back.inFeed === 3 && back.ids === 3 && /public galaxy is showing visitors/.test(back.note),
+    JSON.stringify(back));
+  const centerText = await evl(`
+    var p = document.getElementById('va-panel-signals');
+    return p ? String(p.textContent).toLowerCase().replace(/\\s+/g, ' ') : '';`);
+  say('K8 the mounted admin never claims a public notification center',
+    centerText.indexOf('notification center') === -1 && centerText.indexOf('notification management') !== -1,
+    centerText.slice(0, 60));
+  say('K9 the whole outage stayed quiet inside the shell',
+    ctx.exceptions.length === excAtK && ctx.consoleErrors.length === consAtK,
+    'exceptions+' + (ctx.exceptions.length - excAtK) + ' console+' + (ctx.consoleErrors.length - consAtK));
+  await ctx.shot('admin-feed-outage');
+
+  /* A fresh document that has never had a successful read must not assert that the feed is
+     empty either: that is the initial half of the same rule. */
+  await mock('/__fail?mode=500');
+  await ctx.navigate(MOCK + '/index.html?local-api=1&admin=true');
+  await ctx.waitFor("!!document.getElementById('va-login-form')", 'K10 reload reaches login', 15000);
+  await evl(`
+    var i = document.getElementById('va-secret');
+    i.value = 'test-token';
+    document.getElementById('va-login-form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    return true;`);
+  await ctx.waitFor("!!document.getElementById('va-app') && !document.getElementById('va-app').hidden", 'K10 reload unlocks', 15000);
+  await tap('#va-tab-signals');
+  await ctx.waitFor("!!document.querySelector('#va-sec-signals-overview .vsa-note-block')", 'K10 overview mounts', 15000);
+  await ctx.sleep(1400);
+  const first = await readPanel();
+  await mock('/__fail?mode=off');
+  await mock('/__reset');
+  say('K10 a first load with a dead feed reports unknown, not empty',
+    first.ids === 0 && first.note.indexOf('has not been read successfully yet') !== -1 &&
+    first.note.indexOf('The public feed is empty') === -1, JSON.stringify(first));
+
   /* ================= J. end-to-end acceptance path ================= */
 
   await mock('/__reset');

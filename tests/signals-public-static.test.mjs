@@ -859,6 +859,137 @@ await test('the mount watcher and the module footer stay on the floor', async ()
     'and only as the non-browser fallback: ' + String(gti[0]).trim());
 });
 
+/* ---------------- I4. admin public-feed bookkeeping ---------------- */
+
+/* The guard is the whole of fix A, so it is tested as shipped code: the function is
+   lifted verbatim out of void-signals-admin.js and run against the same st shape the
+   module builds. Nothing here reimplements the rule it checks. */
+function adminFn(name) {
+  const at = adminJs.indexOf('function ' + name + '(');
+  if (at === -1) throw new Error(name + ' is not in void-signals-admin.js');
+  let depth = 0;
+  for (let i = adminJs.indexOf('{', at); i < adminJs.length; i++) {
+    if (adminJs[i] === '{') depth++;
+    else if (adminJs[i] === '}') {
+      depth--;
+      if (depth === 0) return adminJs.slice(at, i + 1);
+    }
+  }
+  throw new Error('unbalanced braces while reading ' + name);
+}
+
+function feedKeeper() {
+  const st = { publicIds: [], publicFeedOk: false };
+  const ctx = vm.createContext({ st, Object });
+  vm.runInContext(adminFn('applyPublicFeed') + '\nthis.run = applyPublicFeed;', ctx);
+  /* Mirrors what void-signals-api.js actually resolves for a healthy feed: the worker
+     answers every /signals/messages with ok, version and a messages list. */
+  return {
+    st,
+    run: (res) => ctx.run(res),
+    ok: (messages) => ({ ok: true, status: 200, data: { version: 4, messages } })
+  };
+}
+
+await test('a successful feed populates the ids and marks the read fresh', async () => {
+  const k = feedKeeper();
+  equal(k.run(k.ok([{ id: 'aaa' }, { id: 'bbb' }])), true, 'a valid feed must be accepted');
+  equal(k.st.publicIds.join(','), 'aaa,bbb');
+  equal(k.st.publicFeedOk, true);
+});
+
+await test('a later failed read keeps the last known ids', async () => {
+  const k = feedKeeper();
+  k.run(k.ok([{ id: 'aaa' }, { id: 'bbb' }]));
+  for (const bad of [{ ok: false, status: 0, error: 'network' }, { ok: false, status: 403 },
+    { ok: false, status: 200, data: null }, undefined, null]) {
+    equal(k.run(bad), false, 'a refused feed must not count as a read');
+    equal(k.st.publicIds.join(','), 'aaa,bbb', JSON.stringify(bad) + ' cleared the preserved ids');
+    equal(k.st.publicFeedOk, false, JSON.stringify(bad) + ' left the ids marked fresh');
+  }
+});
+
+await test('a successful empty feed clears the ids', async () => {
+  const k = feedKeeper();
+  k.run(k.ok([{ id: 'aaa' }]));
+  equal(k.run(k.ok([])), true, 'an empty feed is still a successful read');
+  equal(k.st.publicIds.length, 0);
+  equal(k.st.publicFeedOk, true, 'the panel has to be allowed to say the feed is empty');
+});
+
+await test('a malformed response never masquerades as a successful empty feed', async () => {
+  const k = feedKeeper();
+  k.run(k.ok([{ id: 'aaa' }, { id: 'bbb' }]));
+  /* A 200 with ok:true is not by itself a feed. void-signals-api.js does normalize a
+     missing list to [], so what the guard can require — and what the worker always
+     supplies (worker/letters/worker.js:2138-2142 answers version and messages together) —
+     is a version alongside a real list. Without both, the ids stay as they were. */
+  const shapeless = [
+    { ok: true, status: 200, data: {} },
+    { ok: true, status: 200, data: { version: 9 } },
+    { ok: true, status: 200, data: { messages: [] } },
+    { ok: true, status: 200, data: { version: 9, messages: 'aaa,bbb' } },
+    { ok: true, status: 200, data: { version: 9, messages: { 0: { id: 'aaa' } } } },
+    { ok: true, status: 200, data: { version: 9, messages: null } },
+    { ok: true, status: 200, data: null }
+  ];
+  for (const res of shapeless) {
+    equal(k.run(res), false, 'accepted a non-feed payload: ' + JSON.stringify(res));
+    equal(k.st.publicIds.join(','), 'aaa,bbb', 'a non-feed payload emptied the ids');
+    equal(k.st.publicFeedOk, false, 'a non-feed payload was recorded as a read');
+  }
+  /* The boundary, stated rather than assumed: version + an empty list is the worker's own
+     answer for "nothing eligible", so it is a confirmed empty feed and does clear. */
+  equal(k.run({ ok: true, status: 200, data: { version: 9, messages: [] } }), true);
+  equal(k.st.publicIds.length, 0);
+  /* Entries without an id are skipped rather than becoming undefined pills. */
+  equal(k.run({ ok: true, status: 200, data: { version: 4, messages: [{ id: 'ccc' }, null, {}, { id: 'ddd' }] } }), true);
+  equal(k.st.publicIds.join(','), 'ccc,ddd');
+});
+
+await test('recovery after a failed read refreshes the set', async () => {
+  const k = feedKeeper();
+  k.run(k.ok([{ id: 'aaa' }]));
+  k.run({ ok: false, status: 503 });
+  equal(k.run(k.ok([{ id: 'eee' }, { id: 'fff' }])), true, 'the healthy feed was ignored');
+  equal(k.st.publicIds.join(','), 'eee,fff', 'stale ids survived a confirmed fresh read');
+  equal(k.st.publicFeedOk, true);
+});
+
+await test('both admin feed readers route through the guard, no inline clearing is left', async () => {
+  const code = stripComments(adminJs);
+  const assigns = code.split('\n').filter((l) => /st\.publicIds\s*=/.test(l));
+  equal(assigns.length, 2, 'the ids are written by the guard and by reset() only: ' +
+    assigns.map((l) => l.trim()).join(' | '));
+  assert(/st\.publicIds = \[\];\s*\n\s*st\.publicFeedOk = false;/.test(code),
+    'reset() must drop the preserved ids and the freshness flag together');
+  equal((code.match(/applyPublicFeed\(res\[1\]\)/g) || []).length, 2,
+    'the messages refresh and the overview entry both consult the guard');
+  equal((code.match(/data\.messages/g) || []).length, 1,
+    'the feed envelope is unwrapped in one place only: the guard');
+  assert(!/data\.messages\.map/.test(code),
+    'a mapped read of the envelope is the shape that cleared the ids before');
+  assert(!/feed\.ok \? /.test(code), 'a failed feed read must not fall through to an empty list');
+});
+
+await test('admin copy describes the galaxy feed, never a visitor notification center', async () => {
+  for (const f of [{ name: 'void-signals-admin.js', source: adminJs },
+    { name: 'index.html', source: indexHtml }]) {
+    match(/notification\s*[- ]?\s*center|notification\s*[- ]?\s*centre/i,
+      'claims a public notification surface that does not exist in this release', [f]);
+  }
+  assert(/these are the message ids the public galaxy is showing visitors:/.test(adminJs),
+    'the fresh-feed hint no longer names the public galaxy as the consumer of these ids');
+  assert(/The last public feed read failed/.test(adminJs),
+    'a preserved-but-unconfirmed id list has to be labelled stale');
+  assert(/The public feed is empty: visitors currently see no signals\./.test(adminJs) &&
+    /has not been read successfully yet/.test(adminJs),
+    'emptiness may only be stated after a confirmed read, otherwise the panel says unknown');
+  /* The admin section keeps its own name; it must not be described as visitor-facing. */
+  assert(/'Notification management'/.test(adminJs),
+    'the admin section is still called Notification management (an admin tool, not a public surface)');
+});
+
 console.log('\n' + passed + '/' + (passed + failed) + ' checks passed');
 if (failed) {
   console.log('FAILURES:');
