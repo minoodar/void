@@ -1,0 +1,390 @@
+/* ======================================================================
+   Void — public Signals layer (visitors)
+
+   Ambient stars orbiting the Galaxy core, and the surface one opens into.
+   Appearance is driven by --ss-* tokens that void-signals-public.js writes
+   from the assigned star profile, so tuning a profile retunes these rules
+   without editing them.
+
+   The floor is Chromium 70 (Android TV): no inset, no flex gap, no :has(),
+   no :focus-visible. Spacing is done with margins so an old engine that
+   ignores gap still lays out.
+   ====================================================================== */
+
+/* Mounted inside #void-music-root, which is itself fixed at inset 0 and owns the
+   Galaxy surface (#void-god-galaxy, z-index 0). Absolute keeps the layer in that
+   container's stacking context. Measured in the real shell: void-domains.css gives
+   every child of #void-music-root z-index 2, an ID rule that outranks the number
+   below, and that is the level we want — above the disc (0), under the rail (1100)
+   and modals (2000), with the layer appended last so stars are the hit target.
+   The 950 only decides the order in the body fallback, where the layer is a direct
+   child of <body> and no container rule applies. */
+.vs-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* The layer is a coat hanger, not a surface: only the stars themselves
+       take pointer input, so the Galaxy keeps its own clicks. */
+    pointer-events: none;
+    z-index: 950;
+}
+/* Only when the Galaxy container is missing entirely. */
+.vs-layer--body {
+    position: fixed;
+}
+.vs-layer[hidden] {
+    display: none;
+}
+
+/* ---- one star ---- */
+
+.vs-sig {
+    position: absolute;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    /* The visible dot is small; the button around it stays finger-sized. */
+    width: 34px;
+    height: 34px;
+    margin: -17px 0 0 -17px;
+    cursor: pointer;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+    opacity: 0;
+    transition: opacity .5s ease;
+}
+.vs-sig:focus {
+    outline: 1px solid var(--ss-a, #f6c86a);
+    outline-offset: 4px;
+    border-radius: 50%;
+}
+/* Entrance is a fade plus one scale, transform/opacity only: the Galaxy's own
+   frame loop never waits on this layer. */
+.vs-sig.is-in {
+    opacity: 1;
+}
+.vs-sig.is-arriving {
+    opacity: 1;
+    animation: vs-arrive 1.1s ease-out both;
+}
+@keyframes vs-arrive {
+    from { transform: scale(.2); opacity: 0; }
+    60% { transform: scale(1.18); opacity: 1; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.vs-core {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(9px * var(--ss-size, 1));
+    height: calc(9px * var(--ss-size, 1));
+    margin: calc(-4.5px * var(--ss-size, 1)) 0 0 calc(-4.5px * var(--ss-size, 1));
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 45%,
+        var(--ss-core, #fff8e8) 0%, var(--ss-a, #f6c86a) 46%, var(--ss-b, #b8862f) 100%);
+    box-shadow: 0 0 calc(10px * var(--ss-glow, 1)) calc(2px * var(--ss-glow, 1)) var(--ss-b, #b8862f);
+    opacity: var(--ss-bright, 1);
+    transition: box-shadow var(--ss-glow-ms, 900ms) ease, opacity var(--ss-glow-ms, 900ms) ease;
+}
+.vs-glyph {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(26px * var(--ss-size, 1));
+    height: calc(26px * var(--ss-size, 1));
+    margin: calc(-13px * var(--ss-size, 1)) 0 0 calc(-13px * var(--ss-size, 1));
+    background: linear-gradient(90deg, transparent 47%, var(--ss-a, #f6c86a) 47%, var(--ss-a, #f6c86a) 53%, transparent 53%),
+        linear-gradient(0deg, transparent 47%, var(--ss-a, #f6c86a) 47%, var(--ss-a, #f6c86a) 53%, transparent 53%);
+    opacity: calc(.5 * var(--ss-bright, 1));
+    transform: rotate(var(--vs-tilt, 0deg));
+}
+/* The spark is the same cross, pinched into four points. */
+.vs-sig[data-style="spark"] .vs-glyph {
+    clip-path: polygon(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%);
+    -webkit-clip-path: polygon(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%);
+    opacity: calc(.72 * var(--ss-bright, 1));
+}
+.vs-sig[data-style="point"] .vs-glyph {
+    display: none;
+}
+.vs-sig[data-style="hairline"] .vs-glyph {
+    opacity: calc(.55 * var(--ss-bright, 1));
+}
+.vs-sig[data-style="hairline"] .vs-core {
+    width: calc(4px * var(--ss-size, 1));
+    height: calc(4px * var(--ss-size, 1));
+    margin: calc(-2px * var(--ss-size, 1)) 0 0 calc(-2px * var(--ss-size, 1));
+}
+.vs-sig[data-style="bloom"] .vs-glyph {
+    display: none;
+}
+.vs-sig[data-style="bloom"] .vs-core {
+    width: calc(15px * var(--ss-size, 1));
+    height: calc(15px * var(--ss-size, 1));
+    margin: calc(-7.5px * var(--ss-size, 1)) 0 0 calc(-7.5px * var(--ss-size, 1));
+    filter: blur(var(--ss-soft, 0px));
+}
+
+/* Weight is legible before any label is read: a heavier core and a held ring. */
+.vs-sig--important .vs-core {
+    width: calc(12px * var(--ss-size, 1));
+    height: calc(12px * var(--ss-size, 1));
+    margin: calc(-6px * var(--ss-size, 1)) 0 0 calc(-6px * var(--ss-size, 1));
+    box-shadow: 0 0 calc(16px * var(--ss-glow, 1)) calc(3px * var(--ss-glow, 1)) var(--ss-b, #b8862f);
+}
+.vs-sig--important::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(22px * var(--ss-size, 1));
+    height: calc(22px * var(--ss-size, 1));
+    margin: calc(-11px * var(--ss-size, 1)) 0 0 calc(-11px * var(--ss-size, 1));
+    border: 1px solid var(--ss-a, #f6c86a);
+    border-radius: 50%;
+    opacity: .38;
+}
+.vs-sig--ambient .vs-core {
+    opacity: calc(.86 * var(--ss-bright, 1));
+}
+
+/* ---- life ---- */
+
+.vs-layer[data-motion="animated"] .vs-sig:not(.is-still):not(.is-read) .vs-core {
+    animation: vs-breathe var(--ss-breath, 7.5s) ease-in-out infinite alternate;
+    animation-delay: var(--vs-phase, 0s);
+}
+.vs-layer[data-motion="animated"] .vs-sig:not(.is-still):not(.is-read) {
+    animation: vs-drift calc(var(--ss-breath, 7.5s) * 1.6) ease-in-out infinite alternate;
+    animation-delay: var(--vs-phase, 0s);
+}
+@keyframes vs-breathe {
+    from { opacity: calc(var(--ss-bright, 1) * .55); box-shadow: 0 0 calc(4px * var(--ss-glow, 1)) 0 var(--ss-b, #b8862f); }
+    to { opacity: var(--ss-bright, 1); box-shadow: 0 0 calc(14px * var(--ss-glow, 1)) calc(3px * var(--ss-glow, 1)) var(--ss-b, #b8862f); }
+}
+@keyframes vs-drift {
+    from { transform: translate(0, 0); }
+    to { transform: translate(calc(var(--ss-drift, .35) * 7px), calc(var(--ss-drift, .35) * -5px)); }
+}
+.vs-sig:hover .vs-core {
+    box-shadow: 0 0 calc(20px * var(--ss-glow, 1)) calc(4px * var(--ss-glow, 1)) var(--ss-a, #f6c86a);
+}
+
+/* Read once, dimmed forever (for this session): the sky keeps a record without
+   hiding the message, which stays openable. */
+.vs-sig.is-read {
+    opacity: .46;
+}
+.vs-sig.is-read .vs-core {
+    box-shadow: none;
+    filter: saturate(.35);
+}
+.vs-sig.is-read::after {
+    display: none;
+}
+
+/* ---- the surface a star opens ---- */
+
+dialog.vs-reveal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* The mount container (and the star layer beside it) is pointer-events:none, so
+       the surface has to claim its own input the way a star does. */
+    pointer-events: auto;
+    /* min() is newer than the floor here, so width and max-width do the same job. */
+    width: 560px;
+    max-width: calc(100vw - 32px);
+    max-height: 74vh;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(246, 200, 106, .26);
+    border-radius: 18px;
+    background: rgba(8, 7, 20, .92);
+    color: #eef1f7;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .62);
+    overflow: hidden;
+    z-index: 1200;
+}
+/* #void-music-root > :not(...) in void-domains.css pins every child to z-index 2, and
+   that ID rule outranks the plain class rule above. Same shape, one ID, wins it back. */
+#void-music-root > dialog.vs-reveal {
+    z-index: 1200;
+}
+/* The blur is a bonus, never the contrast: the solid fill above already reads. */
+@supports (backdrop-filter: blur(2px)) {
+    dialog.vs-reveal {
+        backdrop-filter: blur(14px) saturate(120%);
+        -webkit-backdrop-filter: blur(14px) saturate(120%);
+    }
+}
+dialog.vs-reveal:not([open]) {
+    display: none;
+}
+dialog.vs-reveal::backdrop {
+    background: rgba(2, 2, 8, .72);
+}
+.vs-reveal--plain {
+    /* No showModal (rare webview): the panel still opens as an overlay. */
+    pointer-events: auto;
+}
+.vs-reveal--important {
+    border-color: rgba(246, 200, 106, .52);
+}
+
+.vs-reveal__head {
+    display: block;
+    padding: 14px 16px 0 16px;
+}
+.vs-reveal__kind {
+    display: inline-block;
+    padding: 3px 9px;
+    border: 1px solid rgba(246, 200, 106, .3);
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: rgba(246, 200, 106, .9);
+}
+.vs-reveal__close {
+    float: right;
+    padding: 6px 12px;
+    border: 1px solid rgba(235, 240, 245, .22);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .06);
+    color: #eef1f7;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.vs-reveal__close:hover {
+    background: rgba(255, 255, 255, .12);
+}
+.vs-reveal__close:focus {
+    outline: 1px solid rgba(246, 200, 106, .8);
+    outline-offset: 2px;
+}
+.vs-reveal__title {
+    display: block;
+    margin: 10px 16px 0 16px;
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: .01em;
+    unicode-bidi: plaintext;
+    overflow-wrap: anywhere;
+}
+.vs-reveal__body {
+    padding: 12px 16px 4px 16px;
+    max-height: calc(74vh - 190px);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 15px;
+    line-height: 1.75;
+}
+.vs-line {
+    display: block;
+    margin: 0 0 9px 0;
+    /* Persian and Latin in one message stay in their own direction, per line. */
+    unicode-bidi: plaintext;
+    text-align: start;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: rgba(235, 240, 245, .9);
+}
+.vs-line--gap {
+    height: 10px;
+}
+.vs-line--list {
+    padding-left: 14px;
+    text-indent: -14px;
+}
+.vs-link {
+    color: #f6c86a;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+.vs-link:hover {
+    color: #ffe3a8;
+}
+.vs-link:focus {
+    outline: 1px solid rgba(246, 200, 106, .8);
+    outline-offset: 3px;
+    border-radius: 3px;
+}
+.vs-reveal__foot {
+    display: block;
+    padding: 6px 16px 16px 16px;
+    text-align: end;
+}
+.vs-reveal__dismiss {
+    padding: 9px 16px;
+    border: 1px solid rgba(246, 200, 106, .42);
+    border-radius: 12px;
+    background: rgba(246, 200, 106, .12);
+    color: #ffe3a8;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.vs-reveal__dismiss:hover {
+    background: rgba(246, 200, 106, .2);
+}
+.vs-reveal__dismiss:focus {
+    outline: 1px solid rgba(246, 200, 106, .8);
+    outline-offset: 3px;
+}
+
+/* ---- small screens ---- */
+
+@media (max-width: 520px) {
+    .vs-sig {
+        width: 40px;
+        height: 40px;
+        margin: -20px 0 0 -20px;
+    }
+    dialog.vs-reveal {
+        width: calc(100vw - 20px);
+        max-height: 80vh;
+        border-radius: 14px;
+    }
+    .vs-reveal__title {
+        font-size: 17px;
+    }
+    .vs-reveal__body {
+        font-size: 14.5px;
+        max-height: calc(80vh - 200px);
+    }
+}
+
+/* ---- stillness ---- */
+
+/* An explicit request beats a tuned profile: nothing moves, but every star
+   stays where it was and stays openable. */
+.vs-layer[data-motion="static"] .vs-sig,
+.vs-sig.is-still {
+    animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .vs-sig,
+    .vs-sig .vs-core {
+        animation: none !important;
+    }
+    .vs-sig {
+        opacity: 1;
+        transition: none;
+    }
+    dialog.vs-reveal {
+        transition: none;
+    }
+}

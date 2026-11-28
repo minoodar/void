@@ -416,8 +416,12 @@
   }
 
   /* Public-only client for the visitor layer: same paths, no credential ever sent. */
+  /* Pages serves the app from minoodar.github.io, so a relative path would ask GitHub for
+     /signals/* instead of the Worker. Same fallback order as void-letters-api.js: an explicit
+     base (?local-api=1) wins, otherwise the deployed Worker origin. */
+  var WORKER_BASE = 'https://void-galaxy-letters.minoodar.workers.dev';
   function createForPage() {
-    var base = String(global.__VOID_API_BASE__ || '').replace(/\/+$/, '');
+    var base = String(global.__VOID_API_BASE__ || WORKER_BASE).replace(/\/+$/, '');
     return create(function (path, options) {
       var init = { method: options.method || 'GET', headers: { Accept: 'application/json' }, credentials: 'omit', mode: 'cors' };
       if (options.body !== undefined) {

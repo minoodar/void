@@ -1724,7 +1724,14 @@
   <script src="void-letters-api.js?v=20261109" defer></script>
   <script src="void-letters.js?v=20261125" defer></script>
   <script src="void-artwork.js" defer></script>
-  <script src="void-admin.js?v=20261127" defer></script>
+  <!-- Public Signals: ambient stars for the messages the Worker already serves at
+       /signals/*. Read-only, no credential, removable as one pair of tags.
+       Loaded before void-admin.js so the admin bundle sees it present and skips
+       injecting a second copy of the same API module. -->
+  <link rel="stylesheet" href="void-signals-public.css?v=20261127b">
+  <script src="void-signals-api.js?v=20261127b" defer></script>
+  <script src="void-signals-public.js?v=20261127b" defer></script>
+  <script src="void-admin.js?v=20261127b" defer></script>
   <script src="void-source-divides.js?v=20261115"></script>
   <script src="podcast-layout.js?v=20261116fix"></script>
   <script src="podcast-emblem.js?v=20261116fix"></script>

@@ -2006,8 +2006,15 @@
   /* Admin-only module bundles. Visitors never fetch these: the whole file already
      returned unless ?admin=true, and these tags are injected here rather than
      committed into the public HTML head. async=false keeps execution in order. */
-  var MODULE_STAMP = '20261127';
+  var MODULE_STAMP = '20261127b';
   var ADMIN_BUNDLES = ['void-signals-api.js', 'void-star-studio.js', 'void-signals-admin.js'];
+  /* The visitor Signals layer loads the same API module with its own cache key, so an
+     admin page already has it. A second copy would only re-define the same global. */
+  var BUNDLE_GLOBALS = {
+    'void-signals-api.js': 'VoidSignalsApi',
+    'void-star-studio.js': 'VoidSignalsAdminExtra',
+    'void-signals-admin.js': 'VoidSignalsAdmin'
+  };
 
   function inject(src, kind) {
     var node = document.createElement(kind === 'css' ? 'link' : 'script');
@@ -2039,6 +2046,10 @@
 
   inject('void-signals-admin.css?v=' + MODULE_STAMP, 'css');
   for (var b = 0; b < ADMIN_BUNDLES.length; b++) {
+    if (BUNDLE_GLOBALS[ADMIN_BUNDLES[b]] && global[BUNDLE_GLOBALS[ADMIN_BUNDLES[b]]]) {
+      bundlesDone += 1;
+      continue;
+    }
     var tag = inject(ADMIN_BUNDLES[b] + '?v=' + MODULE_STAMP);
     /* load and error are mutually exclusive, so a missing file cannot hang the shell */
     tag.addEventListener('load', bundleSettled);
