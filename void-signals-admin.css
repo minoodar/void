@@ -129,7 +129,8 @@
 }
 #void-admin-root .vsa-title {
     display: block;
-    padding: 0;
+    width: 100%;
+    padding: 2px 0;
     border: 0;
     background: none;
     color: var(--va-fg);
@@ -138,7 +139,21 @@
     font-weight: 600;
     text-align: left;
     cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: rgba(252, 211, 77, .34);
+    text-underline-offset: 3px;
 }
+/* The marker reads as an expander, so the title is not mistaken for a plain label. */
+#void-admin-root .vsa-title::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 5px;
+    color: var(--va-gold);
+    font-size: 11px;
+    transition: transform .16s ease;
+}
+#void-admin-root .vsa-title[aria-expanded="true"]::before { transform: rotate(90deg); }
+#void-admin-root .vsa-title[aria-expanded="true"] { color: var(--va-gold); }
 #void-admin-root .vsa-title:hover { color: var(--va-gold); }
 #void-admin-root .vsa-title:focus-visible {
     outline: 2px solid var(--va-gold);
@@ -187,6 +202,11 @@
 #void-admin-root .vsa-abtn--schedule {
     border-color: rgba(251, 191, 36, .40);
     background: rgba(245, 158, 11, .12);
+    color: #ffe6a8;
+}
+#void-admin-root .vsa-abtn--edit {
+    border-color: rgba(252, 211, 77, .34);
+    background: rgba(252, 211, 77, .10);
     color: #ffe6a8;
 }
 #void-admin-root .vsa-abtn--hide { color: var(--va-dim); }
@@ -307,6 +327,8 @@
 #void-admin-root .vsa-composer__actions { display: flex; gap: 8px; }
 
 #void-admin-root .vsa-edit { display: grid; gap: 8px; }
+#void-admin-root .vsa-edit__note { margin: 0; font-size: 11.5px; color: var(--va-faint); }
+#void-admin-root .vsa-edit__foot { display: flex; gap: 8px; align-items: center; }
 
 /* ---- star studio ---- */
 

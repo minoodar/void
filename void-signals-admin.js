@@ -33,7 +33,7 @@
       version: null,
       publicIds: [],
       loaded: {},
-      openRow: null,
+      open: {},
       busy: false
     };
 
@@ -352,6 +352,8 @@
       titleBtn.setAttribute('data-action', 'toggle');
       titleBtn.setAttribute('data-id', row.id);
       titleBtn.setAttribute('aria-expanded', 'false');
+      titleBtn.setAttribute('aria-controls', 'vsa-detail-' + row.id);
+      titleBtn.title = 'Open this message to read and edit it';
       titleCell.appendChild(titleBtn);
       var bodyLine = el('div', 'vsa-body-preview');
       bodyLine.hidden = true;
@@ -371,6 +373,7 @@
     function detailRow(row) {
       var tr = document.createElement('tr');
       tr.className = 'vsa-detail';
+      tr.id = 'vsa-detail-' + row.id;
       tr.setAttribute('data-detail-for', row.id);
       tr.hidden = true;
       var td = document.createElement('td');
@@ -413,6 +416,7 @@
       title.name = 'title';
       title.maxLength = API.LIMITS.title;
       title.value = row.title;
+      title.defaultValue = row.title;
       title.setAttribute('aria-label', 'Title');
       var body = document.createElement('textarea');
       body.className = 'vsa-input';
@@ -420,16 +424,29 @@
       body.rows = 3;
       body.maxLength = API.LIMITS.body;
       body.value = row.body;
+      body.defaultValue = row.body;
       body.setAttribute('aria-label', 'Message body');
       var err = el('p', 'vsa-error');
       err.hidden = true;
       err.setAttribute('role', 'alert');
+      var note = el('p', 'vsa-edit__note',
+        'Saves text only. Status stays “' + row.status + '” and the id and creation time do not change.');
+      var foot = el('div', 'vsa-edit__foot');
       var save = el('button', 'va-btn va-btn--primary', 'Save text');
       save.type = 'submit';
+      var cancel = el('button', 'va-btn', 'Cancel');
+      cancel.type = 'button';
+      foot.appendChild(save);
+      foot.appendChild(cancel);
       form.appendChild(title);
       form.appendChild(body);
+      form.appendChild(note);
       form.appendChild(err);
-      form.appendChild(save);
+      form.appendChild(foot);
+      cancel.addEventListener('click', function () {
+        /* closing is not a write: nothing is sent and the inputs are discarded */
+        setDetailOpen(row.id, false);
+      });
       form.addEventListener('submit', function (event) {
         event.preventDefault();
         save.disabled = true;
@@ -440,9 +457,17 @@
         }).then(function (result) {
           save.disabled = false;
           if (!result.ok) {
-            err.hidden = false;
-            err.textContent = result.error + (result.current_version !== null ? ' (now at version ' + result.current_version + ')' : '');
-            if (result.current_version !== null) loadRows(true);
+            if (result.current_version === null) {
+              err.hidden = false;
+              err.textContent = result.error;
+              return;
+            }
+            /* A conflict reloads the row, which rebuilds this very node: the reason
+               has to be said outside it or the operator sees a silent no-op. */
+            err.hidden = true;
+            shell.toast(result.error + ' The row is at version ' + result.current_version +
+              ' now, so your text was not saved. The form shows the current text.', 'error');
+            loadRows(true);
             return;
           }
           shell.toast('Text saved. Status stayed ' + result.data.status + '.', 'success');
@@ -492,6 +517,12 @@
         tbody.appendChild(detailRow(row));
       }
       host.__empty.hidden = st.rows.length > 0;
+      /* A re-render rebuilds every row, so the expanded state is re-applied from st.open
+         rather than read back from the DOM. Rows that vanished drop their claim. */
+      for (var key in st.open) {
+        if (!Object.prototype.hasOwnProperty.call(st.open, key)) continue;
+        if (findRow(key)) setDetailOpen(key, true); else delete st.open[key];
+      }
       var count = host.__count();
       if (count) {
         var t = st.totals || {};
@@ -505,24 +536,70 @@
       var id = btn.getAttribute('data-id');
       var action = btn.getAttribute('data-action');
       if (!id) return;
-      if (action === 'toggle') { toggleDetail(id, btn); return; }
+      if (action === 'toggle') { toggleDetail(id); return; }
+      if (action === 'edit') { openEditor(id); return; }
       if (action === 'delete') { confirmDelete(id, btn); return; }
       runTransition(id, action, btn);
     }
 
-    function toggleDetail(id, btn) {
+    function toggleDetail(id) {
+      var opening = !st.open[id];
+      setDetailOpen(id, opening);
+      if (st.open[id]) focusEditor(id);
+    }
+
+    /* One writer for the expanded state, so a click can only ever move it once. */
+    function setDetailOpen(id, open) {
       var host = hosts.messages;
+      if (!host) return false;
       var detail = host.querySelector('[data-detail-for="' + id + '"]');
-      if (!detail) return;
-      var open = detail.hidden;
+      if (!detail) return false;
       detail.hidden = !open;
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      var btn = host.querySelector('button.vsa-title[data-id="' + id + '"]');
+      if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       var body = host.querySelector('[data-id="' + id + '"] .vsa-body-preview');
       if (body) body.hidden = !open;
+      if (open) { st.open[id] = true; return true; }
+      /* Closing discards uncommitted typing: the next opening shows stored text again. */
+      var form = detail.querySelector('.vsa-edit');
+      if (form) {
+        form.reset();
+        var shown = form.querySelector('.vsa-error');
+        if (shown) { shown.hidden = true; shown.textContent = ''; }
+      }
+      delete st.open[id];
+      return true;
+    }
+
+    function focusEditor(id) {
+      var host = hosts.messages;
+      if (!host) return;
+      var input = host.querySelector('[data-detail-for="' + id + '"] .vsa-edit input[name="title"]');
+      if (!input) return;
+      var trigger = host.querySelector('button.vsa-title[data-id="' + id + '"]');
+      if (trigger) { try { trigger.scrollIntoView({ block: 'center' }); } catch (e) { trigger.scrollIntoView(); } }
+      try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+    }
+
+    /* Reached from the Active signals table: jump to the row that owns the form. */
+    function openEditor(id) {
+      if (!findRow(id)) {
+        shell.toast('That message is not in the current list. The view was refreshed.', 'error');
+        loadRows(true);
+        return;
+      }
+      st.open[id] = true;
+      if (shell.go) shell.go('signals', 'messages');
+      renderRows();
+      focusEditor(id);
+      /* shell.go writes the route, and the hashchange handler re-renders the table
+         after this task; claim the caret again once that has settled. */
+      global.setTimeout(function () { if (st.open[id]) focusEditor(id); }, 120);
     }
 
     function runTransition(id, action, btn) {
       var meta = API.ACTIONS[action];
+      if (!meta) return;
       var extra = { expected_version: Number(btn.getAttribute('data-version')) };
 
       function send(values) {
@@ -703,6 +780,7 @@
           tr.appendChild(vis);
           var acts = el('td');
           var wrap = el('div', 'vsa-actions');
+          wrap.appendChild(rowAction('Edit', 'edit', row.id, 'edit', row.state_version));
           wrap.appendChild(rowAction('Hide', 'hide', row.id, 'hide', row.state_version));
           wrap.appendChild(rowAction('Revoke', 'revoke', row.id, 'revoke', row.state_version, true));
           acts.appendChild(wrap);
@@ -815,6 +893,7 @@
       reset: function () {
         st.loaded = {};
         st.rows = [];
+        st.open = {};
         st.totals = null;
         st.publicIds = [];
         st.version = null;
@@ -837,16 +916,16 @@
           var btn = event.target && event.target.closest ? event.target.closest('[data-action]') : null;
           if (!btn || !btn.getAttribute('data-id')) return;
           if (btn.getAttribute('data-action') === 'toggle') return;
+          if (btn.getAttribute('data-action') === 'edit') { openEditor(btn.getAttribute('data-id')); return; }
           runTransition(btn.getAttribute('data-id'), btn.getAttribute('data-action'), btn);
         });
       }
     }
 
+    /* The table body is the single owner of message clicks. Attaching a second
+       toggle handler to the section host would run on the same click as it bubbles
+       past, opening then immediately closing the detail row. */
     if (hosts.messages) {
-      hosts.messages.addEventListener('click', function (event) {
-        var btn = event.target && event.target.closest ? event.target.closest('[data-action]') : null;
-        if (btn && btn.getAttribute('data-action') === 'toggle') { toggleDetail(btn.getAttribute('data-id'), btn); }
-      });
       hosts.messages.querySelector('.va-table tbody').addEventListener('click', onMessagesClick);
     }
     if (hosts.overview) {
